@@ -5414,6 +5414,48 @@ abstract class AppLocalizations {
   /// **'Recognising…'**
   String get chatTranscribing;
 
+  /// The up-arrow button beside a transcribed voice note or circle: folds its text away.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide text'**
+  String get chatTranscriptHide;
+
+  /// Profile row (Android): pick a cubechat APK and install it from inside the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Install an update from a file'**
+  String get selfUpdateTitle;
+
+  /// No description provided for @selfUpdateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the new cubechat APK here instead of opening it from a chat: installed this way, calls on the lock screen stay on.'**
+  String get selfUpdateHint;
+
+  /// No description provided for @selfUpdateConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm the installation in the system window.'**
+  String get selfUpdateConfirm;
+
+  /// No description provided for @selfUpdateAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow cubechat to install apps, then tap again.'**
+  String get selfUpdateAllow;
+
+  /// No description provided for @selfUpdateNotOurs.
+  ///
+  /// In en, this message translates to:
+  /// **'That file is not a cubechat update.'**
+  String get selfUpdateNotOurs;
+
+  /// No description provided for @selfUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The update was not installed.'**
+  String get selfUpdateFailed;
+
   /// Under a voice note when the on-device recogniser had to fetch its language model first.
   ///
   /// In en, this message translates to:

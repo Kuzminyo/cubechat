@@ -485,8 +485,16 @@ class CubechatTranscribePlugin(
             pcm.file.delete()
             for (file in phrases) file.delete()
             note("after=${SystemClock.elapsedRealtime() - began}ms")
-            if (code == null) result.success(text)
-            else result.error(code, "On-device transcription failed", notes.toString())
+            // A success carries the same numbers as a failure. "It gave back
+            // part of the note" was reported twice with a log that said
+            // nothing, because a success logged nothing: which stage answered,
+            // how many phrases the note was cut into and how many were heard
+            // is exactly what that report needs. Still no words in it.
+            if (code == null) {
+                result.success(mapOf("text" to text, "notes" to notes.toString()))
+            } else {
+                result.error(code, "On-device transcription failed", notes.toString())
+            }
         }
 
         timeout = Runnable { finish(null, "timeout") }
@@ -593,7 +601,11 @@ class CubechatTranscribePlugin(
                 if (delivered || !current()) return
                 delivered = true
                 if (label == "whole" || (outcome.error != null && outcome.error != SpeechRecognizer.ERROR_NO_MATCH)) {
-                    note(summary() + (outcome.error?.let { ",error=$it" } ?: ""))
+                    note(
+                        summary() +
+                            (outcome.error?.let { ",error=$it" } ?: "") +
+                            (outcome.text?.let { ",text=${it.length}ch" } ?: ""),
+                    )
                 }
                 onOutcome(outcome)
             }
@@ -661,7 +673,13 @@ class CubechatTranscribePlugin(
         var index = 0
         var silentPhrases = 0
 
-        fun nextPhrase(fresh: Boolean = false) {
+        // A breath between sessions. Starting the next one straight from the
+        // last one's result callback can find the service still closing the
+        // previous session and answer "busy" — which used to end the whole
+        // note with only what was heard so far.
+        val betweenPhrasesMs = 150L
+
+        fun nextPhrase(fresh: Boolean = false, retry: Int = 0) {
             if (answered) return
             if (index >= phrases.size) {
                 note("phrases=${phrases.size},heard=${heard.size},silent=$silentPhrases")
@@ -673,15 +691,13 @@ class CubechatTranscribePlugin(
                 return
             }
             listen(phrases[index], segmented = false, fresh = fresh, label = "p$index") { o ->
+                // How much each phrase came back as, in characters, or its error.
+                note("p$index=${o.text?.length?.let { "${it}ch" } ?: "e${o.error}"}")
                 when {
                     o.text != null -> {
                         heard.add(o.text)
                         index++
-                        nextPhrase()
-                    }
-                    isDropped(o.error) && !freshRetryUsed -> {
-                        freshRetryUsed = true
-                        main.postDelayed({ nextPhrase(fresh = true) }, 300)
+                        main.postDelayed({ nextPhrase() }, betweenPhrasesMs)
                     }
                     // A phrase the recogniser found no words in — a laugh, a
                     // breath that crossed the threshold — is skipped, not fatal.
@@ -690,10 +706,19 @@ class CubechatTranscribePlugin(
                         o.error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
                         silentPhrases++
                         index++
-                        nextPhrase()
+                        main.postDelayed({ nextPhrase() }, betweenPhrasesMs)
                     }
-                    heard.isNotEmpty() -> finish(heard.joinToString(" "))
-                    else -> finish(null, "recognizer_${o.error}")
+                    // Anything else is the service, not the phrase: the same
+                    // phrase again, first on the same instance a moment later,
+                    // then on a fresh one. Never a reason to stop at half.
+                    retry < 2 -> main.postDelayed(
+                        { nextPhrase(fresh = retry == 1 || isDropped(o.error), retry = retry + 1) },
+                        300L * (retry + 1),
+                    )
+                    else -> {
+                        index++
+                        main.postDelayed({ nextPhrase() }, betweenPhrasesMs)
+                    }
                 }
             }
         }
@@ -712,6 +737,12 @@ class CubechatTranscribePlugin(
                         return@post
                     }
                     phrases = cut
+                    // Each phrase's length without its padding, in ms.
+                    note(
+                        "cut=" + cut.joinToString(",") {
+                            ((it.length() - 16_000) / 32).coerceAtLeast(0).toString()
+                        },
+                    )
                     if (cut.isEmpty()) {
                         note("phrases=0")
                         finish(null)

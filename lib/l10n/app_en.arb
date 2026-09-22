@@ -1506,6 +1506,19 @@
   "chatTranscribeAction": "Transcribe",
   "chatTranscribeFailed": "This phone cannot transcribe that one.",
   "chatTranscribing": "Recognising…",
+  "chatTranscriptHide": "Hide text",
+  "selfUpdateTitle": "Install an update from a file",
+  "@selfUpdateTitle": {
+    "description": "Profile row (Android): pick a cubechat APK and install it from inside the app."
+  },
+  "selfUpdateHint": "Pick the new cubechat APK here instead of opening it from a chat: installed this way, calls on the lock screen stay on.",
+  "selfUpdateConfirm": "Confirm the installation in the system window.",
+  "selfUpdateAllow": "Allow cubechat to install apps, then tap again.",
+  "selfUpdateNotOurs": "That file is not a cubechat update.",
+  "selfUpdateFailed": "The update was not installed.",
+  "@chatTranscriptHide": {
+    "description": "The up-arrow button beside a transcribed voice note or circle: folds its text away."
+  },
   "chatTranscribeDownloading": "The phone is downloading the language for this. Try again in a minute.",
   "@chatTranscribeDownloading": {
     "description": "Under a voice note when the on-device recogniser had to fetch its language model first."

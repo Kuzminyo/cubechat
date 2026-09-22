@@ -138,6 +138,30 @@ void main() {
     });
   }
 
+  testWidgets('with the text there, the button folds it away and back',
+      (tester) async {
+    final controller = _Transcription();
+    await pump(tester, controller);
+    await tester.tap(find.byType(TranscriptionButton));
+    controller.pending.complete('Recognized words');
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Recognized words'), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget,
+        reason: 'the "→A" turns into "↑" once there is text to hide');
+
+    await tester.tap(find.byType(TranscriptionButton));
+    await tester.pump();
+    expect(find.text('Recognized words'), findsNothing);
+    expect(find.text('→A'), findsOneWidget);
+
+    await tester.tap(find.byType(TranscriptionButton));
+    await tester.pump();
+    expect(find.text('Recognized words'), findsOneWidget);
+    expect(controller.calls, 1, reason: 'the same text, not a second run');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('failure remains visible and permits retry', (tester) async {
     final controller = _Transcription();
     await pump(tester, controller);

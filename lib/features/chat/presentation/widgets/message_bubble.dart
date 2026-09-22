@@ -992,18 +992,38 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     }
   }
 
-  Widget _transcriptionButton({bool circle = false, String? transcript}) =>
-      TranscriptionButton(
-        loading: _transcribing,
-        onPressed: MediaPaths.existsOrNull(widget.message.voiceNotePath)
-            ? _transcribeVoice
-            : null,
-        circle: circle,
-        // Beside a circle it leaves once tapped and stays gone while the text
-        // is there; a failure brings it back to be tried again.
-        hidden: circle && (_transcribing || transcript != null),
-        flyLeft: widget.message.isMine,
-      );
+  /// Fold the transcript away, or bring it back — no second recognition.
+  void _toggleTranscript() {
+    final id = widget.message.id;
+    final hidden = ref.read(hiddenTranscriptsProvider.notifier);
+    hidden.state = hidden.state.contains(id)
+        ? ({...hidden.state}..remove(id))
+        : {...hidden.state, id};
+  }
+
+  Widget _transcriptionButton({
+    bool circle = false,
+    String? transcript,
+    bool transcriptHidden = false,
+  }) {
+    // With the text on show the button folds it away ("↑"); folded, it is
+    // "→A" again and brings the same text back at once.
+    final shown = transcript != null && !transcriptHidden;
+    return TranscriptionButton(
+      loading: _transcribing,
+      expanded: shown,
+      onPressed: transcript != null
+          ? _toggleTranscript
+          : MediaPaths.existsOrNull(widget.message.voiceNotePath)
+              ? _transcribeVoice
+              : null,
+      circle: circle,
+      // Beside a circle it leaves once tapped, while recognition runs, and
+      // comes back as "↑" with the text; a failure brings it back as "→A".
+      hidden: circle && _transcribing && transcript == null,
+      flyLeft: widget.message.isMine,
+    );
+  }
 
   /// Keep a copy of this message in Saved.
   ///
@@ -1354,6 +1374,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final transcript = ref.watch(
       voiceTranscriptionProvider.select((texts) => texts[widget.message.id]),
     );
+    final transcriptHidden = ref.watch(
+      hiddenTranscriptsProvider.select((ids) => ids.contains(widget.message.id)),
+    );
     final message = widget.message;
     final mine = message.isMine;
     final copyingRestricted = ref
@@ -1518,8 +1541,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // чёрным, чтобы его видно было"). On our own bubble it is the palette's
     // own darkest now; on theirs, and under a circle, which has no bubble
     // behind it, the full-strength glass text.
-    final readingColor =
-        mine && !bare ? AppColors.bgDeep : AppColors.textOnGlass;
+    //
+    // Not pure dark, which read as harsh ("не такой приторный чёрный"): the
+    // palette's darkest at 70%, which on the green lands on a deep muted
+    // green-grey — clearly readable, and softer than the text it sits under.
+    final readingColor = mine && !bare
+        ? AppColors.bgDeep.withValues(alpha: 0.7)
+        : AppColors.textOnGlass;
     // A voice note's length joins that line on the left, as in Telegram, which
     // leaves its waveform alone on the play button's centre line.
     final voiceClock = message.kind == MessageKind.audio && footerAtEnd
@@ -1739,7 +1767,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             child: VoiceBubble(
                               message: message,
                               chatId: widget.chatId,
-                              transcriptionButton: _transcriptionButton(),
+                              transcriptionButton: _transcriptionButton(
+                                transcript: transcript,
+                                transcriptHidden: transcriptHidden,
+                              ),
                               clockInFooter: voiceClock != null,
                             ),
                           ),
@@ -1782,6 +1813,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             ? _transcriptionButton(
                                 circle: true,
                                 transcript: transcript,
+                                transcriptHidden: transcriptHidden,
                               )
                             : null,
                       ),
@@ -1938,8 +1970,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ],
                     ),
                   ),
+                // Folded away with "↑" hides the text, not the failure note.
                 if (message.isVoiceNote &&
-                    (transcript != null || _transcriptionFailed))
+                    (transcript != null
+                        ? !transcriptHidden
+                        : _transcriptionFailed))
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
@@ -1968,9 +2003,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // still what they wrote; this is a reading of it, and a
                 // translation that replaced the original would hide the one
                 // thing a reader can check.
+                // A voice note's translation is a reading of its transcript,
+                // and folds away with it.
                 if (ref.watch(
                       translationProvider.select((t) => t[message.id]),
-                    ) case final String translated)
+                    ) case final String translated when !(message.isVoiceNote && transcriptHidden))
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(

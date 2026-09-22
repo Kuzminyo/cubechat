@@ -13,6 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../core/transport/file_reassembly.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/frame_stats.dart';
+import '../../../core/util/motion.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -1633,12 +1634,37 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// True once the newest message is comfortably off screen. The threshold is
   /// about a screenful: a button that appears the instant you nudge the list
   /// flickers in and out while reading.
+  ///
+  /// **And only while heading that way**, the way Telegram does it: scrolled
+  /// up and reading, the arrow is in the way; the moment you turn and scroll
+  /// back down, it offers the rest of the trip. Asked for as "only when I
+  /// have scrolled up and start scrolling down, sliding in from the right".
+  /// Scrolling up again sends it back off the edge; stopping leaves it where
+  /// it is. A turn counts after 24 px, so a hand resting on the glass does not
+  /// flick it in and out.
   bool _canScrollDown = false;
+
+  /// Where the current scroll direction was last established.
+  double? _directionAnchor;
 
   void _onScrollChanged() {
     if (!_scroll.hasClients) return;
     // reverse: true, so offset 0 *is* the bottom.
-    final next = _scroll.offset > 600;
+    final offset = _scroll.offset;
+    var next = _canScrollDown;
+    if (offset <= 600) {
+      next = false;
+      _directionAnchor = offset;
+    } else {
+      final anchor = _directionAnchor ??= offset;
+      if (anchor - offset > 24) {
+        next = true; // towards the newest message
+        _directionAnchor = offset;
+      } else if (offset - anchor > 24) {
+        next = false; // further back into the past
+        _directionAnchor = offset;
+      }
+    }
     if (next != _canScrollDown) setState(() => _canScrollDown = next);
   }
 
@@ -3544,12 +3570,12 @@ class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
         // Only once there is somewhere to go. The list is reversed, so being
         // at the newest message means offset ~0 — showing the button there
         // would be a control that does nothing, parked over the conversation.
-        if (widget.scrollToBottom != null)
-          Positioned(
-            right: 16,
-            bottom: _composerHeight + _clearance + 8,
-            child: _ScrollToBottomButton(onTap: widget.scrollToBottom!),
-          ),
+        // Always in the tree so it can slide in and out; see the button.
+        Positioned(
+          right: 16,
+          bottom: _composerHeight + _clearance + 8,
+          child: _ScrollToBottomButton(onTap: widget.scrollToBottom),
+        ),
         Positioned(
           left: 0,
           right: 0,
@@ -5684,28 +5710,59 @@ class _VerificationMark extends StatelessWidget {
 /// Reading back through a long scrollback, the way out is otherwise a lot of
 /// flinging — and in a conversation the newest message is where you almost
 /// always want to end up.
-class _ScrollToBottomButton extends StatelessWidget {
+///
+/// Null [onTap] means there is nowhere to go: the button slides out past the
+/// right edge of the screen and fades, and slides back in from there when it
+/// is wanted again. Faded to nothing it is not painted at all, so its glass
+/// costs nothing while it is away.
+class _ScrollToBottomButton extends StatefulWidget {
   const _ScrollToBottomButton({required this.onTap});
 
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+
+  @override
+  State<_ScrollToBottomButton> createState() => _ScrollToBottomButtonState();
+}
+
+class _ScrollToBottomButtonState extends State<_ScrollToBottomButton> {
+  /// The last real action, kept so the button still has one while it leaves.
+  VoidCallback? _lastTap;
 
   @override
   Widget build(BuildContext context) {
-    return FloatingGlass(
-      borderRadius: 22,
-      padding: EdgeInsets.zero,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkResponse(
-          onTap: onTap,
-          radius: 26,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(
-              Icons.keyboard_double_arrow_down_rounded,
-              color: AppColors.textOnGlass,
-              size: 22,
+    final visible = widget.onTap != null;
+    if (visible) _lastTap = widget.onTap;
+    final duration = AppMotion.reduced(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 280);
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedSlide(
+        // 1.6 of its own width is past the 16 pt margin: fully off screen.
+        offset: visible ? Offset.zero : const Offset(1.6, 0),
+        duration: duration,
+        curve: visible ? Curves.easeOutCubic : Curves.easeInCubic,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: duration,
+          child: FloatingGlass(
+            borderRadius: 22,
+            padding: EdgeInsets.zero,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkResponse(
+                onTap: _lastTap,
+                radius: 26,
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(
+                    Icons.keyboard_double_arrow_down_rounded,
+                    color: AppColors.textOnGlass,
+                    size: 22,
+                  ),
+                ),
+              ),
             ),
           ),
         ),

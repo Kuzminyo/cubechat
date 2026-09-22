@@ -3099,6 +3099,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTranscribing => 'Recognising…';
 
   @override
+  String get chatTranscriptHide => 'Hide text';
+
+  @override
+  String get selfUpdateTitle => 'Install an update from a file';
+
+  @override
+  String get selfUpdateHint =>
+      'Pick the new cubechat APK here instead of opening it from a chat: installed this way, calls on the lock screen stay on.';
+
+  @override
+  String get selfUpdateConfirm =>
+      'Confirm the installation in the system window.';
+
+  @override
+  String get selfUpdateAllow =>
+      'Allow cubechat to install apps, then tap again.';
+
+  @override
+  String get selfUpdateNotOurs => 'That file is not a cubechat update.';
+
+  @override
+  String get selfUpdateFailed => 'The update was not installed.';
+
+  @override
   String get chatTranscribeDownloading =>
       'The phone is downloading the language for this. Try again in a minute.';
 

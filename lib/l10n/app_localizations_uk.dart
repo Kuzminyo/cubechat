@@ -3135,6 +3135,30 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatTranscribing => 'Розпізнаю…';
 
   @override
+  String get chatTranscriptHide => 'Сховати текст';
+
+  @override
+  String get selfUpdateTitle => 'Встановити оновлення з файлу';
+
+  @override
+  String get selfUpdateHint =>
+      'Обирайте новий APK cubechat тут, а не відкривайте його з чату: так дзвінки на екрані блокування залишаться увімкненими.';
+
+  @override
+  String get selfUpdateConfirm =>
+      'Підтвердіть встановлення у системному вікні.';
+
+  @override
+  String get selfUpdateAllow =>
+      'Дозвольте cubechat встановлювати застосунки й торкніться ще раз.';
+
+  @override
+  String get selfUpdateNotOurs => 'Цей файл — не оновлення cubechat.';
+
+  @override
+  String get selfUpdateFailed => 'Оновлення не встановилося.';
+
+  @override
   String get chatTranscribeDownloading =>
       'Телефон завантажує мовну модель для цього. Спробуйте за хвилину.';
 

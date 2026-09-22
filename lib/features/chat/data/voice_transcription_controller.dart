@@ -77,11 +77,24 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
       final wanted = transcriptionCandidates(choice, appLocale: localeId);
       // iOS's recogniser opens no Ogg; an Opus note is transcribed from the
       // WAV it plays as.
-      final text = await channel.invokeMethod<String>('transcribe', {
+      final answer = await channel.invokeMethod<Object?>('transcribe', {
         'path': await PlayableVoice.pathFor(audioPath),
         if (wanted.isNotEmpty) 'locale': wanted.first,
         if (wanted.length > 1) 'fallbacks': wanted.sublist(1),
       });
+      // Android answers with the text and the numbers behind it — which
+      // stage heard it, how the note was cut, characters per phrase, never
+      // words; iOS with the text alone.
+      final String? text;
+      if (answer is Map) {
+        text = answer['text'] as String?;
+        final notes = answer['notes'];
+        if (notes is String) {
+          DebugLog.instance.log('TRANSCRIBE', 'ok ($notes)');
+        }
+      } else {
+        text = answer as String?;
+      }
       final trimmed = text?.trim();
       if (_disposed || _forgotten.contains(messageId)) return null;
       if (trimmed == null || trimmed.isEmpty) {
@@ -116,3 +129,11 @@ final voiceTranscriptionProvider =
     NotifierProvider<VoiceTranscriptionController, Map<String, String>>(
   VoiceTranscriptionController.new,
 );
+
+/// Transcripts folded away with the "↑" button, by message id.
+///
+/// "When the text is written, let it be hidden: an up arrow instead of the
+/// A." Here rather than in the bubble's own state, so a transcript folded
+/// away stays folded when its bubble scrolls off and is built again. Memory
+/// only, like the transcripts themselves.
+final hiddenTranscriptsProvider = StateProvider<Set<String>>((_) => const {});

@@ -19,6 +19,11 @@ import '../../../../l10n/app_localizations.dart';
 /// ours, because the text is about to appear underneath and a button that
 /// stays would only offer the same thing twice. It comes back if recognition
 /// fails, so it can be tried again.
+///
+/// Once the text is there, beside a note or a circle, the button is "↑" and
+/// folds the text away; folded, it is "→A" again and brings the same text
+/// back without recognising twice ("его можно спрятать, вместо А стрелочка
+/// вверх").
 class TranscriptionButton extends StatelessWidget {
   const TranscriptionButton({
     super.key,
@@ -27,6 +32,7 @@ class TranscriptionButton extends StatelessWidget {
     this.circle = false,
     this.hidden = false,
     this.flyLeft = false,
+    this.expanded = false,
   });
 
   final bool loading;
@@ -35,15 +41,19 @@ class TranscriptionButton extends StatelessWidget {
   /// Drawn beside a round message rather than inside a voice bubble.
   final bool circle;
 
-  /// Gone, for a circle whose text is on its way or already there.
+  /// Gone, for a circle whose text is on its way.
   final bool hidden;
 
   /// Which way it leaves: out of the side it sits on.
   final bool flyLeft;
 
+  /// The text is on show: the button is "↑" and folds it away.
+  final bool expanded;
+
   @override
   Widget build(BuildContext context) {
-    final label = AppLocalizations.of(context).chatTranscribeAction;
+    final t = AppLocalizations.of(context);
+    final label = expanded ? t.chatTranscriptHide : t.chatTranscribeAction;
     final enabled = !loading && onPressed != null && !hidden;
     final Widget chip = circle ? _roundChip() : _voiceChip();
 
@@ -132,6 +142,12 @@ class TranscriptionButton extends StatelessWidget {
             strokeWidth: 1.8,
             color: AppColors.textOnGlassDim,
           ),
+        )
+      : expanded
+      ? Icon(
+          Icons.keyboard_arrow_up_rounded,
+          size: fontSize + 7,
+          color: AppColors.textOnGlass,
         )
       : Text(
           '→A',
