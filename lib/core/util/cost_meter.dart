@@ -50,6 +50,12 @@ class CostMeter {
     });
   }
 
+  /// Add [micros] of work that ran without a suspension under [what] — for a
+  /// loop whose cost is spread over many synchronous calls between awaits,
+  /// which [measure] would only see the first of.
+  void recordSync(String what, int micros) =>
+      _record(what, syncUs: micros, wallUs: micros);
+
   void _record(String what, {required int syncUs, required int wallUs}) {
     final tally = _tallies.putIfAbsent(what, _Tally.new);
     tally.calls++;

@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../util/cost_meter.dart';
+
 /// Per-chunk AEAD for a **forward-secret media transfer**.
 ///
 /// One X3DH-derived key covers the whole transfer (the X3DH setup — the
@@ -42,12 +44,16 @@ class MediaFsCipher {
       throw ArgumentError('mediaId must be $idLen bytes');
     }
     final nonce = _aead.newNonce();
+    // Timed — pure-Dart ChaCha20-Poly1305 on the UI isolate, once per chunk
+    // of every photo, voice note and file. See CostMeter.
+    final clock = Stopwatch()..start();
     final box = await _aead.encrypt(
       plaintext,
       secretKey: key,
       nonce: nonce,
       aad: mediaId,
     );
+    CostMeter.instance.recordSync('media-seal', clock.elapsedMicroseconds);
     final out = Uint8List(headerLen + box.cipherText.length + tagLen);
     var c = 0;
     out.setRange(c, c += idLen, mediaId);
@@ -83,7 +89,9 @@ class MediaFsCipher {
     final ct = body.sublist(c, ctEnd);
     final mac = body.sublist(ctEnd);
     final box = SecretBox(ct, nonce: nonce, mac: Mac(mac));
+    final clock = Stopwatch()..start();
     final clear = await _aead.decrypt(box, secretKey: key, aad: mediaId);
+    CostMeter.instance.recordSync('media-open', clock.elapsedMicroseconds);
     return Uint8List.fromList(clear);
   }
 }

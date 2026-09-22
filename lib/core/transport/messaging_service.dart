@@ -2270,12 +2270,23 @@ class MessagingService {
       );
 
       // Streamed, so the digest costs one buffer rather than the whole file.
+      //
+      // Timed: this is pure Dart on the UI isolate, over the whole file, and
+      // "a good-quality video makes the app stutter and the phone hot" was
+      // reported on 2026-09-22 with nothing in the log to say whether this,
+      // the per-chunk sealing below, or the relay signatures were the cost.
       final sink = Sha256().newHashSink();
+      final hashing = Stopwatch();
       await for (final part in stored.openRead()) {
+        hashing.start();
         sink.add(part);
+        hashing.stop();
       }
+      hashing.start();
       sink.close();
       final digest = Uint8List.fromList((await sink.hash()).bytes);
+      hashing.stop();
+      CostMeter.instance.recordSync('file-hash', hashing.elapsedMicroseconds);
 
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
@@ -7743,11 +7754,17 @@ class MessagingService {
       // Hashed by streaming, not by reading the file into a buffer — the whole
       // reason the transfer went to disk was to avoid holding it in memory.
       final sink = Sha256().newHashSink();
+      final hashing = Stopwatch();
       await for (final part in assembled.file.openRead()) {
+        hashing.start();
         sink.add(part);
+        hashing.stop();
       }
+      hashing.start();
       sink.close();
       final actual = Uint8List.fromList((await sink.hash()).bytes);
+      hashing.stop();
+      CostMeter.instance.recordSync('file-verify', hashing.elapsedMicroseconds);
       if (!_bytesEqual(actual, manifest.sha256)) {
         DebugLog.instance.log(
             'FILE',
