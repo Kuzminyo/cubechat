@@ -119,9 +119,16 @@ permission — so it is off after **every sideloaded update**, and no app can gr
 it back to itself. Nothing asks about it: builds 1090–1093 put up a sheet on
 the chats screen after each update, and the owner had it removed (2026-09-21) —
 do not bring it back. `call_screen_access.dart` only reads what Android says,
-for the switch in Profile, and reads it again on every return to the app. The
-one install that keeps the permission across updates is one Google Play
-updates.
+for the switch in Profile, and reads it again on every return to the app.
+
+**The fix is the installer, not a prompt (1103).** The installer of an APK sets
+`USE_FULL_SCREEN_INTENT` for what it installs, and on Android 14+ any
+installer may (`SessionParams.setPermissionState` — see the Javadoc in the SDK
+sources). Profile → "Install an update from a file" (`SelfUpdater.kt`,
+`lib/core/util/self_update.dart`) installs a picked cubechat APK with it
+granted. Tapping the APK in a chat still goes through the phone's installer
+and still loses it. MIUI's own lock-screen permission no installer can set.
+`REQUEST_INSTALL_PACKAGES` must come out of any Google Play build.
 
 ## Server side
 
