@@ -664,11 +664,14 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     // exists to shout about.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(branchPagerProvider.notifier).state = BranchPager(
-        branch: kChatsBranch,
-        index: index,
-        count: stops.length,
-        step: (delta) => _goToStop(stops, index + delta),
+      registerBranchPager(
+        ref.read(branchPagersProvider.notifier),
+        BranchPager(
+          branch: kChatsBranch,
+          index: index,
+          count: stops.length,
+          step: (delta) => _goToStop(stops, index + delta),
+        ),
       );
     });
   }

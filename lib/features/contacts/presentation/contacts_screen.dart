@@ -11,6 +11,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/section_switch.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
@@ -225,7 +226,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                     ),
                   ),
                   const SizedBox(height: 14),
-                  _SectionSwitch(
+                  // Contacts or calls: two halves of one screen, the way
+                  // Telegram pairs them.
+                  SectionSwitch(
                     labels: [t.contactsTabContacts, t.contactsTabCalls],
                     selected: _calls ? 1 : 0,
                     onSelect: _selectSection,
@@ -365,90 +368,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-/// Contacts or calls: two halves of one screen, the way Telegram pairs them.
-class _SectionSwitch extends StatelessWidget {
-  const _SectionSwitch({
-    required this.labels,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final List<String> labels;
-  final int selected;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final duration = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 220);
-    return FloatingGlass(
-      blur: false,
-      borderRadius: 14,
-      padding: const EdgeInsets.all(4),
-      child: LayoutBuilder(
-        builder: (context, constraints) => Stack(
-          children: [
-            AnimatedPositionedDirectional(
-              duration: duration,
-              curve: Curves.easeOutCubic,
-              start: constraints.maxWidth * selected / labels.length,
-              width: constraints.maxWidth / labels.length,
-              top: 0,
-              bottom: 0,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.brandPrimary.withValues(alpha: 0.55),
-                  ),
-                ),
-              ),
-            ),
-            Row(
-              children: [
-                for (var i = 0; i < labels.length; i++)
-                  Expanded(
-                    child: Semantics(
-                      selected: i == selected,
-                      button: true,
-                      child: InkWell(
-                        onTap: () => onSelect(i),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          constraints: const BoxConstraints(minHeight: 44),
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          alignment: Alignment.center,
-                          child: AnimatedDefaultTextStyle(
-                            duration: duration,
-                            curve: Curves.easeOutCubic,
-                            style: TextStyle(
-                              color: i == selected
-                                  ? AppColors.textOnGlass
-                                  : AppColors.textOnGlassDim,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            child: Text(
-                              labels[i],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -50,16 +50,30 @@ class BranchPager {
   }
 }
 
-/// The pager a branch has published, or null while nothing has one.
+/// The pagers branches have published, by branch.
 ///
-/// A single slot rather than one per branch, because only one branch has ever
-/// wanted this. It is not cleared when that branch leaves the screen and does
-/// not need to be: [branch] says who it belongs to, and the strip only asks
-/// when that tab is the one showing.
-final branchPagerProvider = StateProvider<BranchPager?>((ref) => null);
+/// A single slot until Nearby grew pages of its own (Nearby | AirDrop | Files):
+/// with one slot the second registration overwrote the chats list's, and its
+/// folders stopped taking the swipe until the list happened to rebuild. Every
+/// branch stays mounted for the life of the shell, so a registration is never
+/// taken down; the strip asks only the one for the tab that is showing.
+final branchPagersProvider =
+    StateProvider<Map<int, BranchPager>>((ref) => const {});
+
+/// Publish [pager] for its branch, replacing that branch's previous one.
+void registerBranchPager(
+  StateController<Map<int, BranchPager>> slot,
+  BranchPager pager,
+) {
+  slot.state = {...slot.state, pager.branch: pager};
+}
 
 /// The chats branch, as declared in `app_router.dart`.
 ///
 /// Named rather than written as 0 at the two ends that have to agree — the
 /// screen that publishes a pager and the strip that decides whether to ask it.
 const int kChatsBranch = 0;
+
+/// The Nearby branch, as declared in `app_router.dart` (chats, contacts,
+/// peers, map, profile).
+const int kNearbyBranch = 2;

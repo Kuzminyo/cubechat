@@ -212,16 +212,13 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
             // decides, and watching it would rebuild the whole strip every
             // time a folder changed — which is the thing the drag just did.
             //
-            // Only when the branch that published it is the one showing: every
-            // branch stays mounted for the life of the shell, so the chats
-            // list's pager is registered while somebody is on their profile,
-            // and without this check the folders would eat a sideways flick on
-            // every screen in the app.
-            BranchPager? pager() {
-              final p = ref.read(branchPagerProvider);
-              if (p == null) return null;
-              return navigationShell.currentIndex == p.branch ? p : null;
-            }
+            // Only the pager of the branch that is showing: every branch stays
+            // mounted for the life of the shell, so the chats list's pager is
+            // registered while somebody is on their profile, and asking it
+            // there would let the folders eat a sideways flick on every screen
+            // in the app. Keyed by branch, so the lookup is the check.
+            BranchPager? pager() =>
+                ref.read(branchPagersProvider)[navigationShell.currentIndex];
             return BranchContainer(
               // Hiding the tab you are standing on is allowed, and this is
               // where it lands: not on the bar, so not in the strip, so first
