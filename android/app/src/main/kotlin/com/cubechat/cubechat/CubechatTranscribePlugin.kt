@@ -349,15 +349,30 @@ class CubechatTranscribePlugin(
             notes.append(';').append(text)
         }
 
-        fun releaseAttempt() {
-            try { recognizer?.destroy() } catch (_: Exception) {}
-            recognizer = null
+        fun closeSource() {
             // startListening queues work on Android's handler. Closing in its
             // finally block races service binding and Binder descriptor copying.
             // Retain the source until completion/error/timeout instead.
             try { descriptor?.close() } catch (_: Exception) {}
             descriptor = null
         }
+
+        fun releaseAttempt() {
+            try { recognizer?.destroy() } catch (_: Exception) {}
+            recognizer = null
+            closeSource()
+        }
+
+        // **One recogniser for the whole job, not one per step.** 1099 checked
+        // the languages with one instance, destroyed it inside that callback
+        // and created a second to listen — and the log came back
+        // `recognizer_11`, ERROR_SERVER_DISCONNECTED, 131 ms in, before the
+        // recogniser had reported ready. Both instances ride one binding to
+        // the system's on-device service, and tearing one down took the
+        // service away from the other. 1098 used one instance throughout and
+        // reached the audio (its failure was 7, no match), so that is the
+        // shape again. A fresh instance only when the service did drop.
+        var freshRetryUsed = false
 
         fun finish(text: String?, code: String? = null) {
             if (answered) return
@@ -414,15 +429,24 @@ class CubechatTranscribePlugin(
         // One try at the file. The first is the ordinary session; if that
         // hears no words (ERROR_NO_MATCH, 7 — every attempt on the reporting
         // phone) the same file goes again as a segmented session.
-        fun attempt(language: String?, segmented: Boolean) {
+        var attempts = 0
+        fun attempt(language: String?, segmented: Boolean, fresh: Boolean = false) {
             if (answered) return
-            releaseAttempt()
-            val mode = if (segmented) "seg" else "one"
-            val r = try {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            } catch (e: Exception) {
-                finish(null, "unavailable")
-                return
+            closeSource()
+            val attemptNo = ++attempts
+            val mode = (if (segmented) "seg" else "one") + (if (fresh) "+fresh" else "")
+            val existing = recognizer
+            val r = if (existing != null && !fresh) {
+                existing
+            } else {
+                try { existing?.destroy() } catch (_: Exception) {}
+                recognizer = null
+                try {
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                } catch (e: Exception) {
+                    finish(null, "unavailable")
+                    return
+                }
             }
             recognizer = r
             val source = try {
@@ -445,7 +469,7 @@ class CubechatTranscribePlugin(
                 (if (speechBegan) ",begin" else "") +
                 (if (speechEnded) ",end" else "") +
                 (if (segmented) ",segments=${segments.size}" else "")
-            fun current() = !answered && r === recognizer
+            fun current() = !answered && r === recognizer && attemptNo == attempts
 
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: Bundle?) {
@@ -484,10 +508,19 @@ class CubechatTranscribePlugin(
                 override fun onError(error: Int) {
                     if (!current()) return
                     note("${summary()},error=$error")
+                    val dropped = error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
+                        error == SpeechRecognizer.ERROR_CLIENT ||
+                        error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
                     when {
+                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
+                        // The service went away under us: once more, on a new
+                        // instance and a moment later, in the same mode.
+                        dropped && !freshRetryUsed -> {
+                            freshRetryUsed = true
+                            main.postDelayed({ attempt(language, segmented, fresh = true) }, 300)
+                        }
                         error == SpeechRecognizer.ERROR_NO_MATCH && !segmented ->
                             attempt(language, true)
-                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
                         else -> finish(null, "recognizer_$error")
                     }
                 }
