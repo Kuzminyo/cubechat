@@ -1511,6 +1511,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // above it, and the clock belongs by the picture — at the right of ours
     // already, and against the left of theirs (bare_bubble_alignment_test).
     final footerAtEnd = !metaOnMedia && !_showsComments && !bare;
+
+    // The colour of what is read *about* a message — a transcript, a
+    // translation. It was the dim tier, white at 0.6, which on our own bubble
+    // is white on bright green and could barely be read ("сделай текст
+    // чёрным, чтобы его видно было"). On our own bubble it is the palette's
+    // own darkest now; on theirs, and under a circle, which has no bubble
+    // behind it, the full-strength glass text.
+    final readingColor =
+        mine && !bare ? AppColors.bgDeep : AppColors.textOnGlass;
     // A voice note's length joins that line on the left, as in Telegram, which
     // leaves its waveform alone on the play button's centre line.
     final voiceClock = message.kind == MessageKind.audio && footerAtEnd
@@ -1949,9 +1958,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                 .chatTranscribeFailed,
                           },
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         height: 1.35,
-                        color: AppColors.textOnGlassDim,
+                        color: readingColor,
                       ),
                     ),
                   ),
@@ -1967,10 +1976,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     child: Text(
                       translated,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         height: 1.35,
                         fontStyle: FontStyle.italic,
-                        color: AppColors.textOnGlassDim,
+                        color: readingColor,
                       ),
                     ),
                   ),

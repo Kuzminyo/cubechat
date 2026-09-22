@@ -23,6 +23,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.math.sqrt
 
 /**
  * Turns a recorded voice note into text, on this phone.
@@ -54,6 +55,9 @@ class CubechatTranscribePlugin(
     // wall-clock ceiling, not an assumption about when speech ends.
     private val recognitionTimeoutMs = 90_000L
 
+    /** How long one recogniser session may take before it is given up. */
+    private val sessionTimeoutMs = 30_000L
+
     /** What the decode produced: a raw PCM file and the format it is in. */
     private data class Pcm(
         val file: File,
@@ -61,6 +65,15 @@ class CubechatTranscribePlugin(
         val channels: Int,
         /** Numbers for the failure report: source format, peak, gain. */
         val note: String = "",
+    )
+
+    /** How one recogniser session ended. */
+    private class Outcome(
+        val text: String?,
+        val segments: List<String>,
+        val error: Int?,
+        /** The recogniser used segmented mode rather than ignoring the extra. */
+        val segmentedHonoured: Boolean,
     )
 
     init {
@@ -318,8 +331,112 @@ class CubechatTranscribePlugin(
     }
 
     /**
+     * The 16 kHz mono note cut into phrases, at its pauses.
+     *
+     * **Why this exists.** On the reporting phone (2026-09-22, build 1101) the
+     * recogniser finally heard a note — and gave back its first phrase only:
+     * a sixteen-second note came back as one sentence. An ordinary session
+     * ends at the first pause it takes for the end of speaking; that is what
+     * it is for, listening to somebody talk into the phone. So the note is
+     * handed over one phrase at a time, each a session of its own.
+     *
+     * A pause is 360 ms or more of frames quieter than the note's own speech
+     * — a threshold taken from the note, since one person's pause is another's
+     * whisper. The cut goes in the middle of the pause. A stretch with no
+     * pause for 20 s is cut at its quietest moment. Stretches with under
+     * 200 ms of sound are dropped as clicks and breaths. Each phrase gets a
+     * quarter of a second of silence either side, which recognisers expect
+     * before the first word. At most forty phrases.
+     */
+    private fun splitAtPauses(source: File): List<File> {
+        val bytes = source.readBytes()
+        val n = bytes.size / 2
+        if (n == 0) return emptyList()
+        fun sample(i: Int): Int = (bytes[2 * i + 1].toInt() shl 8) or (bytes[2 * i].toInt() and 0xff)
+
+        val frame = 320 // 20 ms at 16 kHz
+        val frames = (n + frame - 1) / frame
+        val energy = DoubleArray(frames) { f ->
+            val from = f * frame
+            val to = minOf(n, from + frame)
+            var sum = 0.0
+            for (i in from until to) {
+                val v = sample(i).toDouble()
+                sum += v * v
+            }
+            sqrt(sum / (to - from))
+        }
+        val sorted = energy.sorted()
+        val floor = sorted[(frames * 0.2).toInt().coerceAtMost(frames - 1)]
+        val loud = sorted[(frames * 0.95).toInt().coerceAtMost(frames - 1)]
+        val threshold = maxOf(floor * 2.5, loud * 0.12, 150.0)
+        val voiced = BooleanArray(frames) { energy[it] >= threshold }
+
+        val minPause = 18 // 360 ms
+        val cuts = mutableListOf<Int>()
+        var f = 0
+        while (f < frames) {
+            if (voiced[f]) {
+                f++
+                continue
+            }
+            val start = f
+            while (f < frames && !voiced[f]) f++
+            if (f - start >= minPause && start > 0 && f < frames) cuts.add(start + (f - start) / 2)
+        }
+
+        val bounds = listOf(0) + cuts + frames
+        val longest = 20 * 50 // 20 s of frames
+        val spans = mutableListOf<Pair<Int, Int>>()
+        for (k in 0 until bounds.size - 1) {
+            var s = bounds[k]
+            val e = bounds[k + 1]
+            while (e - s > longest) {
+                var best = s + longest
+                var bestEnergy = Double.MAX_VALUE
+                for (x in s + longest / 2 until s + longest) {
+                    if (energy[x] < bestEnergy) {
+                        bestEnergy = energy[x]
+                        best = x
+                    }
+                }
+                spans.add(s to best)
+                s = best
+            }
+            spans.add(s to e)
+        }
+
+        val padding = ByteArray(4000 * 2) // 250 ms of silence
+        val out = mutableListOf<File>()
+        for ((s, e) in spans) {
+            var sounding = 0
+            for (x in s until e) if (voiced[x]) sounding++
+            if (sounding < 10) continue
+            val file = File.createTempFile("phrase", ".pcm", context.cacheDir)
+            FileOutputStream(file).buffered(1 shl 16).use { o ->
+                o.write(padding)
+                val from = s * frame
+                val to = minOf(n, e * frame)
+                o.write(bytes, from * 2, (to - from) * 2)
+                o.write(padding)
+            }
+            out.add(file)
+            if (out.size >= 40) break
+        }
+        return out
+    }
+
+    /**
      * The recogniser is bound to the main looper: every call has to be made
      * there, and every callback arrives there.
+     *
+     * Two stages. First the whole note in one segmented session — the mode
+     * the platform documents for a file, which reads to the end and hands
+     * back every stretch of speech. A recogniser that does not support it
+     * ignores the extra and stops at the first pause, and says so by
+     * answering with onResults instead of onEndOfSegmentedSession; then the
+     * note is cut into phrases ([splitAtPauses]) and each is an ordinary
+     * session of its own, which is the path this phone is known to hear.
      *
      * Only reached on Android 13+ — [onCall] answers below that.
      */
@@ -330,16 +447,16 @@ class CubechatTranscribePlugin(
         var answered = false
         var recognizer: SpeechRecognizer? = null
         var descriptor: ParcelFileDescriptor? = null
+        var phrases: List<File> = emptyList()
         var timeout: Runnable? = null
         val began = SystemClock.elapsedRealtime()
 
         // **What happened, sent back with any failure.** Three builds in a row
-        // came back with one number — recognizer_12, then recognizer_7 twice —
-        // and nothing to tell apart "the recogniser never read the file",
-        // "it read silence" and "it heard sound and found no words". This says
-        // how long the audio was and how loud, which language was used, and
-        // whether the recogniser reported sound levels, speech starting and
-        // speech ending. Numbers and language tags only, never words.
+        // came back with one number and nothing to tell apart "the recogniser
+        // never read the file", "it read silence" and "it heard sound and
+        // found no words". This says how long the audio was and how loud,
+        // which language was used, and what each stage heard. Numbers and
+        // language tags only, never words.
         val bytesPerSecond = 2L * pcm.channels * pcm.sampleRate
         val notes = StringBuilder(
             "audio=${pcm.file.length() * 1000 / bytesPerSecond}ms@${pcm.sampleRate}Hz",
@@ -357,30 +474,16 @@ class CubechatTranscribePlugin(
             descriptor = null
         }
 
-        fun releaseAttempt() {
-            try { recognizer?.destroy() } catch (_: Exception) {}
-            recognizer = null
-            closeSource()
-        }
-
-        // **One recogniser for the whole job, not one per step.** 1099 checked
-        // the languages with one instance, destroyed it inside that callback
-        // and created a second to listen — and the log came back
-        // `recognizer_11`, ERROR_SERVER_DISCONNECTED, 131 ms in, before the
-        // recogniser had reported ready. Both instances ride one binding to
-        // the system's on-device service, and tearing one down took the
-        // service away from the other. 1098 used one instance throughout and
-        // reached the audio (its failure was 7, no match), so that is the
-        // shape again. A fresh instance only when the service did drop.
-        var freshRetryUsed = false
-
         fun finish(text: String?, code: String? = null) {
             if (answered) return
             answered = true
             busy = false
             timeout?.let { main.removeCallbacks(it) }
-            releaseAttempt()
+            try { recognizer?.destroy() } catch (_: Exception) {}
+            recognizer = null
+            closeSource()
             pcm.file.delete()
+            for (file in phrases) file.delete()
             note("after=${SystemClock.elapsedRealtime() - began}ms")
             if (code == null) result.success(text)
             else result.error(code, "On-device transcription failed", notes.toString())
@@ -412,12 +515,6 @@ class CubechatTranscribePlugin(
                 pcm.sampleRate,
             )
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            // The mode the platform documents for a whole file: the recogniser
-            // reads the source to its end and hands back every stretch of
-            // speech in it (onSegmentResults), then says it has finished
-            // (onEndOfSegmentedSession). Without it a recogniser may stop at
-            // the first pause it hears — or, reading a file faster than real
-            // time, before it thinks anybody has started talking.
             if (segmented) {
                 putExtra(
                     RecognizerIntent.EXTRA_SEGMENTED_SESSION,
@@ -426,15 +523,37 @@ class CubechatTranscribePlugin(
             }
         }
 
-        // One try at the file. The first is the ordinary session; if that
-        // hears no words (ERROR_NO_MATCH, 7 — every attempt on the reporting
-        // phone) the same file goes again as a segmented session.
-        var attempts = 0
-        fun attempt(language: String?, segmented: Boolean, fresh: Boolean = false) {
+        // **One recogniser for the whole job, not one per step.** 1099 checked
+        // the languages with one instance, destroyed it inside that callback
+        // and created a second to listen — and the log came back
+        // `recognizer_11`, ERROR_SERVER_DISCONNECTED, 131 ms in, before the
+        // recogniser had reported ready. Both instances ride one binding to
+        // the system's on-device service, and tearing one down took the
+        // service away from the other. 1101 used one instance throughout and
+        // heard the note. A fresh instance only when the service did drop.
+        var freshRetryUsed = false
+        var language: String? = null
+        var sessions = 0
+
+        fun isDropped(error: Int?) = error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
+            error == SpeechRecognizer.ERROR_CLIENT ||
+            error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+
+        // One recogniser session over [file]; [onOutcome] is told how it ended.
+        fun listen(
+            file: File,
+            segmented: Boolean,
+            fresh: Boolean,
+            label: String,
+            onOutcome: (Outcome) -> Unit,
+        ) {
             if (answered) return
             closeSource()
-            val attemptNo = ++attempts
-            val mode = (if (segmented) "seg" else "one") + (if (fresh) "+fresh" else "")
+            val sessionNo = ++sessions
+            timeout?.let {
+                main.removeCallbacks(it)
+                main.postDelayed(it, sessionTimeoutMs)
+            }
             val existing = recognizer
             val r = if (existing != null && !fresh) {
                 existing
@@ -450,7 +569,7 @@ class CubechatTranscribePlugin(
             }
             recognizer = r
             val source = try {
-                ParcelFileDescriptor.open(pcm.file, ParcelFileDescriptor.MODE_READ_ONLY)
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             } catch (_: Exception) {
                 finish(null, "source_unavailable")
                 return
@@ -459,35 +578,39 @@ class CubechatTranscribePlugin(
 
             var ready = false
             var speechBegan = false
-            var speechEnded = false
             var levels = 0
             var loudest = -100f
+            var honoured = false
+            var delivered = false
             val segments = mutableListOf<String>()
-            fun summary() = "$mode:" +
+            fun current() = !answered && r === recognizer && sessionNo == sessions
+            fun summary() = "$label${if (fresh) "+fresh" else ""}:" +
                 (if (ready) "ready," else "") +
                 "rms=$levels/max=${"%.1f".format(loudest)}" +
                 (if (speechBegan) ",begin" else "") +
-                (if (speechEnded) ",end" else "") +
-                (if (segmented) ",segments=${segments.size}" else "")
-            fun current() = !answered && r === recognizer && attemptNo == attempts
+                (if (segmented) ",seg=${if (honoured) segments.size else "ignored"}" else "")
+            fun deliver(outcome: Outcome) {
+                if (delivered || !current()) return
+                delivered = true
+                if (label == "whole" || (outcome.error != null && outcome.error != SpeechRecognizer.ERROR_NO_MATCH)) {
+                    note(summary() + (outcome.error?.let { ",error=$it" } ?: ""))
+                }
+                onOutcome(outcome)
+            }
 
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: Bundle?) {
-                    if (!current()) return
                     val text = results
                         ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
-                    note(summary())
-                    when {
-                        !text.isNullOrBlank() -> finish(text)
-                        !segmented -> attempt(language, true)
-                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
-                        else -> finish(null)
-                    }
+                        ?.takeIf { it.isNotBlank() }
+                        ?.trim()
+                    deliver(Outcome(text, segments.toList(), null, honoured))
                 }
 
                 override fun onSegmentResults(segmentResults: Bundle) {
                     if (!current()) return
+                    honoured = true
                     segmentResults
                         .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
@@ -496,33 +619,12 @@ class CubechatTranscribePlugin(
                 }
 
                 override fun onEndOfSegmentedSession() {
-                    if (!current()) return
-                    note(summary())
-                    if (segments.isNotEmpty()) {
-                        finish(segments.joinToString(" "))
-                    } else {
-                        finish(null, "recognizer_${SpeechRecognizer.ERROR_NO_MATCH}")
-                    }
+                    honoured = true
+                    deliver(Outcome(null, segments.toList(), null, true))
                 }
 
                 override fun onError(error: Int) {
-                    if (!current()) return
-                    note("${summary()},error=$error")
-                    val dropped = error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
-                        error == SpeechRecognizer.ERROR_CLIENT ||
-                        error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
-                    when {
-                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
-                        // The service went away under us: once more, on a new
-                        // instance and a moment later, in the same mode.
-                        dropped && !freshRetryUsed -> {
-                            freshRetryUsed = true
-                            main.postDelayed({ attempt(language, segmented, fresh = true) }, 300)
-                        }
-                        error == SpeechRecognizer.ERROR_NO_MATCH && !segmented ->
-                            attempt(language, true)
-                        else -> finish(null, "recognizer_$error")
-                    }
+                    deliver(Outcome(null, segments.toList(), error, honoured))
                 }
 
                 override fun onReadyForSpeech(params: Bundle?) {
@@ -538,10 +640,7 @@ class CubechatTranscribePlugin(
                     if (rmsdB > loudest) loudest = rmsdB
                 }
 
-                override fun onEndOfSpeech() {
-                    speechEnded = true
-                }
-
+                override fun onEndOfSpeech() = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -554,6 +653,89 @@ class CubechatTranscribePlugin(
                 r.startListening(intentFor(language, source, segmented))
             } catch (e: Exception) {
                 finish(null, "start_failed")
+            }
+        }
+
+        // ---- stage two: phrase by phrase ----------------------------------
+        val heard = mutableListOf<String>()
+        var index = 0
+        var silentPhrases = 0
+
+        fun nextPhrase(fresh: Boolean = false) {
+            if (answered) return
+            if (index >= phrases.size) {
+                note("phrases=${phrases.size},heard=${heard.size},silent=$silentPhrases")
+                if (heard.isNotEmpty()) {
+                    finish(heard.joinToString(" "))
+                } else {
+                    finish(null, "recognizer_${SpeechRecognizer.ERROR_NO_MATCH}")
+                }
+                return
+            }
+            listen(phrases[index], segmented = false, fresh = fresh, label = "p$index") { o ->
+                when {
+                    o.text != null -> {
+                        heard.add(o.text)
+                        index++
+                        nextPhrase()
+                    }
+                    isDropped(o.error) && !freshRetryUsed -> {
+                        freshRetryUsed = true
+                        main.postDelayed({ nextPhrase(fresh = true) }, 300)
+                    }
+                    // A phrase the recogniser found no words in — a laugh, a
+                    // breath that crossed the threshold — is skipped, not fatal.
+                    o.error == null ||
+                        o.error == SpeechRecognizer.ERROR_NO_MATCH ||
+                        o.error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                        silentPhrases++
+                        index++
+                        nextPhrase()
+                    }
+                    heard.isNotEmpty() -> finish(heard.joinToString(" "))
+                    else -> finish(null, "recognizer_${o.error}")
+                }
+            }
+        }
+
+        fun byPhrases() {
+            if (answered) return
+            worker.execute {
+                val cut = try {
+                    splitAtPauses(pcm.file)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                main.post {
+                    if (answered) {
+                        for (file in cut) file.delete()
+                        return@post
+                    }
+                    phrases = cut
+                    if (cut.isEmpty()) {
+                        note("phrases=0")
+                        finish(null)
+                        return@post
+                    }
+                    nextPhrase()
+                }
+            }
+        }
+
+        // ---- stage one: the whole note, segmented -------------------------
+        fun whole(fresh: Boolean = false) {
+            listen(pcm.file, segmented = true, fresh = fresh, label = "whole") { o ->
+                when {
+                    o.segmentedHonoured && o.segments.isNotEmpty() ->
+                        finish(o.segments.joinToString(" "))
+                    isDropped(o.error) && !freshRetryUsed -> {
+                        freshRetryUsed = true
+                        main.postDelayed({ whole(fresh = true) }, 300)
+                    }
+                    // Segmented mode ignored (plain onResults: only the first
+                    // phrase), refused, or empty: go phrase by phrase.
+                    else -> byPhrases()
+                }
             }
         }
 
@@ -589,7 +771,8 @@ class CubechatTranscribePlugin(
                         val pick = pickLanguage(wanted, installed)
                         if (pick != null) {
                             note("lang=$pick")
-                            attempt(pick, false)
+                            language = pick
+                            whole()
                             return
                         }
                         val pending = support.pendingOnDeviceLanguages
@@ -616,13 +799,15 @@ class CubechatTranscribePlugin(
                     override fun onError(error: Int) {
                         if (answered) return
                         note("support_error=$error")
-                        attempt(first, false)
+                        language = first
+                        whole()
                     }
                 },
             )
         } catch (e: Exception) {
             note("support_threw")
-            attempt(first, false)
+            language = first
+            whole()
         }
     }
 
