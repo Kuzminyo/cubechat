@@ -30,6 +30,8 @@ import '../../features/peers/presentation/contact_card_screen.dart';
 import '../../features/peers/presentation/contact_content_screen.dart';
 import '../../features/peers/presentation/contact_profile_screen.dart';
 import '../../features/peers/presentation/nearby_screen.dart';
+import '../../features/airdrop/data/share_inbox.dart';
+import '../../features/airdrop/presentation/airdrop_share_screen.dart';
 import '../../features/peers/presentation/verification_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
@@ -395,6 +397,22 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: FileTransferCenterScreen()),
+          state: state,
+        ),
+      ),
+      // "Share → CubeChat" from another app: the files are known, only the
+      // person is not. See ShareInbox.
+      GoRoute(
+        path: '/airdrop/share',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: AuroraBackground(
+            child: AirDropShareScreen(
+              files: state.extra is List<SharedFile>
+                  ? state.extra! as List<SharedFile>
+                  : const [],
+            ),
+          ),
           state: state,
         ),
       ),

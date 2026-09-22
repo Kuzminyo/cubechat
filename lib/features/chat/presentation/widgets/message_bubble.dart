@@ -33,6 +33,8 @@ import '../../../../core/widgets/identity_avatar.dart';
 import '../../../peers/data/known_peers_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../airdrop/data/airdrop_source.dart';
+import '../../../airdrop/presentation/airdrop_send_flow.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../data/chat_navigation.dart';
@@ -849,6 +851,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.download_rounded,
             label: t.chatDownloadAction,
           ),
+        // A photo, a video or a file on this phone, to somebody in arm's
+        // reach. Not a view-once picture and not a chat that forbids copying:
+        // AirDrop is exactly "take it elsewhere".
+        if (_airdropPath != null)
+          SpotlightAction(
+            id: 'airdrop',
+            icon: Icons.wifi_tethering_rounded,
+            label: t.airdropAction,
+          ),
         // Not inside Saved itself: filing a note into the pile it is already
         // in does nothing but duplicate it.
         if (!isSavedChat(widget.chatId))
@@ -991,6 +1002,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await _cancelSend();
     } else if (picked == 'download') {
       await _download();
+    } else if (picked == 'airdrop') {
+      await _airdrop();
     } else if (picked == 'save') {
       await _saveToSaved();
     } else if (picked == 'transcribe') {
@@ -1113,6 +1126,29 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// The recording this message holds, if it is one that can be kept on the
   /// phone: a voice note or a circle. Not a view-once one, and not in a chat
   /// whose owner switched copying off — that switch is about exactly this.
+  String? get _airdropPath {
+    final m = widget.message;
+    if (m.viewOnce || _copyingRestricted || m.isSticker) return null;
+    final path = switch (m.kind) {
+      MessageKind.image => m.imagePath,
+      MessageKind.file => m.filePath,
+      _ => null,
+    };
+    return MediaPaths.existsOrNull(path) ? path : null;
+  }
+
+  /// "Долгое нажатие на фото, видео или файл в чате → AirDrop."
+  Future<void> _airdrop() async {
+    final path = _airdropPath;
+    if (path == null) return;
+    final source = await AirDropSource.fromFile(
+      File(path),
+      name: widget.message.fileName,
+    );
+    if (!mounted) return;
+    await startAirDropSend(context, ref, files: [source]);
+  }
+
   String? get _downloadablePath {
     final m = widget.message;
     if (m.viewOnce || _copyingRestricted) return null;

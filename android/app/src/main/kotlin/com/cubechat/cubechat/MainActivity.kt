@@ -4,11 +4,14 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import java.io.File
 import com.crazecoder.openfile.OpenFilePlugin
 import io.flutter.embedding.android.FlutterActivity
@@ -33,6 +36,10 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingBluetoothResult: MethodChannel.Result? = null
 
+    /** Files from the share sheet, copied into our cache, until Dart takes them. */
+    private var pendingShare: List<Map<String, String>>? = null
+    private var shareChannel: MethodChannel? = null
+
     private class PendingSave(val source: File, val result: MethodChannel.Result)
 
     /**
@@ -56,6 +63,20 @@ class MainActivity : FlutterActivity() {
         // over the set MainApplication already installed.
         super.configureFlutterEngine(flutterEngine)
         reviveOpenFilePlugin(flutterEngine)
+        shareChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            SHARE_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "takeShared" -> {
+                        result.success(pendingShare)
+                        pendingShare = null
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             SECURE_CHANNEL,
@@ -140,11 +161,59 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         answerFromIntent(intent)
+        shareFromIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         answerFromIntent(intent)
+        shareFromIntent(intent)
+    }
+
+    /**
+     * "Share → CubeChat". The content URIs are only readable while the grant
+     * lasts, so each file is copied into our own cache first — off the main
+     * thread, since a video is hundreds of megabytes — and then Dart is told.
+     * At most fifty, AirDrop's own limit.
+     */
+    private fun shareFromIntent(intent: Intent?) {
+        if (intent == null) return
+        val uris: List<Uri> = when (intent.action) {
+            Intent.ACTION_SEND -> listOfNotNull(
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java),
+            )
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(
+                    intent,
+                    Intent.EXTRA_STREAM,
+                    Uri::class.java,
+                ) ?: emptyList()
+            else -> return
+        }
+        // Spent, so a recreate does not share the same files again.
+        intent.action = null
+        if (uris.isEmpty()) return
+        Thread {
+            val copied = uris.take(50).mapNotNull { copyShared(it) }
+            runOnUiThread {
+                pendingShare = copied
+                shareChannel?.invokeMethod("shared", null)
+            }
+        }.start()
+    }
+
+    private fun copyShared(uri: Uri): Map<String, String>? = try {
+        var name = "file"
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) name = cursor.getString(0) ?: name }
+        val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+        val dir = File(cacheDir, "shared").apply { mkdirs() }
+        val out = File(dir, "${System.nanoTime()}-${name.replace('/', '_').replace('\\', '_')}")
+        val input = contentResolver.openInputStream(uri) ?: throw java.io.IOException("no stream")
+        input.use { source -> out.outputStream().use { source.copyTo(it) } }
+        mapOf("path" to out.absolutePath, "name" to name, "mime" to mime)
+    } catch (_: Exception) {
+        null
     }
 
     /**
@@ -425,6 +494,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         const val SECURE_CHANNEL = "cubechat/secure_window"
+        const val SHARE_CHANNEL = "cubechat/share"
         const val BUILD_INFO_CHANNEL = "cubechat/build_info"
         const val BLUETOOTH_POWER_CHANNEL = "cubechat/bluetooth_power"
         const val OPEN_IN_CHANNEL = "cubechat/open_in"

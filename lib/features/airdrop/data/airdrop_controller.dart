@@ -20,6 +20,8 @@ import '../../peers/data/known_peers_controller.dart';
 import '../domain/airdrop_rules.dart';
 import '../domain/airdrop_spam_guard.dart';
 import '../domain/airdrop_transfer.dart';
+import '../presentation/airdrop_navigation.dart'
+    show kAirDropNotificationThread;
 import '../presentation/airdrop_text.dart';
 import 'airdrop_clock.dart';
 import 'airdrop_history_controller.dart';
@@ -52,7 +54,7 @@ final airdropNotifyProvider =
           final t = lookupAppLocalizations(ref.read(localeControllerProvider));
           unawaited(
             NotificationService.instance.showMessage(
-              threadKey: 'airdrop',
+              threadKey: kAirDropNotificationThread,
               title: request.peerName,
               body: airdropRequestBody(t, request),
               senderId: request.peerHex,

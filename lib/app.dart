@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'features/airdrop/data/airdrop_controller.dart';
+import 'features/airdrop/data/share_inbox.dart';
+import 'features/airdrop/presentation/airdrop_banner.dart';
+import 'features/airdrop/presentation/airdrop_navigation.dart';
 import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -104,6 +107,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     // Route to the conversation when a message notification is tapped.
     NotificationService.instance.onSelectChat = _openChat;
+    // "Share → CubeChat" from another app hands files to AirDrop.
+    if (PlatformInfo.isAndroid) {
+      ShareInbox.listen(
+        (files) => _router.push('/airdrop/share', extra: files),
+      );
+    }
     // Send an inline reply typed into a message notification straight over the
     // mesh, without opening the app.
     NotificationService.instance.onReply = _replyToChat;
@@ -264,7 +273,18 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`
   /// name. Resolves the display name from the KnownPeers roster for the header.
+  void _openAirDrop() {
+    ref.read(nearbyPageRequestProvider.notifier).state = kAirDropPage;
+    _router.go('/peers');
+  }
+
   void _openChat(String chatId) {
+    // The AirDrop request banner uses this thread key — it is a page, not a
+    // conversation.
+    if (chatId == kAirDropNotificationThread) {
+      _openAirDrop();
+      return;
+    }
     // A channel's id starts with '#', which is the URL fragment delimiter and
     // cannot travel in a path. It has its own route.
     final String target;
@@ -670,7 +690,18 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
                   onOpenChat: (chatId, _) => _openChat(chatId),
                   child: CallHost(
                     backButtonDispatcher: _router.backButtonDispatcher,
-                    child: child ?? const SizedBox.shrink(),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        child ?? const SizedBox.shrink(),
+                        Positioned(
+                          top: MediaQuery.paddingOf(context).top + 8,
+                          left: 12,
+                          right: 12,
+                          child: AirDropRequestBanner(onOpen: _openAirDrop),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
