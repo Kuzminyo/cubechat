@@ -12,11 +12,14 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/appear_animation.dart';
+import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../airdrop/presentation/airdrop_people_sheet.dart';
+import '../../airdrop/presentation/airdrop_send_flow.dart';
 import '../data/peer_discovery_controller.dart';
 import '../data/peripheral_controller.dart';
 import '../models/discovered_peer.dart';
@@ -179,6 +182,9 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
                     peer: state.peers[i],
                     onTap: () =>
                         _connectAndOpen(context, ref, state.peers[i], t),
+                    onLongPressAt: (at) => unawaited(
+                      _showPeerMenu(context, ref, state.peers[i], at, t),
+                    ),
                   ),
                 ),
               ),
@@ -619,6 +625,54 @@ Future<void> _connectAndOpen(
   await _connectWithFeedback(context, ref, peer, label, t);
 }
 
+/// Hold a person: write to them, or send files — the second only while a
+/// Bluetooth session with them is up, because AirDrop goes nowhere else.
+Future<void> _showPeerMenu(
+  BuildContext context,
+  WidgetRef ref,
+  DiscoveredPeer peer,
+  Offset at,
+  AppLocalizations t,
+) async {
+  final label =
+      peer.advertisedName.isNotEmpty ? peer.advertisedName : t.bleUnknownPeer;
+  final hex = peer.resolvedPubkeyHex;
+  final direct =
+      hex != null && ref.read(messagingServiceProvider).hasDirectLinkTo(hex);
+  final action = await showContextPopup<String>(
+    context: context,
+    globalPosition: at,
+    items: [
+      PopupMenuItem<String>(
+        value: 'write',
+        height: 44,
+        child: Text(
+          t.airdropWrite,
+          style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'files',
+        enabled: direct,
+        height: 44,
+        child: Text(
+          t.airdropSendFiles,
+          style: TextStyle(
+            color: direct ? AppColors.textOnGlass : AppColors.textOnGlassFaint,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    ],
+  );
+  if (action == null || !context.mounted) return;
+  if (action == 'write') {
+    await _connectAndOpen(context, ref, peer, t);
+  } else if (hex != null) {
+    await startAirDropSend(context, ref, to: AirDropPeer(hex, label));
+  }
+}
+
 /// Runs the retrying connect and, if it still fails, surfaces a readable
 /// message with a Retry action. Kept separate from [_connectAndOpen] so the
 /// action re-runs only the connect — pushing the chat route a second time
@@ -644,11 +698,12 @@ Future<void> _connectWithFeedback(
       // The address this identity is answering on now. The row can be a few
       // seconds old, and on Android a few seconds is enough to be a rotation
       // behind.
-      deviceId: (identity == null ? null : discovery.addressOf(identity)) ??
-          peer.id,
+      deviceId:
+          (identity == null ? null : discovery.addressOf(identity)) ?? peer.id,
       displayName: label,
-      refreshId: () =>
-          identity == null ? Future.value(null) : discovery.awaitAddressOf(identity),
+      refreshId: () => identity == null
+          ? Future.value(null)
+          : discovery.awaitAddressOf(identity),
     );
   } catch (_) {
     // The per-attempt cause is already in the debug log; the user gets the
@@ -677,66 +732,78 @@ Future<void> _connectWithFeedback(
 }
 
 class _PeerCard extends StatelessWidget {
-  const _PeerCard({required this.peer, required this.onTap});
+  const _PeerCard({
+    required this.peer,
+    required this.onTap,
+    this.onLongPressAt,
+  });
 
   final DiscoveredPeer peer;
   final VoidCallback onTap;
+
+  /// Hold: "Написати" / "Надіслати файли".
+  final void Function(Offset at)? onLongPressAt;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final displayName =
         peer.advertisedName.isNotEmpty ? peer.advertisedName : t.bleUnknownPeer;
-    return GlassCard(
-      onTap: onTap,
-      child: Row(
-        children: [
-          IdentityAvatar(
-            seed: peer.id,
-            label: displayName,
-            size: 44,
-            online: true,
-            // No flight into the chat header — see the note in ChatTile. The
-            // tag namespace was shared with the chat list, so leaving it here
-            // would have kept the same jump alive from Nearby.
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  // No reading is said as no reading. "127 dBm" is the
-                  // platform's way of shrugging, and printing it verbatim
-                  // claimed a signal strength no radio has ever produced.
-                  peer.hasSignalReading
-                      ? '${peer.rssi} dBm · ${peer.id}'
-                      : '· ${peer.id}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
+    final hold = onLongPressAt;
+    return GestureDetector(
+      onLongPressStart:
+          hold == null ? null : (details) => hold(details.globalPosition),
+      child: GlassCard(
+        onTap: onTap,
+        child: Row(
+          children: [
+            IdentityAvatar(
+              seed: peer.id,
+              label: displayName,
+              size: 44,
+              online: true,
+              // No flight into the chat header — see the note in ChatTile. The
+              // tag namespace was shared with the chat list, so leaving it here
+              // would have kept the same jump alive from Nearby.
             ),
-          ),
-          const SizedBox(width: 8),
-          SignalBars(strength: peer.signalStrength),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    // No reading is said as no reading. "127 dBm" is the
+                    // platform's way of shrugging, and printing it verbatim
+                    // claimed a signal strength no radio has ever produced.
+                    peer.hasSignalReading
+                        ? '${peer.rssi} dBm · ${peer.id}'
+                        : '· ${peer.id}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SignalBars(strength: peer.signalStrength),
+          ],
+        ),
       ),
     );
   }

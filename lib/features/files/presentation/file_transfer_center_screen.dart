@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
@@ -5,9 +8,14 @@ import 'package:open_filex/open_filex.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/media_storage.dart';
 import '../../../core/utils/file_mime.dart';
+import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../airdrop/data/airdrop_history_controller.dart';
+import '../../airdrop/data/airdrop_source.dart';
+import '../../airdrop/presentation/airdrop_send_flow.dart';
 import '../data/file_transfer_controller.dart';
 
 class FileTransferCenterScreen extends ConsumerWidget {
@@ -16,10 +24,10 @@ class FileTransferCenterScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final transfers = ref.watch(fileTransferControllerProvider).values.toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    final active = transfers.where((task) => task.active).toList();
-    final history = transfers.where((task) => !task.active).toList();
+    final finished = ref.watch(
+      fileTransferControllerProvider
+          .select((tasks) => tasks.values.any((task) => !task.active)),
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -30,7 +38,7 @@ class FileTransferCenterScreen extends ConsumerWidget {
           style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
         ),
         actions: [
-          if (history.isNotEmpty)
+          if (finished)
             IconButton(
               tooltip: t.fileTransfersClear,
               onPressed: () => ref
@@ -40,27 +48,46 @@ class FileTransferCenterScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: transfers.isEmpty
-          ? _EmptyState(label: t.fileTransfersEmpty)
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-              children: [
-                if (active.isNotEmpty) ...[
-                  _SectionLabel(t.fileTransfersActive),
-                  for (final task in active) ...[
-                    _TransferCard(task: task),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-                if (history.isNotEmpty) ...[
-                  _SectionLabel(t.fileTransfersHistory),
-                  for (final task in history) ...[
-                    _TransferCard(task: task),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-              ],
-            ),
+      body: const FileTransferList(),
+    );
+  }
+}
+
+/// The transfer centre's list — every file this app moved, both ways, AirDrop
+/// included. Its own widget so the Nearby tab's Files page shows the very same
+/// list the Profile opens.
+class FileTransferList extends ConsumerWidget {
+  const FileTransferList({super.key, this.bottomPadding = 40});
+
+  /// 40 as a screen of its own; 140 inside a tab, above the floating bar.
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final transfers = ref.watch(fileTransferControllerProvider).values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final active = transfers.where((task) => task.active).toList();
+    final history = transfers.where((task) => !task.active).toList();
+    if (transfers.isEmpty) return _EmptyState(label: t.fileTransfersEmpty);
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
+      children: [
+        if (active.isNotEmpty) ...[
+          _SectionLabel(t.fileTransfersActive),
+          for (final task in active) ...[
+            _TransferCard(task: task),
+            const SizedBox(height: 10),
+          ],
+        ],
+        if (history.isNotEmpty) ...[
+          _SectionLabel(t.fileTransfersHistory),
+          for (final task in history) ...[
+            _TransferCard(task: task),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ],
     );
   }
 }
@@ -76,85 +103,154 @@ class _TransferCard extends ConsumerWidget {
     final controller = ref.read(fileTransferControllerProvider.notifier);
     final outgoing = task.direction == FileTransferDirection.outgoing;
 
-    return GlassCard(
-      onTap: task.status == FileTransferStatus.completed &&
-              task.filePath.isNotEmpty
-          ? () => OpenFilex.open(
-                task.filePath,
-                type: fileMimeType(task.fileName),
-              )
-          : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _tone(task.status).withValues(alpha: 0.15),
+    return GestureDetector(
+      onLongPressStart: (details) =>
+          unawaited(_menu(context, ref, details.globalPosition)),
+      child: GlassCard(
+        onTap: task.status == FileTransferStatus.completed &&
+                task.filePath.isNotEmpty
+            ? () => OpenFilex.open(
+                  task.filePath,
+                  type: fileMimeType(task.fileName),
+                )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _tone(task.status).withValues(alpha: 0.15),
+                  ),
+                  child: Icon(
+                    outgoing
+                        ? Icons.upload_file_rounded
+                        : Icons.download_rounded,
+                    color: _tone(task.status),
+                  ),
                 ),
-                child: Icon(
-                  outgoing ? Icons.upload_file_rounded : Icons.download_rounded,
-                  color: _tone(task.status),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${_statusLabel(t, task.status)} · '
+                        '${_formatBytes(task.bytesTotal)}',
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                      if (task.source == FileTransferSource.airdrop)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            t.airdropFromLabel(task.peerName ?? '—'),
+                            style: TextStyle(
+                              color: AppColors.brandPrimary,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (outgoing) ..._actions(t, controller, ref),
+              ],
+            ),
+            if (task.active || task.status == FileTransferStatus.failed) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: task.totalUnits == 0 ? null : task.progress,
+                  minHeight: 5,
+                  backgroundColor: AppColors.glass(0.08),
+                  valueColor: AlwaysStoppedAnimation(_tone(task.status)),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${_statusLabel(t, task.status)} · '
-                      '${_formatBytes(task.bytesTotal)}',
-                      style: TextStyle(
-                        color: AppColors.textOnGlassDim,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (outgoing) ..._actions(t, controller, ref),
             ],
-          ),
-          if (task.active || task.status == FileTransferStatus.failed) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: task.totalUnits == 0 ? null : task.progress,
-                minHeight: 5,
-                backgroundColor: AppColors.glass(0.08),
-                valueColor: AlwaysStoppedAnimation(_tone(task.status)),
+            if (task.error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                task.error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppColors.danger, fontSize: 11),
               ),
-            ),
+            ],
           ],
-          if (task.error != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              task.error!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.danger, fontSize: 11),
-            ),
-          ],
-        ],
+        ),
       ),
     );
+  }
+
+  /// Hold a finished file: send it on by AirDrop, or — for one AirDrop
+  /// brought in — delete it from the phone. Its history line stays, marked.
+  Future<void> _menu(BuildContext context, WidgetRef ref, Offset at) async {
+    final t = AppLocalizations.of(context);
+    final path = task.filePath;
+    if (task.status != FileTransferStatus.completed ||
+        !MediaPaths.existsOrNull(path)) {
+      return;
+    }
+    final deletable = task.source == FileTransferSource.airdrop &&
+        task.direction == FileTransferDirection.incoming;
+    final action = await showContextPopup<String>(
+      context: context,
+      globalPosition: at,
+      items: [
+        PopupMenuItem<String>(
+          value: 'airdrop',
+          height: 44,
+          child: Text(
+            t.airdropAction,
+            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+          ),
+        ),
+        if (deletable)
+          PopupMenuItem<String>(
+            value: 'delete',
+            height: 44,
+            child: Text(
+              t.chatDeleteAction,
+              style: const TextStyle(color: AppColors.danger, fontSize: 14),
+            ),
+          ),
+      ],
+    );
+    if (action == null || !context.mounted) return;
+    if (action == 'airdrop') {
+      final source =
+          await AirDropSource.fromFile(File(path), name: task.fileName);
+      if (!context.mounted) return;
+      await startAirDropSend(context, ref, files: [source]);
+      return;
+    }
+    try {
+      await File(path).delete();
+    } on FileSystemException {
+      // Already gone is the outcome that was asked for.
+    }
+    MediaPaths.forget(path);
+    ref.read(airdropHistoryProvider.notifier).markDeleted(path);
+    await ref.read(fileTransferControllerProvider.notifier).remove(task.id);
   }
 
   List<Widget> _actions(
@@ -191,6 +287,9 @@ class _TransferCard extends ConsumerWidget {
         ];
       case FileTransferStatus.queued:
       case FileTransferStatus.failed:
+        // An AirDrop is retried from the AirDrop page, with the person there
+        // to say yes; this button would resend it into a chat.
+        if (task.source == FileTransferSource.airdrop) return const [];
         return [
           _Action(
             tooltip: t.fileTransferRetry,
