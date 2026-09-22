@@ -105,7 +105,8 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
     WidgetsBinding.instance.addObserver(this);
     // Scoped to this screen, not the app: the flag also blanks the recents
     // thumbnail, which is not a price worth paying on every other screen.
-    // Android only — see [SecureWindow] for why iOS cannot make this promise.
+    // Android through FLAG_SECURE, iOS through the secure-field layer — see
+    // [SecureWindow].
     unawaited(SecureWindow.enable());
   }
 

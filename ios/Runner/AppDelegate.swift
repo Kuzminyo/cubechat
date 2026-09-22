@@ -277,6 +277,19 @@ import UserNotifications
           result(FlutterMethodNotImplemented)
         }
       }
+      // The view-once photo's screenshot shield — see SecureCapture.
+      FlutterMethodChannel(
+        name: "cubechat/secure_window",
+        binaryMessenger: messenger
+      ).setMethodCallHandler { call, result in
+        switch call.method {
+        case "setSecure":
+          let on = (call.arguments as? [String: Any])?["on"] as? Bool ?? false
+          DispatchQueue.main.async { result(SecureCapture.shared.set(on)) }
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
     }
   }
 
@@ -766,5 +779,78 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
       // cannot ring should not look armed.
       clearRegions()
     }
+  }
+}
+
+/// Keeps the app out of screenshots and screen recordings while a view-once
+/// photo is open: the capture shows black where the app is.
+///
+/// "Одноразовую фотку нельзя было скринить — тупо экран чёрный на скрине."
+/// Android has FLAG_SECURE for this; iOS has no public API, and the
+/// view-once screen was unprotected on every iPhone — most of this app's
+/// users. What iOS does have is the secure text field: whatever is drawn
+/// inside the layer that holds a password field's text is left out of every
+/// capture. So the window's layer is moved inside that layer while the photo
+/// is open, and put back exactly where it was when it closes. Held only for
+/// that screen, the same way Android holds its flag, so nothing else in the
+/// app ever runs inside the trick.
+///
+/// Not an Apple API but a behaviour of one, used by apps that need it; the
+/// canvas layer is the last sublayer on iOS 17+ and the first before. If it
+/// cannot be found the photo simply opens unprotected, as it always did.
+final class SecureCapture {
+  static let shared = SecureCapture()
+
+  private var field: UITextField?
+  private weak var window: UIWindow?
+  private weak var superlayer: CALayer?
+  private var index: UInt32 = 0
+
+  func set(_ on: Bool) -> Bool { on ? enable() : disable() }
+
+  private func keyWindow() -> UIWindow? {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+      .first { $0.isKeyWindow }
+  }
+
+  private func enable() -> Bool {
+    if field != nil { return true }
+    guard let window = keyWindow(), let superlayer = window.layer.superlayer else {
+      return false
+    }
+    let field = UITextField()
+    field.isSecureTextEntry = true
+    field.isUserInteractionEnabled = false
+    window.addSubview(field)
+    let canvas: CALayer?
+    if #available(iOS 17.0, *) {
+      canvas = field.layer.sublayers?.last
+    } else {
+      canvas = field.layer.sublayers?.first
+    }
+    guard let canvas else {
+      field.removeFromSuperview()
+      return false
+    }
+    index = UInt32(superlayer.sublayers?.firstIndex(of: window.layer) ?? 0)
+    superlayer.addSublayer(field.layer)
+    canvas.addSublayer(window.layer)
+    self.field = field
+    self.window = window
+    self.superlayer = superlayer
+    return true
+  }
+
+  private func disable() -> Bool {
+    guard let field else { return true }
+    if let window, let superlayer {
+      superlayer.insertSublayer(window.layer, at: index)
+    }
+    field.layer.removeFromSuperlayer()
+    field.removeFromSuperview()
+    self.field = nil
+    return true
   }
 }

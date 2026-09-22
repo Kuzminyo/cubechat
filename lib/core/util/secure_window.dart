@@ -12,14 +12,12 @@ import 'platform_info.dart';
 /// showing an empty card in the task switcher all day is worse to live with
 /// than the thing it would be preventing.
 ///
-/// **iOS has no equivalent and this is a no-op there.** UIKit offers no way to
-/// refuse a screenshot; the platform's position is that the person holding the
-/// phone owns what is on it. What iOS does offer is
-/// `userDidTakeScreenshotNotification` — after the fact — so the honest options
-/// there are to tell the sender it happened or to burn the photo, not to
-/// pretend the picture is protected. Nothing here claims otherwise: a caller
-/// that needs to know whether the promise was actually made must check
-/// [isSupported].
+/// **iOS has no API for this, and since 2026-09-22 it is covered anyway.**
+/// The window's layer is moved inside a secure text field's layer while the
+/// photo is open, which iOS leaves out of screenshots and recordings — see
+/// `SecureCapture` in AppDelegate.swift. It is a behaviour, not a promise
+/// Apple makes, and if the layer cannot be found the photo opens unprotected
+/// as it always did. Asked for directly: "тупо экран чёрный на скрине".
 ///
 /// Worth being plain about even on Android: this stops the OS screenshot and a
 /// screen recorder. It cannot stop a second phone pointed at the first one.
@@ -29,7 +27,7 @@ class SecureWindow {
   static const MethodChannel _channel = MethodChannel('cubechat/secure_window');
 
   /// Whether the platform can actually refuse a capture.
-  static bool get isSupported => PlatformInfo.isAndroid;
+  static bool get isSupported => PlatformInfo.isAndroid || PlatformInfo.isIOS;
 
   static Future<void> enable() => _set(true);
   static Future<void> disable() => _set(false);
