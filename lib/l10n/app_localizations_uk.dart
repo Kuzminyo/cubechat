@@ -3179,6 +3179,10 @@ class AppLocalizationsUk extends AppLocalizations {
       'На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання в Кастомізації.';
 
   @override
+  String get chatTranscribeNotAllowed =>
+      'Розпізнавання мовлення вимкнене для CubeChat. Увімкніть його в Налаштуваннях iPhone → CubeChat.';
+
+  @override
   String get customizeTranscribeLanguageTitle => 'Мова розпізнавання голосових';
 
   @override

@@ -23,20 +23,10 @@ class VoiceBubble extends ConsumerStatefulWidget {
     this.chatTitle,
     this.showHeader = false,
     this.transcriptionButton,
-    this.clockInFooter = false,
   });
 
   final Message message;
   final Widget? transcriptionButton;
-
-  /// The duration is drawn by the bubble's footer, on the line with the
-  /// time sent ([VoiceNoteClock]), and not under the waveform.
-  ///
-  /// Then the waveform is alone between the play button and "→A" and sits on
-  /// their centre line — "опусти звук гс чуть пониже, щоб був по центру". With
-  /// the duration under it, the column was centred instead and the waveform
-  /// rode above the play button by half a line.
-  final bool clockInFooter;
 
   /// The bucket this bubble is rendered in — a peer's pubkey hex or a
   /// `#channel`.
@@ -116,60 +106,106 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
         Duration(milliseconds: widget.message.audioDurationMs ?? 0);
     // The decoder's own duration is better than the declared one, but only
     // exists for the message actually loaded.
-    final total = isCurrent && tick.duration > Duration.zero
-        ? tick.duration
-        : declared;
+    final total =
+        isCurrent && tick.duration > Duration.zero ? tick.duration : declared;
     final position = isCurrent ? tick.position : Duration.zero;
     final playing = isCurrent && tick.playing;
     final progress = total > Duration.zero
         ? (position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
 
-    Future<void> toggle() => ref
-        .read(voicePlaybackControllerProvider.notifier)
-        .toggle(
-          messageId: widget.message.id,
-          path: widget.message.audioPath!,
-          // The rendered bucket, so tapping the bar returns to the right chat
-          // even for a note that arrived over a Bluetooth transport id.
-          chatId: widget.chatId ?? widget.message.chatId,
-          chatTitle: playbackAuthor(context, ref, widget.message, chatId: widget.chatId, chatTitle: widget.chatTitle),
-          sentAt: widget.message.sentAt,
-          knownDuration: declared > Duration.zero ? declared : null,
-        );
+    Future<void> toggle() =>
+        ref.read(voicePlaybackControllerProvider.notifier).toggle(
+              messageId: widget.message.id,
+              path: widget.message.audioPath!,
+              // The rendered bucket, so tapping the bar returns to the right chat
+              // even for a note that arrived over a Bluetooth transport id.
+              chatId: widget.chatId ?? widget.message.chatId,
+              chatTitle: playbackAuthor(context, ref, widget.message,
+                  chatId: widget.chatId, chatTitle: widget.chatTitle),
+              sentAt: widget.message.sentAt,
+              knownDuration: declared > Duration.zero ? declared : null,
+            );
 
-    final player = SizedBox(
-      width: widget.transcriptionButton == null ? 200 : 248,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: hasFile ? toggle : null,
+    // How long the note is — or, while it plays, how far in — with the "not
+    // heard yet" dot.
+    final length = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _fmt(playing
+              ? position
+              : (_scrubbing == null
+                  ? total
+                  : Duration(
+                      milliseconds:
+                          (total.inMilliseconds * _scrubbing!).round(),
+                    ))),
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+        ),
+        // Not yet listened to, on this phone.
+        //
+        // Only on somebody else's note: our own is one we recorded, and a dot
+        // saying we have not heard ourselves speak would be a strange thing to
+        // be told. It goes the moment playback starts, not when it ends — a
+        // note listened to halfway is not new any more.
+        if (!widget.message.isMine && !widget.message.voicePlayed)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
             child: Container(
-              width: 36,
-              height: 36,
+              width: 6,
+              height: 6,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: hasFile
-                    ? AppColors.brandPrimary.withValues(alpha: 0.25)
-                    : AppColors.glass(0.08),
-              ),
-              child: Icon(
-                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                color: hasFile
-                    ? AppColors.textOnGlass
-                    : AppColors.textOnGlassFaint,
-                size: 22,
+                color: AppColors.brandPrimary,
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ScrubBar(
+      ],
+    );
+
+    // Two lines: the play button, the waveform and "→A" on one centre line,
+    // and the length on the next, starting where the waveform starts.
+    //
+    // Both asks at once. "Опусти звук гс чуть пониже, щоб був по центру" put
+    // the length in the bubble's footer so the waveform could sit on the play
+    // button's centre line — and left the length in the far corner under the
+    // play button, below even the transcript. "Время перенеси под звук" (with
+    // an arrow from there up to the waveform) wants it back under the waveform.
+    // Its own line under the row keeps the waveform centred and puts the length
+    // right beneath it: 36 of play button and 10 of gap in.
+    final player = SizedBox(
+      width: widget.transcriptionButton == null ? 200 : 248,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: hasFile ? toggle : null,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: hasFile
+                        ? AppColors.brandPrimary.withValues(alpha: 0.25)
+                        : AppColors.glass(0.08),
+                  ),
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: hasFile
+                        ? AppColors.textOnGlass
+                        : AppColors.textOnGlassFaint,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ScrubBar(
                   progress: _scrubbing ?? progress,
                   // The shape of what was said, when the sender's build had
                   // something to say it with. Null falls back to the bar this
@@ -190,55 +226,17 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
                         .seekFraction(frac);
                   },
                 ),
-                if (!widget.clockInFooter) ...[
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _fmt(playing
-                          ? position
-                          : (_scrubbing == null
-                              ? total
-                              : Duration(
-                                  milliseconds:
-                                      (total.inMilliseconds * _scrubbing!)
-                                          .round(),
-                                ))),
-                      style: TextStyle(
-                        color: AppColors.textOnGlassDim,
-                        fontSize: 11,
-                      ),
-                    ),
-                    // Not yet listened to, on this phone.
-                    //
-                    // Only on somebody else's note: our own is one we recorded,
-                    // and a dot saying we have not heard ourselves speak would
-                    // be a strange thing to be told. It goes the moment
-                    // playback starts, not when it ends — a note listened to
-                    // halfway is not new any more.
-                    if (!widget.message.isMine && !widget.message.voicePlayed)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.brandPrimary,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                ],
+              ),
+              if (widget.transcriptionButton != null) ...[
+                const SizedBox(width: 4),
+                widget.transcriptionButton!,
               ],
-            ),
+            ],
           ),
-          if (widget.transcriptionButton != null) ...[
-            const SizedBox(width: 4),
-            widget.transcriptionButton!,
-          ],
+          Padding(
+            padding: const EdgeInsets.only(left: 46, top: 2),
+            child: length,
+          ),
         ],
       ),
     );
@@ -261,7 +259,8 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                playbackAuthor(context, ref, widget.message, chatId: widget.chatId, chatTitle: widget.chatTitle),
+                playbackAuthor(context, ref, widget.message,
+                    chatId: widget.chatId, chatTitle: widget.chatTitle),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -295,60 +294,6 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
 /// with a small thumb at the current position; horizontal-drag/tap on the
 /// bar reports the new fractional position via the seek callbacks. The
 /// parent owns the actual seek + UI state.
-/// A voice note's length — or, while it plays, how far in it is — for the
-/// bubble's bottom line, with the "not heard yet" dot.
-///
-/// The same figure [VoiceBubble] draws under its waveform, moved down to sit
-/// on one line with the time sent, the way Telegram lays a voice note out:
-/// how long on the left, when on the right. Selected down to this message's
-/// share of the playback, like the bubble, so a note that is not playing never
-/// rebuilds for another one's position.
-class VoiceNoteClock extends ConsumerWidget {
-  const VoiceNoteClock({super.key, required this.message});
-
-  final Message message;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tick = ref.watch(
-      voicePlaybackControllerProvider.select(
-        (s) => s.isCurrent(message.id)
-            ? (playing: s.playing, position: s.position, duration: s.duration)
-            : null,
-      ),
-    );
-    final declared = Duration(milliseconds: message.audioDurationMs ?? 0);
-    final total =
-        tick != null && tick.duration > Duration.zero ? tick.duration : declared;
-    final shown = tick != null && tick.playing ? tick.position : total;
-    final m = shown.inMinutes.remainder(60).toString();
-    final s = shown.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '$m:$s',
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
-        ),
-        // Only on somebody else's note, and gone once playback starts — see
-        // the same dot in [VoiceBubble].
-        if (!message.isMine && !message.voicePlayed)
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.brandPrimary,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _ScrubBar extends StatelessWidget {
   const _ScrubBar({
     required this.progress,

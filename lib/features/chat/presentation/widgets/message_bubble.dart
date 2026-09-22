@@ -1739,12 +1739,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final readingColor = mine && !bare
         ? AppColors.bgDeep.withValues(alpha: 0.7)
         : AppColors.textOnGlass;
-    // A voice note's length joins that line on the left, as in Telegram, which
-    // leaves its waveform alone on the play button's centre line.
-    final voiceClock = message.kind == MessageKind.audio && footerAtEnd
-        ? VoiceNoteClock(message: message)
-        : null;
-
     final bubble = RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1804,7 +1798,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ),
             child: _FooterAtEnd(
               footer: footerAtEnd ? footer : null,
-              leading: voiceClock,
               child: Column(
               // Left inside a bubble, right when there is no bubble and the
               // message is ours.
@@ -1963,7 +1956,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                 transcript: transcript,
                                 transcriptHidden: transcriptHidden,
                               ),
-                              clockInFooter: voiceClock != null,
                             ),
                           ),
                           if (message.isMine &&
@@ -2185,6 +2177,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             'language_not_supported' =>
                               AppLocalizations.of(context)
                                   .chatTranscribeNoLanguage,
+                            // iOS: refused once, refused until Settings.
+                            'not_authorized' => AppLocalizations.of(context)
+                                .chatTranscribeNotAllowed,
                             _ => AppLocalizations.of(context)
                                 .chatTranscribeFailed,
                           },
@@ -2236,20 +2231,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       maintainSize: true,
                       maintainAnimation: true,
                       maintainState: true,
-                      // With room for a voice note's length beside it, so
-                      // many reactions push the bubble wider rather than run
-                      // over the length.
-                      child: voiceClock == null
-                          ? footer
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                voiceClock,
-                                const SizedBox(width: 12),
-                                footer,
-                              ],
-                            ),
+                      child: footer,
                     )
                   else
                     footer,
@@ -2900,23 +2882,18 @@ class _SwipeReplyHint extends StatelessWidget {
 /// is what sizes the bubble; this lays the visible one over that row, at the
 /// right. With no [footer] it is just the column.
 class _FooterAtEnd extends StatelessWidget {
-  const _FooterAtEnd({required this.child, this.footer, this.leading});
+  const _FooterAtEnd({required this.child, this.footer});
 
   final Widget child;
   final Widget? footer;
-
-  /// Drawn at the left end of the same line — a voice note's length.
-  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     final footer = this.footer;
     if (footer == null) return child;
-    final leading = this.leading;
     return Stack(
       children: [
         child,
-        if (leading != null) Positioned(left: 0, bottom: 0, child: leading),
         // Pinned to both sides and aligned right inside, not given `right`
         // alone: a lone `right` lays the child out with unbounded width, and
         // the footer's reactions are a Flexible, which cannot live in that.

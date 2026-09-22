@@ -50,7 +50,18 @@ final class CubechatTranscribePlugin {
 
     SFSpeechRecognizer.requestAuthorization { status in
       guard status == .authorized else {
-        DispatchQueue.main.async { result(nil) }
+        // Said out loud rather than swallowed: "it does not transcribe on
+        // iOS" came back with a log that held nothing at all, because every
+        // way this can fail answered with the same silent nil. Permission
+        // refused once is refused for good until Settings, and that is a
+        // different thing from a missing language model.
+        DispatchQueue.main.async {
+          result(FlutterError(
+            code: "not_authorized",
+            message: "Speech recognition was not allowed",
+            details: "status=\(status.rawValue)"
+          ))
+        }
         return
       }
       self.recognise(path: path, wanted: wanted, result: result)
@@ -62,19 +73,46 @@ final class CubechatTranscribePlugin {
     wanted: [String],
     result: @escaping FlutterResult
   ) {
-    let recogniser = wanted.lazy
-      .compactMap { SFSpeechRecognizer(locale: Locale(identifier: $0)) }
-      .first { $0.isAvailable && $0.supportsOnDeviceRecognition }
-    guard let recogniser = recogniser else {
+    // Every candidate and what was wrong with it — the phone's own languages
+    // after the wanted ones, since a note in a language this iPhone has no
+    // model for should still be tried in one it does.
+    var candidates = wanted
+    for language in Locale.preferredLanguages where !candidates.contains(language) {
+      candidates.append(language)
+    }
+    var tried: [String] = []
+    var chosen: SFSpeechRecognizer?
+    for id in candidates {
+      guard let recogniser = SFSpeechRecognizer(locale: Locale(identifier: id)) else {
+        tried.append("\(id):none")
+        continue
+      }
+      if !recogniser.isAvailable {
+        tried.append("\(id):unavailable")
+        continue
+      }
+      if !recogniser.supportsOnDeviceRecognition {
+        // On-device only, always: a cloud fallback would post the contents of
+        // a private voice note to Apple, which is the one thing this app
+        // exists not to do.
+        tried.append("\(id):no-on-device")
+        continue
+      }
+      tried.append("\(id):ok")
+      chosen = recogniser
+      break
+    }
+    guard let recogniser = chosen else {
       DispatchQueue.main.async {
         result(FlutterError(
           code: "language_not_supported",
           message: "No on-device model for the wanted languages",
-          details: "wanted=\(wanted.joined(separator: ","))"
+          details: "tried=\(tried.joined(separator: ","))"
         ))
       }
       return
     }
+    let note = "tried=\(tried.joined(separator: ","))"
 
     let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: path))
     // The whole point: the audio stays here.
@@ -86,15 +124,25 @@ final class CubechatTranscribePlugin {
     var answered = false
     recogniser.recognitionTask(with: request) { response, error in
       guard !answered else { return }
-      if error != nil {
+      if let error = error as NSError? {
         answered = true
-        DispatchQueue.main.async { result(nil) }
+        DispatchQueue.main.async {
+          result(FlutterError(
+            code: "recognition_failed",
+            message: error.localizedDescription,
+            details: "\(note);domain=\(error.domain),code=\(error.code)"
+          ))
+        }
         return
       }
       guard let response = response, response.isFinal else { return }
       answered = true
       let text = response.bestTranscription.formattedString
-      DispatchQueue.main.async { result(text.isEmpty ? nil : text) }
+      // The same shape Android answers with, so one log line reads the same
+      // on both: the text, and the numbers behind it.
+      DispatchQueue.main.async {
+        result(["text": text.isEmpty ? nil : text, "notes": note])
+      }
     }
   }
 }

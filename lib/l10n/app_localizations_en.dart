@@ -3143,6 +3143,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This phone has no speech model for that language. Pick the voice-to-text language in Customize.';
 
   @override
+  String get chatTranscribeNotAllowed =>
+      'Speech recognition is off for CubeChat. Turn it on in the iPhone\'s Settings → CubeChat.';
+
+  @override
   String get customizeTranscribeLanguageTitle => 'Voice-to-text language';
 
   @override

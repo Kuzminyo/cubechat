@@ -1537,6 +1537,10 @@
   "@chatTranscribeNoLanguage": {
     "description": "Under a voice note when no wanted language has an on-device model."
   },
+  "chatTranscribeNotAllowed": "Speech recognition is off for CubeChat. Turn it on in the iPhone's Settings → CubeChat.",
+  "@chatTranscribeNotAllowed": {
+    "description": "Under a voice note on iOS when speech recognition permission was refused."
+  },
   "customizeTranscribeLanguageTitle": "Voice-to-text language",
   "@customizeTranscribeLanguageTitle": {
     "description": "Customize: which language voice notes are heard in when turned into text."

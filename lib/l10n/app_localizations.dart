@@ -5492,6 +5492,12 @@ abstract class AppLocalizations {
   /// **'This phone has no speech model for that language. Pick the voice-to-text language in Customize.'**
   String get chatTranscribeNoLanguage;
 
+  /// Under a voice note on iOS when speech recognition permission was refused.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech recognition is off for CubeChat. Turn it on in the iPhone\'s Settings → CubeChat.'**
+  String get chatTranscribeNotAllowed;
+
   /// Customize: which language voice notes are heard in when turned into text.
   ///
   /// In en, this message translates to:

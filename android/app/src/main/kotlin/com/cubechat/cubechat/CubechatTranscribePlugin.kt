@@ -668,6 +668,24 @@ class CubechatTranscribePlugin(
             }
         }
 
+        // **Whether what the whole-note stage heard can be all of the note.**
+        //
+        // It says when it is done, not how much of the file it read, and on
+        // this phone it can be done early: a seventeen-second note came back as
+        // two segments (`whole:…,seg=2`, 1107), and the transcript under it was
+        // plainly the first part only — "текст все так же полностью не
+        // показывается". So what came back is measured against the audio.
+        // Speech runs at ten to fifteen characters a second in Russian and
+        // Ukrainian; four a second is the floor below which a stage has
+        // stopped early rather than heard a slow speaker. Below it the note is
+        // also heard phrase by phrase, which covers the whole file by
+        // construction, and the longer answer wins.
+        val audioSeconds = (pcm.file.length() / bytesPerSecond).coerceAtLeast(1L)
+        fun coversTheNote(text: String) = text.length >= audioSeconds * 4
+
+        // What the whole-note stage heard, while the phrase pass runs too.
+        var wholeText: String? = null
+
         // ---- stage two: phrase by phrase ----------------------------------
         val heard = mutableListOf<String>()
         var index = 0
@@ -683,8 +701,11 @@ class CubechatTranscribePlugin(
             if (answered) return
             if (index >= phrases.size) {
                 note("phrases=${phrases.size},heard=${heard.size},silent=$silentPhrases")
-                if (heard.isNotEmpty()) {
-                    finish(heard.joinToString(" "))
+                val byPhrase = heard.takeIf { it.isNotEmpty() }?.joinToString(" ")
+                val best = listOfNotNull(wholeText, byPhrase).maxByOrNull { it.length }
+                if (wholeText != null) note("picked=${if (best === wholeText) "whole" else "phrases"}")
+                if (best != null) {
+                    finish(best)
                 } else {
                     finish(null, "recognizer_${SpeechRecognizer.ERROR_NO_MATCH}")
                 }
@@ -745,7 +766,7 @@ class CubechatTranscribePlugin(
                     )
                     if (cut.isEmpty()) {
                         note("phrases=0")
-                        finish(null)
+                        finish(wholeText)
                         return@post
                     }
                     nextPhrase()
@@ -757,8 +778,18 @@ class CubechatTranscribePlugin(
         fun whole(fresh: Boolean = false) {
             listen(pcm.file, segmented = true, fresh = fresh, label = "whole") { o ->
                 when {
-                    o.segmentedHonoured && o.segments.isNotEmpty() ->
-                        finish(o.segments.joinToString(" "))
+                    o.segmentedHonoured && o.segments.isNotEmpty() -> {
+                        val text = o.segments.joinToString(" ")
+                        note("whole=${text.length}ch")
+                        if (coversTheNote(text)) {
+                            finish(text)
+                        } else {
+                            // Kept, and the phrase pass runs as well; the
+                            // longer of the two answers is the one returned.
+                            wholeText = text
+                            byPhrases()
+                        }
+                    }
                     isDropped(o.error) && !freshRetryUsed -> {
                         freshRetryUsed = true
                         main.postDelayed({ whole(fresh = true) }, 300)
