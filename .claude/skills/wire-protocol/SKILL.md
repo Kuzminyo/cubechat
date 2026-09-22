@@ -36,7 +36,7 @@ one before assigning a byte.
 |---|---|---|
 | `FrameType` | `lib/core/transport/frame.dart` | `noiseHandshake1..3` 0x01–0x03, `noiseIk1` 0x04, `noiseIk2` 0x05, `transport` 0x10, `peerAnnouncement` 0x20, `proBadge` 0x21, `fragment` 0x40, `reset` 0xFE |
 | envelope cipher tag | `messaging_service.dart`, the `_cipher*` constants | SealedBox 0x01, X3DH 0x02, channel 0x03, forward-secret media 0x04 |
-| `InnerPayloadType` | `lib/core/transport/inner_payload.dart` | 34 types on 2026-09-21. The round values 0x10–0xD0 are the originals; everything since has been packed into 0xE0–0xE7 and 0xF0–0xFC, newest `callSignal` 0xE7. **Print what is free — never pick from this row** |
+| `InnerPayloadType` | `lib/core/transport/inner_payload.dart` | 36 types on 2026-09-22. The round values 0x10–0xD0 are the originals; everything since has been packed into 0xE0–0xE9 and 0xF0–0xFC, newest `nearbyOffer` 0xE8 and `nearbyAnswer` 0xE9 (AirDrop). **Print what is free — never pick from this row** |
 | per-payload version byte | e.g. `MediaManifest.versionV1 .. versionV8ViewOnceCaptionFs` | one per field combination; `viewOnceVersionOffset` adds 0x04 |
 
 `proBadge` 0x21 is **reserved, not free**: nothing in this build sends or reads

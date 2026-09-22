@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
+import 'backup_filter.dart';
 import '../../../core/util/media_storage.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/crypto/prekey_service.dart';
@@ -64,7 +65,12 @@ class BackupService {
       final dynamic box = await _openBox(name);
       final keys = (box.keys as Iterable<dynamic>).toList();
       boxes[name] = [
-        for (final key in keys) [_encodeValue(key), _encodeValue(box.get(key))],
+        for (final key in keys)
+          if (backupKeeps(name, key))
+            [
+              _encodeValue(key),
+              _encodeValue(backupValue(name, key, box.get(key))),
+            ],
       ];
     }
     final payload = <String, Object?>{

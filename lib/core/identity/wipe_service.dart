@@ -5,6 +5,11 @@ import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/drafts_controller.dart';
 import '../../features/chat/data/transcription_language.dart';
+import '../../features/airdrop/data/airdrop_controller.dart';
+import '../../features/airdrop/data/airdrop_history_controller.dart';
+import '../../features/airdrop/data/airdrop_receive_controller.dart';
+import '../../features/airdrop/data/airdrop_spam_store.dart';
+import '../../features/airdrop/data/airdrop_storage.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
@@ -103,6 +108,13 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(pinnedControllerProvider.notifier).clear();
   await ref.read(draftsControllerProvider.notifier).clearAll();
   await ref.read(fileTransferControllerProvider.notifier).clearAll();
+  // AirDrop: what is in flight, its history, its "everyone" window, its bans,
+  // and the files it received.
+  ref.read(airdropControllerProvider.notifier).clearAll();
+  await ref.read(airdropHistoryProvider.notifier).clear();
+  await ref.read(airdropSpamProvider.notifier).clear();
+  await ref.read(airdropReceiveProvider.notifier).reset();
+  await deleteAirdropDirectory();
   ref.read(presenceControllerProvider.notifier).clear();
   ref.read(typingControllerProvider.notifier).clearAll();
   // A wiped install has to be indistinguishable from a fresh one, and a fresh
