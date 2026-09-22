@@ -183,6 +183,16 @@ class CpuProbe {
     return previous;
   }
 
+  /// A measuring window of the caller's own, separate from the one Diagnostics
+  /// shows — so timing one video upload neither restarts that panel's numbers
+  /// nor is restarted by it. Null where there is nothing to read.
+  Future<CpuSpan?> openSpan() async {
+    if (!supported) return null;
+    final snap = await _sample();
+    if (snap == null) return null;
+    return CpuSpan._(this, snap, DateTime.now());
+  }
+
   CpuReport _reportBetween(
     Map<String, int> base,
     _Snapshot snap,
@@ -504,6 +514,30 @@ class _Snapshot {
   const _Snapshot(this.micros, this.merged);
   final Map<String, int> micros;
   final bool merged;
+}
+
+/// A window opened by [CpuProbe.openSpan].
+class CpuSpan {
+  CpuSpan._(this._probe, this._base, this._since);
+
+  final CpuProbe _probe;
+  _Snapshot _base;
+  DateTime _since;
+
+  /// What each thread used since the span opened or since the last lap, and
+  /// the next lap starts now. Null under a second, for the reason
+  /// [CpuProbe.report] gives.
+  Future<CpuReport?> lap() async {
+    final snap = await _probe._sample();
+    if (snap == null) return null;
+    final now = DateTime.now();
+    final base = _base;
+    final elapsedMs = now.difference(_since).inMilliseconds;
+    _base = snap;
+    _since = now;
+    if (elapsedMs < 1000) return null;
+    return _probe._reportBetween(base.micros, snap, elapsedMs, base.merged);
+  }
 }
 
 class ThreadStat {

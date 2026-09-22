@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
@@ -101,6 +102,45 @@ void main() {
       container.read(fileTransferControllerProvider)['transfer-1']?.status,
       FileTransferStatus.canceled,
     );
+  });
+
+  // The send loop reports a chunk after it has gone out, so the report of the
+  // chunk in flight lands right after the tap. It used to write
+  // "transferring" over the pause and the cancel both, and the loop went on.
+  test('a chunk reported after a pause leaves the transfer paused', () async {
+    final controller = container.read(fileTransferControllerProvider.notifier);
+    await controller.loaded;
+    controller.register(task(status: FileTransferStatus.transferring));
+    controller.pause('transfer-1');
+
+    controller.setProgress('transfer-1', 3, 4);
+
+    final value = container.read(fileTransferControllerProvider)['transfer-1'];
+    expect(value?.status, FileTransferStatus.paused);
+    expect(value?.completedUnits, 3);
+    var released = false;
+    unawaited(
+      controller.waitUntilRunnable('transfer-1').then((_) => released = true),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(released, isFalse);
+    controller.resume('transfer-1');
+  });
+
+  test('a chunk reported after a cancel leaves the transfer cancelled',
+      () async {
+    final controller = container.read(fileTransferControllerProvider.notifier);
+    await controller.loaded;
+    controller.register(task(status: FileTransferStatus.transferring));
+    controller.cancel('transfer-1');
+
+    controller.setProgress('transfer-1', 4, 4);
+
+    expect(
+      container.read(fileTransferControllerProvider)['transfer-1']?.status,
+      FileTransferStatus.canceled,
+    );
+    expect(await controller.waitUntilRunnable('transfer-1'), isFalse);
   });
 
   test('queue survives restart and keeps message identity', () async {

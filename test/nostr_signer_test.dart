@@ -95,5 +95,34 @@ void main() {
         );
       }
     });
+
+    // A media chunk's event is signed on another isolate. The signature it
+    // brings back has to be as good as one made here, and the event has to be
+    // the one that was asked for.
+    test('a media-sized event, signed off the UI isolate, verifies', () async {
+      final signer = await Secp256k1NostrSigner.deriveFromSeed(_seed(9));
+      final big = NostrEvent(
+        pubkey: signer.npubHex,
+        createdAt: 1700000000,
+        kind: 1059,
+        tags: [
+          ['p', 'bb' * 32],
+        ],
+        content: 'A' * (Secp256k1NostrSigner.offloadContentChars + 1),
+      );
+      final signed = await signer.sign(big);
+
+      expect(signed.content, big.content);
+      expect(signed.tags, big.tags);
+      expect(await signed.hasValidId(), isTrue);
+      expect(
+        await Secp256k1.verify(
+          publicKey: _unhex(signer.npubHex),
+          message: _unhex(signed.id!),
+          signature: _unhex(signed.sig!),
+        ),
+        isTrue,
+      );
+    });
   });
 }

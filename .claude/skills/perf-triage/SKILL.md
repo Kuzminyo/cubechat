@@ -77,6 +77,18 @@ Do not re-propose these; they are in the tree.
   and transition panels are all behind that developer mode; an ordinary visit
   shows the plain log only.
   Media placeholders changed nothing on the chat slide (1059).
+- **Big media crypto runs off the UI isolate since 1106.** The 1105 log of a
+  115 MB video over the relay: `file-hash 1× 1318 ms`, then every 5 s
+  `media-seal ~60× 300 ms` and `nostr-sign ~60× 140 ms` of UI-isolate time.
+  Chunks from 16 KiB up are sealed/opened (`MediaFsCipher.offloadBytes`),
+  events from 16 K chars signed (`Secp256k1NostrSigner.offloadContentChars`)
+  and whole files hashed (`sha256OfFile`) via `Isolate.run`. Same CPU, just
+  not in a frame's way — this fixes stutter, not heat. The same build stopped
+  a video sent as a file spinning an indeterminate ring for the whole upload,
+  and cut outgoing transfer-map writes to whole percent. Each send now ends
+  with a `[CPU] sending "…"` line per thread — read it before the next round.
+  Still open: each relay chunk is written to every open media relay (2 in
+  that log), so the radio uploads it twice.
 - Chat list rows are kept by identity while their inputs are equal (1055):
   727 widgets rebuilt for one changed row became 211
   (`test/chat_list_rebuild_budget_test.dart`)

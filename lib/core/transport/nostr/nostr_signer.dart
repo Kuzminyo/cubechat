@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -55,13 +56,43 @@ class Secp256k1NostrSigner implements NostrEventSigner {
     return Secp256k1NostrSigner._(key, _hex(key.publicKeyX));
   }
 
+  /// From this much content up, an event is signed on an isolate of its own.
+  ///
+  /// The id is a SHA-256 over the whole serialised event, and a media chunk's
+  /// content is ~86 KB of base64; the signature after it is a BIP-340 sign and
+  /// verify in pure Dart. The 1105 log of a video going out had `nostr-sign
+  /// 60× 140 ms` of UI-isolate time every five seconds, beside the chunk
+  /// sealing that `MediaFsCipher.offloadBytes` moves for the same reason.
+  ///
+  /// Text, receipts and beacons are a few hundred bytes and stay here: an
+  /// isolate per receipt would cost more than the signature.
+  static const int offloadContentChars = 16 * 1024;
+
   @override
-  Future<NostrEvent> sign(NostrEvent event) async {
+  Future<NostrEvent> sign(NostrEvent event) {
+    if (event.content.length >= offloadContentChars) {
+      return _signElsewhere(event, _signingKey);
+    }
+    return _signHere(event, _signingKey);
+  }
+
+  // Static, so the closure [Isolate.run] copies holds the event and the key and
+  // nothing else — not this signer, not whatever called it.
+  static Future<NostrEvent> _signElsewhere(
+    NostrEvent event,
+    Secp256k1SigningKey key,
+  ) =>
+      Isolate.run(() => _signHere(event, key), debugName: 'nostr-sign');
+
+  static Future<NostrEvent> _signHere(
+    NostrEvent event,
+    Secp256k1SigningKey key,
+  ) async {
     final withId = await event.withId();
     final idBytes = _unhex(withId.id!);
     final aux = _randomBytes(32);
     final sig = await Secp256k1.signWith(
-      key: _signingKey,
+      key: key,
       message: idBytes,
       auxRand: aux,
     );

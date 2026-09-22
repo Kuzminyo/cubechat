@@ -48,6 +48,7 @@ import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
+import '../crypto/file_digest.dart';
 import '../crypto/fs_message.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
@@ -62,6 +63,7 @@ import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../util/app_lifecycle.dart';
 import '../util/cost_meter.dart';
+import '../util/cpu_probe.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
@@ -2226,6 +2228,9 @@ class MessagingService {
     // this one. Not for a file waiting on a route above: nothing is on its way.
     final sending = PeerActivity.sendingFor(mime);
     _beginSendingMedia(canonicalId, sending);
+    // Not awaited: the baseline is read off the UI thread while the send gets
+    // going, and [_logSendCpu] waits for it at the end.
+    final cpu = CpuProbe.instance.openSpan();
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
@@ -2269,24 +2274,13 @@ class MessagingService {
             '(${relayOnly ? 'relay' : 'mesh'})',
       );
 
-      // Streamed, so the digest costs one buffer rather than the whole file.
-      //
-      // Timed: this is pure Dart on the UI isolate, over the whole file, and
-      // "a good-quality video makes the app stutter and the phone hot" was
-      // reported on 2026-09-22 with nothing in the log to say whether this,
-      // the per-chunk sealing below, or the relay signatures were the cost.
-      final sink = Sha256().newHashSink();
-      final hashing = Stopwatch();
-      await for (final part in stored.openRead()) {
-        hashing.start();
-        sink.add(part);
-        hashing.stop();
-      }
-      hashing.start();
-      sink.close();
-      final digest = Uint8List.fromList((await sink.hash()).bytes);
-      hashing.stop();
-      CostMeter.instance.recordSync('file-hash', hashing.elapsedMicroseconds);
+      // Off the UI isolate — 1318 ms of it for a 115 MB video in the 1105
+      // log, the longest single block of work in the whole send. See
+      // [sha256OfFile]. Still timed, so its wall time stays in the COST line.
+      final digest = await CostMeter.instance.measure(
+        'file-hash',
+        () => sha256OfFile(stored.path),
+      );
 
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
@@ -2312,9 +2306,14 @@ class MessagingService {
       // Grows the moment the far end pushes back, and never shrinks again for
       // this file. See [_deliverMediaFrameRetrying].
       var gap = Duration.zero;
+      var lastShown = -1;
       try {
         for (var i = 0; i < total; i++) {
           if (!await transfers.waitUntilRunnable(transferId)) {
+            DebugLog.instance.log(
+              'FILE',
+              'send of "$safe" stopped at chunk $i/$total — cancelled',
+            );
             messages.updateStatus(
               canonicalId,
               msg.id,
@@ -2362,7 +2361,25 @@ class MessagingService {
           if (!delivery.sent) {
             throw const MediaRouteUnavailable();
           }
-          transfers.setProgress(transferId, i + 1, total);
+          // Whole percent, not every chunk. The transfer map is watched by
+          // the Profile tab — mounted behind the chat the whole time — by the
+          // transfer centre and by every file bubble in the conversation, and
+          // a video over the relay goes at a dozen chunks a second: that was a
+          // dozen rebuilds of all of them a second, for minutes, to move a
+          // ring by a fraction of a degree. Outgoing only — incoming progress
+          // is what the stall check reads, and it must see every chunk.
+          final shown = (i + 1) * 100 ~/ total;
+          if (shown != lastShown || i + 1 == total) {
+            lastShown = shown;
+            transfers.setProgress(transferId, i + 1, total);
+          }
+          // The ring on a video bubble reads this, not the transfer map. A
+          // video sent as a file never reported here, so its ring spun as
+          // "not started yet" — an indeterminate spinner, redrawing the whole
+          // conversation every frame for the minutes the upload took.
+          _ref
+              .read(mediaSendProgressProvider.notifier)
+              .report(msg.id, sent: i + 1, total: total);
           if (i + 1 < total) {
             // Over BLE, a fixed gap: some Android stacks drop notifies when the
             // sender outruns the receiver's read loop. Over the relay there is
@@ -2400,9 +2417,42 @@ class MessagingService {
       );
       rethrow;
     } finally {
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       _endSendingMedia(canonicalId, sending);
+      unawaited(_logSendCpu(cpu, safe));
     }
     return msg;
+  }
+
+  /// One line for the whole send: which threads burned how much CPU while it
+  /// ran.
+  ///
+  /// The COST line names the Dart work it was told to time and nothing else.
+  /// A video upload also spends time compressing and writing sockets, drawing
+  /// the screen and running the radio's binder calls, none of which it can
+  /// see — and "the phone gets hot sending a video" is a question about all of
+  /// it. One line at the end, not one per interval: the chunk lines around it
+  /// fill the 200-line log in about fifteen seconds, and the end of the send
+  /// is the part still in the buffer when the log is exported.
+  Future<void> _logSendCpu(Future<CpuSpan?> cpu, String name) async {
+    try {
+      final span = await cpu;
+      final report = await span?.lap();
+      if (report == null) return;
+      final rows = report.top(6).map(
+            (t) => '${t.name} ${t.cpuMs} ms '
+                '(${t.percentOfOneCore.toStringAsFixed(0)}%)',
+          );
+      DebugLog.instance.log(
+        'CPU',
+        'sending "$name" — '
+            '${report.totalPercentOfOneCore.toStringAsFixed(0)}% of a core '
+            'over ${(report.wallMs / 1000).toStringAsFixed(0)} s: '
+            '${rows.join(', ')}',
+      );
+    } catch (_) {
+      // A diagnostic that fails says nothing; it never fails the send.
+    }
   }
 
   Future<void> retryFileTransfer(String transferId) async {
@@ -7752,19 +7802,12 @@ class MessagingService {
   }) async {
     try {
       // Hashed by streaming, not by reading the file into a buffer — the whole
-      // reason the transfer went to disk was to avoid holding it in memory.
-      final sink = Sha256().newHashSink();
-      final hashing = Stopwatch();
-      await for (final part in assembled.file.openRead()) {
-        hashing.start();
-        sink.add(part);
-        hashing.stop();
-      }
-      hashing.start();
-      sink.close();
-      final actual = Uint8List.fromList((await sink.hash()).bytes);
-      hashing.stop();
-      CostMeter.instance.recordSync('file-verify', hashing.elapsedMicroseconds);
+      // reason the transfer went to disk was to avoid holding it in memory —
+      // and on an isolate of its own, the same as the sender's side.
+      final actual = await CostMeter.instance.measure(
+        'file-verify',
+        () => sha256OfFile(assembled.file.path),
+      );
       if (!_bytesEqual(actual, manifest.sha256)) {
         DebugLog.instance.log(
             'FILE',

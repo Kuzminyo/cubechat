@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -33,6 +34,21 @@ class MediaFsCipher {
 
   static final _aead = Chacha20.poly1305Aead();
 
+  /// From this many bytes up, a chunk is sealed and opened on an isolate of
+  /// its own rather than on the one drawing the screen.
+  ///
+  /// The cipher is pure Dart and runs at about 13 MB/s on a phone: a 64 KiB
+  /// relay chunk is ~5 ms of one block, and a video goes out at a dozen of
+  /// those a second. The 1105 log of a 115 MB video had `media-seal 60×
+  /// 300 ms` in every five seconds — a frame's worth of the UI thread gone,
+  /// twelve times a second, reported as "the app stutters hard". The work is
+  /// the same on another isolate; it is just no longer in the way of a frame.
+  ///
+  /// Below the line the chunk stays here: a Bluetooth photo goes in 4 KiB
+  /// pieces, each well under a millisecond, and spawning an isolate for one
+  /// would cost more than it saves.
+  static const int offloadBytes = 16 * 1024;
+
   /// Seal [plaintext] (a chunk's inner bytes) under [key] for transfer
   /// [mediaId] (16 bytes). Returns `mediaId || nonce || ct || tag`.
   static Future<Uint8List> seal({
@@ -43,17 +59,47 @@ class MediaFsCipher {
     if (mediaId.length != idLen) {
       throw ArgumentError('mediaId must be $idLen bytes');
     }
-    final nonce = _aead.newNonce();
+    final nonce = Uint8List.fromList(_aead.newNonce());
+    if (plaintext.length >= offloadBytes) {
+      final keyBytes = Uint8List.fromList(await key.extractBytes());
+      return CostMeter.instance.measure(
+        'media-seal',
+        () => _sealElsewhere(keyBytes, mediaId, nonce, plaintext),
+      );
+    }
     // Timed — pure-Dart ChaCha20-Poly1305 on the UI isolate, once per chunk
     // of every photo, voice note and file. See CostMeter.
     final clock = Stopwatch()..start();
-    final box = await _aead.encrypt(
+    final out = await _sealHere(key, mediaId, nonce, plaintext);
+    CostMeter.instance.recordSync('media-seal', clock.elapsedMicroseconds);
+    return out;
+  }
+
+  // Static and handed only bytes, so the closure [Isolate.run] copies carries
+  // nothing but what the seal needs.
+  static Future<Uint8List> _sealElsewhere(
+    Uint8List keyBytes,
+    Uint8List mediaId,
+    Uint8List nonce,
+    Uint8List plaintext,
+  ) =>
+      Isolate.run(
+        () => _sealHere(SecretKey(keyBytes), mediaId, nonce, plaintext),
+        debugName: 'media-seal',
+      );
+
+  static Future<Uint8List> _sealHere(
+    SecretKey key,
+    Uint8List mediaId,
+    Uint8List nonce,
+    Uint8List plaintext,
+  ) async {
+    final box = await Chacha20.poly1305Aead().encrypt(
       plaintext,
       secretKey: key,
       nonce: nonce,
       aad: mediaId,
     );
-    CostMeter.instance.recordSync('media-seal', clock.elapsedMicroseconds);
     final out = Uint8List(headerLen + box.cipherText.length + tagLen);
     var c = 0;
     out.setRange(c, c += idLen, mediaId);
@@ -82,6 +128,28 @@ class MediaFsCipher {
     if (body.length < headerLen + tagLen) {
       throw const FormatException('fs media chunk shorter than header+tag');
     }
+    // The receiving half of [offloadBytes]: the phone a video is arriving on
+    // opens the same dozen 64 KiB chunks a second.
+    if (body.length >= offloadBytes) {
+      final keyBytes = Uint8List.fromList(await key.extractBytes());
+      return CostMeter.instance.measure(
+        'media-open',
+        () => _openElsewhere(keyBytes, body),
+      );
+    }
+    final clock = Stopwatch()..start();
+    final clear = await _openHere(key, body);
+    CostMeter.instance.recordSync('media-open', clock.elapsedMicroseconds);
+    return clear;
+  }
+
+  static Future<Uint8List> _openElsewhere(Uint8List keyBytes, Uint8List body) =>
+      Isolate.run(
+        () => _openHere(SecretKey(keyBytes), body),
+        debugName: 'media-open',
+      );
+
+  static Future<Uint8List> _openHere(SecretKey key, Uint8List body) async {
     var c = 0;
     final mediaId = body.sublist(c, c += idLen);
     final nonce = body.sublist(c, c += nonceLen);
@@ -89,9 +157,8 @@ class MediaFsCipher {
     final ct = body.sublist(c, ctEnd);
     final mac = body.sublist(ctEnd);
     final box = SecretBox(ct, nonce: nonce, mac: Mac(mac));
-    final clock = Stopwatch()..start();
-    final clear = await _aead.decrypt(box, secretKey: key, aad: mediaId);
-    CostMeter.instance.recordSync('media-open', clock.elapsedMicroseconds);
+    final clear = await Chacha20.poly1305Aead()
+        .decrypt(box, secretKey: key, aad: mediaId);
     return Uint8List.fromList(clear);
   }
 }

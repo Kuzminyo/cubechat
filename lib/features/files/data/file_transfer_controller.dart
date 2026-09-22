@@ -175,15 +175,27 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
   void setProgress(String id, int completed, int total) {
     final task = state[id];
     if (task == null) return;
+    // **Progress never overrules a pause or a cancel.** It used to set the
+    // status to "transferring" on every chunk, and the send loop reports a
+    // chunk *after* it has gone — so a pause or a cancel pressed in the
+    // transfer centre was written, then overwritten by the very next chunk's
+    // report, and the loop's check at the top of the following chunk saw
+    // "transferring" and carried on. "The transfer centre neither pauses nor
+    // cancels" (2026-09-22), and a log where a cancel was followed by another
+    // five seconds of sealing chunks.
+    final held = task.status == FileTransferStatus.paused ||
+        task.status == FileTransferStatus.canceled;
     state = {
       ...state,
       id: task.copyWith(
         completedUnits: completed,
         totalUnits: total,
-        status: completed >= total
-            ? FileTransferStatus.completed
-            : FileTransferStatus.transferring,
-        clearError: true,
+        status: held
+            ? task.status
+            : completed >= total
+                ? FileTransferStatus.completed
+                : FileTransferStatus.transferring,
+        clearError: !held,
       ),
     };
     _schedulePersist();
