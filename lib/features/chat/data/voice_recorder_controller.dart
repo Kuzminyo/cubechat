@@ -43,7 +43,12 @@ typedef VoiceRecording = ({
 /// start/stop with a Riverpod-watchable state. One recorder at a time —
 /// starting a fresh recording cancels any in flight.
 class VoiceRecorderController extends Notifier<VoiceRecordingState> {
-  final AudioRecorder _recorder = AudioRecorder();
+  /// Made on first use, not when the controller is: the composer watches this
+  /// the moment a chat opens, and opening a conversation is no reason to wake
+  /// the microphone plugin — which also has no implementation on a CI test
+  /// host, where constructing it at chat open failed the build 1107 run.
+  AudioRecorder? _made;
+  AudioRecorder get _recorder => _made ??= AudioRecorder();
   String? _currentPath;
 
   /// The Opus note being built from the microphone stream, when this
@@ -76,7 +81,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       _ampSub?.cancel();
       _pcmSub?.cancel();
       _opus?.discard();
-      _recorder.dispose();
+      _made?.dispose();
     });
     return VoiceRecordingState.idle;
   }
@@ -312,7 +317,8 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
     _stopAmplitude();
     state = VoiceRecordingState.idle;
     try {
-      await _recorder.cancel();
+      // Nothing to cancel on a recorder that was never made.
+      await _made?.cancel();
     } catch (_) {}
     if (path != null) {
       try {
