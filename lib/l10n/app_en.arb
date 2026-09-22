@@ -1507,6 +1507,16 @@
   "chatTranscribeFailed": "This phone cannot transcribe that one.",
   "chatTranscribing": "Recognising…",
   "chatTranscriptHide": "Hide text",
+  "chatCancelSend": "Cancel sending",
+  "@chatCancelSend": {
+    "description": "Long-press action and the cross in the progress ring on a message of ours that has not finished sending."
+  },
+  "chatDownloadAction": "Download",
+  "@chatDownloadAction": {
+    "description": "Long-press action on a voice note or circle: keep the recording on the phone."
+  },
+  "chatDownloaded": "Saved to the phone",
+  "chatDownloadFailed": "Could not save it",
   "selfUpdateTitle": "Install an update from a file",
   "@selfUpdateTitle": {
     "description": "Profile row (Android): pick a cubechat APK and install it from inside the app."

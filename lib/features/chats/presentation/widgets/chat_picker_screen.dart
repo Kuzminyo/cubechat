@@ -7,6 +7,7 @@ import '../../../../core/theme/typography.dart';
 import '../../../../core/widgets/aurora_background.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../data/saved_messages.dart';
 import '../../models/chat.dart';
 import '../chats_list_screen.dart';
 import 'chat_tile.dart';
@@ -30,6 +31,10 @@ Future<List<Chat>> showChatPicker(
 
   /// Rooms as well as people. Off for anything addressed to one person.
   bool includeChannels = true,
+
+  /// Saved, first in the list, even while it is empty. For forwarding:
+  /// "перекидывать в другие чаты и в избранное кнопкой переслать".
+  bool includeSaved = false,
 }) async {
   final chosen = await Navigator.of(context, rootNavigator: true).push<List<Chat>>(
     screenRoute<List<Chat>>(
@@ -37,6 +42,7 @@ Future<List<Chat>> showChatPicker(
         title: title,
         exceptChatId: exceptChatId,
         includeChannels: includeChannels,
+        includeSaved: includeSaved,
       ),
     ),
   );
@@ -48,11 +54,13 @@ class _ChatPickerScreen extends ConsumerStatefulWidget {
     required this.title,
     required this.exceptChatId,
     required this.includeChannels,
+    required this.includeSaved,
   });
 
   final String title;
   final String? exceptChatId;
   final bool includeChannels;
+  final bool includeSaved;
 
   @override
   ConsumerState<_ChatPickerScreen> createState() => _ChatPickerScreenState();
@@ -73,12 +81,30 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final query = _query.trim().toLowerCase();
-    final chats = ref
-        .watch(chatsProvider)
-        .where((c) => c.id != widget.exceptChatId)
-        .where((c) => widget.includeChannels || !c.isChannel)
-        .where((c) => query.isEmpty || c.peerName.toLowerCase().contains(query))
-        .toList(growable: false);
+    final saved = widget.includeSaved && widget.exceptChatId != savedChatId
+        ? savedChatRow(ref, t) ??
+            Chat(
+              id: savedChatId,
+              peerId: savedChatId,
+              peerName: t.savedTitle,
+              lastMessage: '',
+              lastTime: DateTime.now(),
+              unreadCount: 0,
+              isMesh: false,
+            )
+        : null;
+    final chats = [
+      if (saved != null &&
+          (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
+        saved,
+      ...ref
+          .watch(chatsProvider)
+          .where((c) => c.id != widget.exceptChatId)
+          .where((c) => widget.includeChannels || !c.isChannel)
+          .where(
+            (c) => query.isEmpty || c.peerName.toLowerCase().contains(query),
+          ),
+    ];
 
     return AuroraBackground(
       child: Scaffold(

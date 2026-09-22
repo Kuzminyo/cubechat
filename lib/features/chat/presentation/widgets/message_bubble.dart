@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:saver_gallery/saver_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -127,9 +129,14 @@ bool messageCanBeForwarded(
   return switch (message.kind) {
     MessageKind.image => MediaPaths.existsOrNull(message.imagePath),
     MessageKind.text => message.text.trim().isNotEmpty,
-    // A voice note, a file and a poll are each their own send with their own
-    // arguments; nothing is stopping them but nobody has asked yet.
-    MessageKind.audio || MessageKind.file || MessageKind.poll => false,
+    // Asked for by name: voice notes, circles and files forward like photos
+    // ("всё это можно было перекидывать"). A circle is a file with the circle
+    // name, so it goes on as a circle.
+    MessageKind.audio => MediaPaths.existsOrNull(message.audioPath),
+    MessageKind.file => MediaPaths.existsOrNull(message.filePath),
+    // A poll is a live object with votes, not content; forwarding one would
+    // be a second poll nobody could tie to the first.
+    MessageKind.poll => false,
   };
 }
 
@@ -170,12 +177,19 @@ const double kStickerWidth = 158;
 Future<List<Chat>> pickForwardTargets(
   BuildContext context,
   WidgetRef ref,
-  String fromChatId,
-) =>
+  String fromChatId, {
+  // Off for a file or a circle: a room carries no files.
+  bool includeChannels = true,
+}) =>
     showChatPicker(
       context,
       title: AppLocalizations.of(context).chatForwardTitle,
       exceptChatId: fromChatId,
+      includeChannels: includeChannels,
+      // Saved as a destination too, asked for as "forward into other chats
+      // and into Saved with the forward button". It is a copy on this phone,
+      // not a send — see [forwardMessageTo].
+      includeSaved: true,
     );
 
 /// Re-send [text] into [target] under our own identity.
@@ -216,6 +230,47 @@ Future<void> forwardMessageTo(
   Message message, {
   required String fromChatId,
 }) async {
+  // Saved is a notebook on this phone: a copy, not a send.
+  if (isSavedChat(target.id)) {
+    await ref.read(savedMessagesControllerProvider).saveCopyOf(message);
+    return;
+  }
+  if (message.kind == MessageKind.audio) {
+    final path = MediaPaths.repairOrNull(message.audioPath);
+    if (path == null || !MediaPaths.exists(path)) return;
+    if (target.isChannel) {
+      // A room carries voice through its own path.
+      await ref.read(messagingServiceProvider).sendChannelAudio(
+            target.id,
+            bytes: await File(path).readAsBytes(),
+            mime: message.audioMime ?? 'audio/ogg',
+            durationMs: message.audioDurationMs ?? 0,
+          );
+      return;
+    }
+    final sent = await ref.read(messagingServiceProvider).sendAudio(
+          target.id,
+          bytes: await File(path).readAsBytes(),
+          mime: message.audioMime ?? 'audio/ogg',
+          durationMs: message.audioDurationMs ?? 0,
+          // Stored as the 0..255 bars that travelled; the send wants 0..1.
+          levels: message.audioLevels?.map((b) => b / 255).toList(),
+        );
+    await _attributeForward(ref, target, message, sent, fromChatId);
+    return;
+  }
+  if (message.kind == MessageKind.file) {
+    final path = MediaPaths.repairOrNull(message.filePath);
+    if (path == null || !MediaPaths.exists(path) || target.isChannel) return;
+    final sent = await ref.read(messagingServiceProvider).sendFile(
+          target.id,
+          file: File(path),
+          fileName: message.fileName ?? 'file',
+          mime: message.text.isEmpty ? 'application/octet-stream' : message.text,
+        );
+    await _attributeForward(ref, target, message, sent, fromChatId);
+    return;
+  }
   if (message.kind == MessageKind.image) {
     final path = MediaPaths.repairOrNull(message.imagePath);
     if (path == null || !MediaPaths.exists(path)) return;
@@ -776,6 +831,24 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.shortcut_rounded,
             label: t.chatForwardAction,
           ),
+        // Ours and not gone yet: take it back. Text in the queue, a photo, a
+        // voice note, a circle, a file — see [MessagingService.cancelSending].
+        if (widget.message.isMine &&
+            widget.message.status == MessageStatus.sending &&
+            !isSavedChat(widget.chatId))
+          SpotlightAction(
+            id: 'cancel-send',
+            icon: Icons.cancel_schedule_send_rounded,
+            label: t.chatCancelSend,
+            tone: AppColors.danger,
+          ),
+        // Keep the recording on the phone, where other apps can open it.
+        if (_downloadablePath != null)
+          SpotlightAction(
+            id: 'download',
+            icon: Icons.download_rounded,
+            label: t.chatDownloadAction,
+          ),
         // Not inside Saved itself: filing a note into the pile it is already
         // in does nothing but duplicate it.
         if (!isSavedChat(widget.chatId))
@@ -914,6 +987,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ref
           .read(messageSelectionProvider(widget.chatId).notifier)
           .start(widget.message.id);
+    } else if (picked == 'cancel-send') {
+      await _cancelSend();
+    } else if (picked == 'download') {
+      await _download();
     } else if (picked == 'save') {
       await _saveToSaved();
     } else if (picked == 'transcribe') {
@@ -1022,6 +1099,79 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       // comes back as "↑" with the text; a failure brings it back as "→A".
       hidden: circle && _transcribing && transcript == null,
       flyLeft: widget.message.isMine,
+    );
+  }
+
+  /// Take this send back while it is still going — see
+  /// [MessagingService.cancelSending].
+  Future<void> _cancelSend() async {
+    await ref
+        .read(messagingServiceProvider)
+        .cancelSending(widget.chatId, widget.message);
+  }
+
+  /// The recording this message holds, if it is one that can be kept on the
+  /// phone: a voice note or a circle. Not a view-once one, and not in a chat
+  /// whose owner switched copying off — that switch is about exactly this.
+  String? get _downloadablePath {
+    final m = widget.message;
+    if (m.viewOnce || _copyingRestricted) return null;
+    final path = m.kind == MessageKind.audio
+        ? m.audioPath
+        : m.isCircle
+            ? m.filePath
+            : null;
+    return MediaPaths.existsOrNull(path) ? path : null;
+  }
+
+  /// "Кружок или ГС ещё можно было бы скачать."
+  ///
+  /// A circle is a video and goes to the gallery, where the phone's own
+  /// videos are. A voice note is audio, which the gallery does not take, so
+  /// the system's own "save as" asks where to put it — Downloads, a music
+  /// folder, a cloud drive.
+  Future<void> _download() async {
+    final t = AppLocalizations.of(context);
+    final path = _downloadablePath;
+    if (path == null) return;
+    final m = widget.message;
+    final stamp = m.sentAt
+        .toIso8601String()
+        .substring(0, 19)
+        .replaceAll(':', '-')
+        .replaceAll('T', '_');
+    var ok = false;
+    try {
+      if (m.isCircle) {
+        final result = await SaverGallery.saveFile(
+          filePath: path,
+          fileName: 'cubechat_circle_$stamp.mp4',
+          skipIfExists: false,
+        );
+        ok = result.isSuccess;
+      } else {
+        final mime = m.audioMime ?? '';
+        final ext = mime.contains('ogg') || mime.contains('opus')
+            ? 'ogg'
+            : mime.contains('wav')
+                ? 'wav'
+                : 'm4a';
+        final saved = await FilePicker.platform.saveFile(
+          fileName: 'cubechat_voice_$stamp.$ext',
+          bytes: await File(path).readAsBytes(),
+        );
+        if (saved == null) return; // dismissed
+        ok = true;
+      }
+    } catch (e) {
+      DebugLog.instance.log('CHAT', 'download failed: $e');
+    }
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      ok ? t.chatDownloaded : t.chatDownloadFailed,
+      icon: ok ? Icons.download_done_rounded : null,
+      tone: ok ? ToastTone.success : ToastTone.danger,
     );
   }
 
@@ -1255,7 +1405,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   Future<void> _promptForward() async {
-    final chosen = await pickForwardTargets(context, ref, widget.chatId);
+    final chosen = await pickForwardTargets(
+      context,
+      ref,
+      widget.chatId,
+      includeChannels: widget.message.kind != MessageKind.file,
+    );
     if (chosen.isEmpty || !mounted) return;
     final t = AppLocalizations.of(context);
     for (final chat in chosen) {
@@ -1725,8 +1880,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       if (message.isMine &&
                           message.status == MessageStatus.sending)
                         Positioned.fill(
-                          child: IgnorePointer(
-                            child: _SendProgressRing(messageId: message.id),
+                          child: _SendProgressRing(
+                            messageId: message.id,
+                            onCancel: _cancelSend,
                           ),
                         ),
                     ],
@@ -1779,8 +1935,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             const SizedBox(width: 8),
                             _SendProgressRing(
                               messageId: message.id,
-                              diameter: 26,
+                              // 32 rather than 26: a cross in it has to be a
+                              // target a thumb can find.
+                              diameter: 32,
                               onSurface: true,
+                              onCancel: _cancelSend,
                             ),
                           ],
                         ],
@@ -1829,8 +1988,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           message.isMine &&
                           message.status == MessageStatus.sending)
                         Positioned.fill(
-                          child: IgnorePointer(
-                            child: _SendProgressRing(messageId: message.id),
+                          child: _SendProgressRing(
+                            messageId: message.id,
+                            onCancel: _cancelSend,
                           ),
                         ),
                     ],
@@ -3483,10 +3643,16 @@ class _SendProgressRing extends ConsumerWidget {
     required this.messageId,
     this.diameter = 46,
     this.onSurface = false,
+    this.onCancel,
   });
 
   final String messageId;
   final double diameter;
+
+  /// Tapping the ring takes the send back — a cross in its middle, the way
+  /// Telegram draws it. Only the disc answers; a tap beside it still reaches
+  /// the picture underneath.
+  final VoidCallback? onCancel;
 
   /// True when the ring sits on the bubble beside its content rather than over
   /// a photograph. There is no picture to lift it off, so it drops the dark
@@ -3501,31 +3667,55 @@ class _SendProgressRing extends ConsumerWidget {
     final value = ref.watch(
       mediaSendProgressProvider.select((p) => p[messageId]),
     );
-    return Center(
-      child: Container(
-        width: diameter,
-        height: diameter,
-        decoration: BoxDecoration(
-          color: onSurface
-              ? Colors.transparent
-              : Colors.black.withValues(alpha: 0.42),
-          shape: BoxShape.circle,
-        ),
-        padding: EdgeInsets.all(onSurface ? 2 : 9),
-        child: TweenAnimationBuilder<double>(
-          // Chunk reports arrive in visible steps; the ring should sweep
-          // between them rather than tick.
-          tween: Tween<double>(begin: 0, end: value ?? 0),
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOut,
-          builder: (context, animated, _) => CircularProgressIndicator(
-            value: value == null ? null : animated,
-            strokeWidth: 2.4,
-            backgroundColor: Colors.white.withValues(alpha: 0.28),
-            color: AppColors.brandPrimary,
-          ),
-        ),
+    final disc = Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        color: onSurface
+            ? Colors.transparent
+            : Colors.black.withValues(alpha: 0.42),
+        shape: BoxShape.circle,
       ),
+      padding: EdgeInsets.all(onSurface ? 2 : 9),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              // Chunk reports arrive in visible steps; the ring should sweep
+              // between them rather than tick.
+              tween: Tween<double>(begin: 0, end: value ?? 0),
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOut,
+              builder: (context, animated, _) => CircularProgressIndicator(
+                value: value == null ? null : animated,
+                strokeWidth: 2.4,
+                backgroundColor: Colors.white.withValues(alpha: 0.28),
+                color: AppColors.brandPrimary,
+              ),
+            ),
+          ),
+          if (onCancel != null)
+            Icon(
+              Icons.close_rounded,
+              size: diameter * 0.42,
+              color: onSurface ? AppColors.textOnGlass : Colors.white,
+            ),
+        ],
+      ),
+    );
+    return Center(
+      child: onCancel == null
+          ? disc
+          : Semantics(
+              button: true,
+              label: AppLocalizations.of(context).chatCancelSend,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onCancel,
+                child: disc,
+              ),
+            ),
     );
   }
 }

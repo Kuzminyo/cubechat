@@ -3102,6 +3102,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTranscriptHide => 'Hide text';
 
   @override
+  String get chatCancelSend => 'Cancel sending';
+
+  @override
+  String get chatDownloadAction => 'Download';
+
+  @override
+  String get chatDownloaded => 'Saved to the phone';
+
+  @override
+  String get chatDownloadFailed => 'Could not save it';
+
+  @override
   String get selfUpdateTitle => 'Install an update from a file';
 
   @override

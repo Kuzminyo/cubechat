@@ -142,6 +142,12 @@ class MediaRouteUnavailable implements Exception {
   const MediaRouteUnavailable();
 }
 
+/// The user took a send back while it was still going — see
+/// [MessagingService.cancelSending]. Not a failure: nothing is shown.
+class SendCancelled implements Exception {
+  const SendCancelled();
+}
+
 /// A photo that is already on screen and waiting for its turn on the wire.
 ///
 /// Everything the transfer needs, worked out once when the bubble was minted —
@@ -2621,6 +2627,7 @@ class MessagingService {
       }
       var imgGap = Duration.zero;
       for (var i = 0; i < total; i++) {
+        _throwIfCancelled(msg.id);
         final start = i * chunkData;
         final end = (start + chunkData).clamp(0, bytes.length);
         final chunk = ImageChunk(
@@ -2684,6 +2691,11 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
+    } on SendCancelled {
+      // Taken back: the bubble is already gone, so there is nothing to mark
+      // failed and nothing to tell the caller. The rest of an album goes on.
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
+      DebugLog.instance.log('IMG', 'photo send cancelled by the user');
     } catch (e, st) {
       debugPrint('sendImage failed: $e\n$st');
       _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
@@ -2900,6 +2912,7 @@ class MessagingService {
       }
       var audGap = Duration.zero;
       for (var i = 0; i < total; i++) {
+        _throwIfCancelled(msg.id);
         final start = i * chunkData;
         final end = (start + chunkData).clamp(0, bytes.length);
         final chunk = AudioChunk(
@@ -2964,6 +2977,9 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
+    } on SendCancelled {
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
+      DebugLog.instance.log('VOICE', 'voice send cancelled by the user');
     } catch (e, st) {
       debugPrint('sendAudio failed: $e\n$st');
       _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
@@ -9335,6 +9351,51 @@ class MessagingService {
   /// True when it was caught in time and is gone from the conversation; false
   /// when nothing was holding it, which means it has already been handed over
   /// and cancelling is no longer something this phone can do.
+  /// Sends the user took back while they were still going.
+  final Set<String> _cancelledSends = <String>{};
+
+  void _throwIfCancelled(String messageId) {
+    if (_cancelledSends.contains(messageId)) throw const SendCancelled();
+  }
+
+  /// Take back something of ours that has not finished leaving: a text, a
+  /// photo, a voice note, a circle, a file.
+  ///
+  /// "Сделай так, чтобы отправку смс, фото, гс, кружков, файлов можно было
+  /// отменить." A text waiting in the queue is simply taken out of it
+  /// ([cancelQueued]) and nobody ever hears of it. Anything already moving is
+  /// stopped at the next chunk — photos and voice through [_throwIfCancelled],
+  /// files and circles through the transfer centre's own cancel — and its
+  /// bubble goes. Whatever did reach the other phone (a text a moment ago, a
+  /// photo whose last chunk was on its way) is deleted there too, the way
+  /// "delete for everyone" does; for something that never arrived that delete
+  /// finds nothing and costs one small frame.
+  Future<bool> cancelSending(String chatId, Message message) async {
+    if (!message.isMine || message.status != MessageStatus.sending) {
+      return false;
+    }
+    if (cancelQueued(chatId: chatId, message: message)) return true;
+    _cancelledSends.add(message.id);
+    final wireId = message.wireId;
+    if (wireId != null) {
+      final transfers = _ref.read(fileTransferControllerProvider);
+      if (transfers.containsKey(wireId)) {
+        _ref.read(fileTransferControllerProvider.notifier).cancel(wireId);
+      }
+      try {
+        await sendDeleteForEveryone(chatId, wireId);
+      } catch (e) {
+        DebugLog.instance.log('CHAT', 'cancel: delete for everyone failed: $e');
+      }
+    }
+    _ref.read(mediaSendProgressProvider.notifier).clear(message.id);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.deleteLocal(chatId, message.id);
+    if (message.chatId != chatId) messages.deleteLocal(message.chatId, message.id);
+    DebugLog.instance.log('CHAT', 'send cancelled by the user');
+    return true;
+  }
+
   bool cancelQueued({required String chatId, required Message message}) {
     if (_disposed) return false;
     final wireId = message.wireId;

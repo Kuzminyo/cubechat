@@ -5420,6 +5420,30 @@ abstract class AppLocalizations {
   /// **'Hide text'**
   String get chatTranscriptHide;
 
+  /// Long-press action and the cross in the progress ring on a message of ours that has not finished sending.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel sending'**
+  String get chatCancelSend;
+
+  /// Long-press action on a voice note or circle: keep the recording on the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get chatDownloadAction;
+
+  /// No description provided for @chatDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to the phone'**
+  String get chatDownloaded;
+
+  /// No description provided for @chatDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save it'**
+  String get chatDownloadFailed;
+
   /// Profile row (Android): pick a cubechat APK and install it from inside the app.
   ///
   /// In en, this message translates to:

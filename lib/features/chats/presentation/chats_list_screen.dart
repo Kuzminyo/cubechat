@@ -87,9 +87,10 @@ String routeForChat(Chat chat) => chat.isChannel
 /// It was reachable only from the overflow menu, which is a strange place for
 /// the conversation somebody uses most often after their friends — every
 /// messenger that has one of these puts it in the list. Built here rather than
-/// added to [chatsProvider] because that list is also what Contacts, search
-/// and the forward sheet read, and none of them should offer to forward
-/// something to a notebook or list it as a person.
+/// added to [chatsProvider] because that list is also what Contacts and
+/// search read, and neither should list it as a person. The forward sheet
+/// does offer it — asked for on 2026-09-22 — but adds it itself, first, as a
+/// copy rather than a send (`showChatPicker(includeSaved: true)`).
 ///
 /// Null until there is something in it: an empty notebook advertising itself
 /// at the top of an empty chat list is noise on the one screen a new install

@@ -3138,6 +3138,18 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatTranscriptHide => 'Сховати текст';
 
   @override
+  String get chatCancelSend => 'Скасувати надсилання';
+
+  @override
+  String get chatDownloadAction => 'Завантажити';
+
+  @override
+  String get chatDownloaded => 'Збережено на телефон';
+
+  @override
+  String get chatDownloadFailed => 'Не вдалося зберегти';
+
+  @override
   String get selfUpdateTitle => 'Встановити оновлення з файлу';
 
   @override
