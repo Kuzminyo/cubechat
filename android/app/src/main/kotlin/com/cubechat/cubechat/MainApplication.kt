@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.StatFs
 import android.provider.Settings
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -86,6 +87,14 @@ class MainApplication : Application() {
         VideoFramePlugin(messenger)
         ExitRecorder.register(applicationContext, messenger)
         SelfUpdater.register(applicationContext, messenger)
+        // Free space where the app keeps files — AirDrop declines an offer that
+        // would not fit rather than failing half way through it.
+        MethodChannel(messenger, "cubechat/storage").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "freeBytes" -> result.success(StatFs(filesDir.absolutePath).availableBytes)
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

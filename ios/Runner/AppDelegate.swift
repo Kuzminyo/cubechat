@@ -290,6 +290,27 @@ import UserNotifications
           result(FlutterMethodNotImplemented)
         }
       }
+      // Free space where the app keeps files — AirDrop declines an offer that
+      // would not fit. "Important usage" is the figure iOS will actually make
+      // room for, not the raw free count.
+      FlutterMethodChannel(
+        name: "cubechat/storage",
+        binaryMessenger: messenger
+      ).setMethodCallHandler { call, result in
+        guard call.method == "freeBytes" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let values = try? home.resourceValues(
+          forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        )
+        if let bytes = values?.volumeAvailableCapacityForImportantUsage {
+          result(Int(bytes))
+        } else {
+          result(nil)
+        }
+      }
     }
   }
 
