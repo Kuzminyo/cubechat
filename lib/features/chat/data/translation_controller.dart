@@ -55,8 +55,12 @@ class MlKitTranslator implements Translator {
     if (source == null || target == null) return null;
     OnDeviceTranslator? translator;
     try {
-      await _models.downloadModel(source.name);
-      await _models.downloadModel(target.name);
+      // Not Wi-Fi-only. The plugin's default is, and on mobile data that
+      // left the download — and the tap that asked for it — waiting for a
+      // network that might not come all day. A tap on "translate" is the
+      // consent to fetch the language, on whatever connection there is.
+      await _models.downloadModel(source.name, isWifiRequired: false);
+      await _models.downloadModel(target.name, isWifiRequired: false);
       translator = OnDeviceTranslator(
         sourceLanguage: TranslateLanguage.values.byName(source.name),
         targetLanguage: TranslateLanguage.values.byName(target.name),

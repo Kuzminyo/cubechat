@@ -14,6 +14,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/app_build.dart';
 import 'core/util/build_probe.dart';
+import 'core/util/exit_probe.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/ui_stall_watch.dart';
@@ -356,6 +357,10 @@ Future<void> main() async {
   // After runApp for the same reason: a question, not a step. The answer lands
   // in the log a few frames in, which is where anybody reading it is looking.
   unawaited(_bootStep('build-facts', BuildProbe.logBuildFacts,
+      limit: const Duration(seconds: 3)));
+  // How the last run ended, if it did not end normally — the stack of the
+  // crash that took the previous log with it. See [ExitProbe].
+  unawaited(_bootStep('previous-exit', ExitProbe.logPreviousExits,
       limit: const Duration(seconds: 3)));
 
   // Also after runApp, and also unawaited: the map is four tabs away, so

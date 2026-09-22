@@ -30,6 +30,9 @@ import io.flutter.plugins.GeneratedPluginRegistrant
 class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash anywhere after this leaves its stack behind for
+        // the next launch's log. See [ExitRecorder].
+        ExitRecorder.install(this)
         // Prewarm failures must NOT crash the process (which, on a background
         // sticky-restart, would loop into "keeps stopping"). If anything here
         // throws, leave the cache empty — MainActivity then spins up its own
@@ -81,6 +84,7 @@ class MainApplication : Application() {
             messenger = messenger,
         )
         VideoFramePlugin(messenger)
+        ExitRecorder.register(applicationContext, messenger)
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

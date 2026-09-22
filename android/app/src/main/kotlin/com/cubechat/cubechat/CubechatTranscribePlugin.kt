@@ -55,7 +55,13 @@ class CubechatTranscribePlugin(
     private val recognitionTimeoutMs = 90_000L
 
     /** What the decode produced: a raw PCM file and the format it is in. */
-    private data class Pcm(val file: File, val sampleRate: Int, val channels: Int)
+    private data class Pcm(
+        val file: File,
+        val sampleRate: Int,
+        val channels: Int,
+        /** Numbers for the failure report: source format, peak, gain. */
+        val note: String = "",
+    )
 
     init {
         methodChannel.setMethodCallHandler { call, result -> onCall(call, result) }
@@ -284,9 +290,10 @@ class CubechatTranscribePlugin(
                 }
             }
             pcm.file.delete()
-            if (peak == 0) return Pcm(resampled, target, 1)
+            val source = "from=${pcm.sampleRate}Hz/${channels}ch;peak=$peak"
+            if (peak == 0) return Pcm(resampled, target, 1, "$source;silent")
             val gain = (0.7 * 32767 / peak).coerceAtMost(8.0)
-            if (gain <= 1.05) return Pcm(resampled, target, 1)
+            if (gain <= 1.05) return Pcm(resampled, target, 1, "$source;gain=1")
             val louder = File.createTempFile("transcribe16kn", ".pcm", context.cacheDir)
             FileInputStream(resampled).buffered(1 shl 16).use { input ->
                 FileOutputStream(louder).buffered(1 shl 16).use { output ->
@@ -302,7 +309,7 @@ class CubechatTranscribePlugin(
                 }
             }
             resampled.delete()
-            return Pcm(louder, target, 1)
+            return Pcm(louder, target, 1, "$source;gain=${"%.1f".format(gain)}")
         } catch (e: Exception) {
             resampled.delete()
             pcm.file.delete()
@@ -318,54 +325,68 @@ class CubechatTranscribePlugin(
      */
     @android.annotation.TargetApi(Build.VERSION_CODES.TIRAMISU)
     private fun start(pcm: Pcm, wanted: List<String>, result: MethodChannel.Result) {
-        val recognizer = try {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        } catch (e: Exception) {
-            pcm.file.delete()
-            busy = false
-            result.error("unavailable", "On-device speech recognition unavailable", null)
-            return
-        }
-
         // FlutterResult may be answered exactly once; a second call is a crash
         // rather than a warning, and these callbacks can fire more than once.
         var answered = false
+        var recognizer: SpeechRecognizer? = null
         var descriptor: ParcelFileDescriptor? = null
         var timeout: Runnable? = null
-        fun answer(text: String?, code: String? = null, details: String? = null) {
-            if (answered) return
-            answered = true
-            busy = false
-            timeout?.let { main.removeCallbacks(it) }
-            try { recognizer.destroy() } catch (_: Exception) {}
+        val began = SystemClock.elapsedRealtime()
+
+        // **What happened, sent back with any failure.** Three builds in a row
+        // came back with one number — recognizer_12, then recognizer_7 twice —
+        // and nothing to tell apart "the recogniser never read the file",
+        // "it read silence" and "it heard sound and found no words". This says
+        // how long the audio was and how loud, which language was used, and
+        // whether the recogniser reported sound levels, speech starting and
+        // speech ending. Numbers and language tags only, never words.
+        val bytesPerSecond = 2L * pcm.channels * pcm.sampleRate
+        val notes = StringBuilder(
+            "audio=${pcm.file.length() * 1000 / bytesPerSecond}ms@${pcm.sampleRate}Hz",
+        )
+        if (pcm.note.isNotEmpty()) notes.append(';').append(pcm.note)
+        fun note(text: String) {
+            notes.append(';').append(text)
+        }
+
+        fun releaseAttempt() {
+            try { recognizer?.destroy() } catch (_: Exception) {}
+            recognizer = null
             // startListening queues work on Android's handler. Closing in its
             // finally block races service binding and Binder descriptor copying.
             // Retain the source until completion/error/timeout instead.
             try { descriptor?.close() } catch (_: Exception) {}
-            pcm.file.delete()
-            if (code == null) result.success(text)
-            else result.error(code, "On-device transcription failed", details)
+            descriptor = null
         }
 
-        descriptor = try {
-            ParcelFileDescriptor.open(pcm.file, ParcelFileDescriptor.MODE_READ_ONLY)
-        } catch (_: Exception) {
-            answer(null, "source_unavailable")
-            return
+        fun finish(text: String?, code: String? = null) {
+            if (answered) return
+            answered = true
+            busy = false
+            timeout?.let { main.removeCallbacks(it) }
+            releaseAttempt()
+            pcm.file.delete()
+            note("after=${SystemClock.elapsedRealtime() - began}ms")
+            if (code == null) result.success(text)
+            else result.error(code, "On-device transcription failed", notes.toString())
         }
-        timeout = Runnable { answer(null, "timeout") }
+
+        timeout = Runnable { finish(null, "timeout") }
         main.postDelayed(timeout, recognitionTimeoutMs)
 
-        fun intentFor(language: String?) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        fun intentFor(
+            language: String?,
+            source: ParcelFileDescriptor?,
+            segmented: Boolean,
+        ) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
             if (language != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
-            putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, descriptor)
-            // What the descriptor actually holds, read off the file rather
-            // than assumed. These extras are a description, and a wrong one is
-            // believed.
+            if (source != null) putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, source)
+            // What the descriptor actually holds. These extras are a
+            // description, and a wrong one is believed.
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, pcm.channels)
             putExtra(
                 RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,
@@ -376,36 +397,130 @@ class CubechatTranscribePlugin(
                 pcm.sampleRate,
             )
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // The mode the platform documents for a whole file: the recogniser
+            // reads the source to its end and hands back every stretch of
+            // speech in it (onSegmentResults), then says it has finished
+            // (onEndOfSegmentedSession). Without it a recogniser may stop at
+            // the first pause it hears — or, reading a file faster than real
+            // time, before it thinks anybody has started talking.
+            if (segmented) {
+                putExtra(
+                    RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                    RecognizerIntent.EXTRA_AUDIO_SOURCE,
+                )
+            }
         }
 
-        recognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onResults(results: Bundle?) {
-                val text = results
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull()
-                answer(if (text.isNullOrBlank()) null else text)
-            }
-
-            override fun onError(error: Int) = answer(null, "recognizer_$error")
-
-            override fun onReadyForSpeech(params: Bundle?) = Unit
-            override fun onBeginningOfSpeech() = Unit
-            override fun onRmsChanged(rmsdB: Float) = Unit
-            override fun onBufferReceived(buffer: ByteArray?) = Unit
-            override fun onEndOfSpeech() = Unit
-            override fun onPartialResults(partialResults: Bundle?) = Unit
-            override fun onEvent(eventType: Int, params: Bundle?) = Unit
-        })
-
-        fun listen(language: String?) {
+        // One try at the file. The first is the ordinary session; if that
+        // hears no words (ERROR_NO_MATCH, 7 — every attempt on the reporting
+        // phone) the same file goes again as a segmented session.
+        fun attempt(language: String?, segmented: Boolean) {
             if (answered) return
+            releaseAttempt()
+            val mode = if (segmented) "seg" else "one"
+            val r = try {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            } catch (e: Exception) {
+                finish(null, "unavailable")
+                return
+            }
+            recognizer = r
+            val source = try {
+                ParcelFileDescriptor.open(pcm.file, ParcelFileDescriptor.MODE_READ_ONLY)
+            } catch (_: Exception) {
+                finish(null, "source_unavailable")
+                return
+            }
+            descriptor = source
+
+            var ready = false
+            var speechBegan = false
+            var speechEnded = false
+            var levels = 0
+            var loudest = -100f
+            val segments = mutableListOf<String>()
+            fun summary() = "$mode:" +
+                (if (ready) "ready," else "") +
+                "rms=$levels/max=${"%.1f".format(loudest)}" +
+                (if (speechBegan) ",begin" else "") +
+                (if (speechEnded) ",end" else "") +
+                (if (segmented) ",segments=${segments.size}" else "")
+            fun current() = !answered && r === recognizer
+
+            r.setRecognitionListener(object : RecognitionListener {
+                override fun onResults(results: Bundle?) {
+                    if (!current()) return
+                    val text = results
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                    note(summary())
+                    when {
+                        !text.isNullOrBlank() -> finish(text)
+                        !segmented -> attempt(language, true)
+                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
+                        else -> finish(null)
+                    }
+                }
+
+                override fun onSegmentResults(segmentResults: Bundle) {
+                    if (!current()) return
+                    segmentResults
+                        .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { segments.add(it.trim()) }
+                }
+
+                override fun onEndOfSegmentedSession() {
+                    if (!current()) return
+                    note(summary())
+                    if (segments.isNotEmpty()) {
+                        finish(segments.joinToString(" "))
+                    } else {
+                        finish(null, "recognizer_${SpeechRecognizer.ERROR_NO_MATCH}")
+                    }
+                }
+
+                override fun onError(error: Int) {
+                    if (!current()) return
+                    note("${summary()},error=$error")
+                    when {
+                        error == SpeechRecognizer.ERROR_NO_MATCH && !segmented ->
+                            attempt(language, true)
+                        segments.isNotEmpty() -> finish(segments.joinToString(" "))
+                        else -> finish(null, "recognizer_$error")
+                    }
+                }
+
+                override fun onReadyForSpeech(params: Bundle?) {
+                    ready = true
+                }
+
+                override fun onBeginningOfSpeech() {
+                    speechBegan = true
+                }
+
+                override fun onRmsChanged(rmsdB: Float) {
+                    levels++
+                    if (rmsdB > loudest) loudest = rmsdB
+                }
+
+                override fun onEndOfSpeech() {
+                    speechEnded = true
+                }
+
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+
             try {
                 // `startListening`, not `recognize` — there is no such method.
                 // With EXTRA_AUDIO_SOURCE set, listening reads the descriptor
                 // instead of the microphone.
-                recognizer.startListening(intentFor(language))
+                r.startListening(intentFor(language, source, segmented))
             } catch (e: Exception) {
-                answer(null, "start_failed")
+                finish(null, "start_failed")
             }
         }
 
@@ -421,19 +536,27 @@ class CubechatTranscribePlugin(
         // time. Nothing leaves the phone either way: the model comes from the
         // system's own recognition service, the audio goes nowhere.
         val first = wanted.firstOrNull()
+        val checker = try {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+        } catch (e: Exception) {
+            finish(null, "unavailable")
+            return
+        }
+        recognizer = checker
         try {
-            recognizer.checkRecognitionSupport(
-                intentFor(first),
+            checker.checkRecognitionSupport(
+                intentFor(first, null, false),
                 context.mainExecutor,
                 object : RecognitionSupportCallback {
                     override fun onSupportResult(support: RecognitionSupport) {
                         if (answered) return
                         val installed = support.installedOnDeviceLanguages
-                        val summary = "wanted=${wanted.joinToString(",")};" +
-                            "installed=${installed.joinToString(",")}"
+                        note("wanted=${wanted.joinToString(",")}")
+                        note("installed=${installed.joinToString(",")}")
                         val pick = pickLanguage(wanted, installed)
                         if (pick != null) {
-                            listen(pick)
+                            note("lang=$pick")
+                            attempt(pick, false)
                             return
                         }
                         val pending = support.pendingOnDeviceLanguages
@@ -442,25 +565,31 @@ class CubechatTranscribePlugin(
                             support.supportedOnDeviceLanguages + pending,
                         )
                         if (fetch == null) {
-                            answer(null, "language_not_supported", summary)
+                            finish(null, "language_not_supported")
                             return
                         }
                         if (pickLanguage(listOf(fetch), pending) == null) {
                             try {
-                                recognizer.triggerModelDownload(intentFor(fetch))
+                                checker.triggerModelDownload(intentFor(fetch, null, false))
                             } catch (_: Exception) {
                             }
                         }
-                        answer(null, "model_downloading", "$summary;fetching=$fetch")
+                        note("fetching=$fetch")
+                        finish(null, "model_downloading")
                     }
 
                     // A recogniser that cannot say what it has: try what was
                     // asked for, as before.
-                    override fun onError(error: Int) = listen(first)
+                    override fun onError(error: Int) {
+                        if (answered) return
+                        note("support_error=$error")
+                        attempt(first, false)
+                    }
                 },
             )
         } catch (e: Exception) {
-            listen(first)
+            note("support_threw")
+            attempt(first, false)
         }
     }
 
