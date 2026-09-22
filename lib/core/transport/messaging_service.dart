@@ -42,6 +42,7 @@ import '../../features/peers/data/sending_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
+import '../../features/airdrop/data/airdrop_receive_controller.dart';
 import '../../features/profile/data/media_download_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -360,6 +361,17 @@ class MessagingService {
 
   /// AirDrop offers and answers as they arrive — see `features/airdrop`.
   Stream<NearbyInbound> get nearbyInbound => _nearbyInbound.stream;
+
+  /// Set by the AirDrop controller for as long as it lives. Asked about every
+  /// incoming file manifest, and handed every AirDrop file once it is whole.
+  NearbyFileSink? nearbyFileSink;
+
+  /// Whether a stranger's XX handshake is answered and the announcement is
+  /// public: the profile's "Discoverable nearby", or AirDrop's "Everyone"
+  /// window — which exists to be found by people not yet in your contacts.
+  bool get _discoverableNow =>
+      _ref.read(discoverySettingsProvider).discoverable ||
+      _ref.read(airdropReceiveProvider).everyoneAt(DateTime.now());
 
   /// Watches an incoming file that has stopped arriving, and asks again.
   ///
@@ -714,6 +726,7 @@ class MessagingService {
     Uint8List manifestBytes, {
     required Uint8List senderPub,
     required DateTime sentAt,
+    bool direct = false,
   }) =>
       _ingestMediaManifest(
         peerId: _nostrPeerId,
@@ -721,6 +734,7 @@ class MessagingService {
         wasSigned: true,
         manifestBytes: manifestBytes,
         sentAt: sentAt,
+        direct: direct,
       );
 
   @visibleForTesting
@@ -2119,6 +2133,14 @@ class MessagingService {
     String mime = 'application/octet-stream',
     Uint8List? reuseMediaId,
     bool appendLocally = true,
+
+    /// AirDrop: the direct Bluetooth link to [chatId] or an error — never the
+    /// mesh, never the relay, never the queue.
+    bool directOnly = false,
+    FileTransferSource source = FileTransferSource.chat,
+
+    /// Shown beside an AirDrop transfer, which has no chat to be read in.
+    String? peerName,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -2159,8 +2181,12 @@ class MessagingService {
     final directToThem = session?.isEstablished ?? false;
     final meshCarries = size <= maxFileBytesMesh &&
         (size <= FileChunk.maxChunks * kBleMediaChunkData || directToThem);
-    final relayOnly =
-        (!_hasAnyLink || !meshCarries) && _relayClient?.isConnected == true;
+    if (directOnly && !hasDirectLinkTo(canonicalId)) {
+      throw const MediaRouteUnavailable();
+    }
+    final relayOnly = !directOnly &&
+        (!_hasAnyLink || !meshCarries) &&
+        _relayClient?.isConnected == true;
     final cap = relayOnly ? maxFileBytesRelay : maxFileBytesMesh;
     if (size > cap) {
       throw FileTooLarge(size: size, cap: cap, relayOnly: relayOnly);
@@ -2222,9 +2248,11 @@ class MessagingService {
         status: FileTransferStatus.queued,
         createdAt: msg.sentAt,
         updatedAt: msg.sentAt,
+        source: source,
+        peerName: peerName,
       ),
     );
-    if (!_hasMediaRoute(canonicalId)) {
+    if (!directOnly && !_hasMediaRoute(canonicalId)) {
       wakeRelays();
       nudgeFileQueue();
       return msg;
@@ -2232,8 +2260,11 @@ class MessagingService {
 
     // "Sending a video…" on the other phone for as long as chunks are leaving
     // this one. Not for a file waiting on a route above: nothing is on its way.
+    // Nor for an AirDrop: that belongs to no conversation, and the indicator
+    // would light up in a chat the file is not going to.
     final sending = PeerActivity.sendingFor(mime);
-    _beginSendingMedia(canonicalId, sending);
+    final announces = source == FileTransferSource.chat;
+    if (announces) _beginSendingMedia(canonicalId, sending);
     // Not awaited: the baseline is read off the UI thread while the send gets
     // going, and [_logSendCpu] waits for it at the end.
     final cpu = CpuProbe.instance.openSpan();
@@ -2304,6 +2335,7 @@ class MessagingService {
         session: session,
         canonicalId: canonicalId,
         relayOnly: relayOnly,
+        directOnly: directOnly,
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
@@ -2361,6 +2393,7 @@ class MessagingService {
             session: session,
             canonicalId: canonicalId,
             relayOnly: relayOnly,
+            directOnly: directOnly,
             gap: gap,
           );
           gap = delivery.gap;
@@ -2424,7 +2457,7 @@ class MessagingService {
       rethrow;
     } finally {
       _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
-      _endSendingMedia(canonicalId, sending);
+      if (announces) _endSendingMedia(canonicalId, sending);
       unawaited(_logSendCpu(cpu, safe));
     }
     return msg;
@@ -2465,6 +2498,9 @@ class MessagingService {
     final transfers = _ref.read(fileTransferControllerProvider.notifier);
     final task = _ref.read(fileTransferControllerProvider)[transferId];
     if (task == null) return;
+    // An AirDrop needs the person in reach and their yes; its retry lives on
+    // the AirDrop page. Resent from here it would land in a chat.
+    if (task.source == FileTransferSource.airdrop) return;
     // Retrying a transfer *into* this phone is asking for it again: the bytes
     // are the sender's, and their outbox is the only place a second copy
     // exists. The transfer centre has always offered the button here; it used
@@ -5551,20 +5587,13 @@ class MessagingService {
       ))
           .links;
 
-  /// [_sendControlToPeer], keeping apart what the link count merges.
-  ///
-  /// The count stays exactly what it was — Bluetooth writes plus one for a
-  /// relay that confirmed — so every receipt, reaction and typing notice reads
-  /// the same number as before. What is added is whether a zero means nothing
-  /// left the phone, or relays took the frame and were silent about it.
-  Future<ControlDelivery> _deliverControlToPeer({
-    required String canonicalId,
+  /// One signed, sealed control frame for [peerPub] — the bytes
+  /// [_deliverControlToPeer] sends, built in one place so AirDrop's
+  /// direct-only path ([sendNearbyFrame]) sends exactly what a receipt would.
+  Future<Uint8List> _sealedControlFrame({
     required Uint8List peerPub,
     required InnerPayloadType type,
     required Uint8List innerBody,
-    bool relayOnly = false,
-    bool wakesPeer = false,
-    bool wakesCall = false,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final myHash = await _myPubkeyHash();
@@ -5592,8 +5621,29 @@ class MessagingService {
       body: body,
     );
     _dedup.acceptEnvelope(env);
-    final frameBytes =
-        Frame(type: FrameType.transport, payload: env.encode()).encode();
+    return Frame(type: FrameType.transport, payload: env.encode()).encode();
+  }
+
+  /// [_sendControlToPeer], keeping apart what the link count merges.
+  ///
+  /// The count stays exactly what it was — Bluetooth writes plus one for a
+  /// relay that confirmed — so every receipt, reaction and typing notice reads
+  /// the same number as before. What is added is whether a zero means nothing
+  /// left the phone, or relays took the frame and were silent about it.
+  Future<ControlDelivery> _deliverControlToPeer({
+    required String canonicalId,
+    required Uint8List peerPub,
+    required InnerPayloadType type,
+    required Uint8List innerBody,
+    bool relayOnly = false,
+    bool wakesPeer = false,
+    bool wakesCall = false,
+  }) async {
+    final frameBytes = await _sealedControlFrame(
+      peerPub: peerPub,
+      type: type,
+      innerBody: innerBody,
+    );
 
     if (relayOnly) {
       return combineControlDelivery(
@@ -6814,7 +6864,7 @@ class MessagingService {
         // discovery off the only accepted opener is IK, which the caller can
         // only produce if they already hold that key — so an unknown caller
         // gets nothing, not even confirmation that a cubechat identity is here.
-        if (!_ref.read(discoverySettingsProvider).discoverable) {
+        if (!_discoverableNow) {
           DebugLog.instance
               .log('NOISE', 'refused XX from $peerId: not discoverable');
           return;
@@ -7496,6 +7546,7 @@ class MessagingService {
             wasSigned: verifiedSenderEdPub != null,
             manifestBytes: unpacked.body,
             sentAt: stamp,
+            direct: incomingRoute == MessageRoute.bluetooth,
           );
 
         case InnerPayloadType.viewOnceConsumed:
@@ -7851,6 +7902,35 @@ class MessagingService {
         return;
       }
 
+      final idHex = _hexOf(manifest.mediaId);
+      final transfers = _ref.read(fileTransferControllerProvider.notifier);
+      if (_ref.read(fileTransferControllerProvider)[idHex]?.source ==
+          FileTransferSource.airdrop) {
+        // Not the chat's: AirDrop moves it into its own folder, or says the
+        // transfer is over and it is not wanted any more.
+        final senderHex = senderPub == null ? null : _hexOf(senderPub);
+        final sink = nearbyFileSink;
+        final kept = sink == null || senderHex == null
+            ? null
+            : await sink.keep(
+                mediaIdHex: idHex,
+                senderHex: senderHex,
+                file: assembled.file,
+                name: safeFileName(manifest.name ?? 'file'),
+              );
+        if (kept == null) {
+          if (await assembled.file.exists()) await assembled.file.delete();
+          transfers.setStatus(idHex, FileTransferStatus.canceled);
+          DebugLog.instance
+              .log('AIRDROP', 'file $idHex came after its transfer ended');
+          return;
+        }
+        transfers.complete(idHex, filePath: kept, bytesTotal: assembled.bytes);
+        DebugLog.instance
+            .log('AIRDROP', 'file $idHex kept (${assembled.bytes}B)');
+        return;
+      }
+
       // The name comes from the sender, so it decides nothing about *where*
       // the file goes — only what it is called once it is there.
       final safe = safeFileName(manifest.name ?? 'file');
@@ -7941,6 +8021,10 @@ class MessagingService {
     required bool wasSigned,
     required Uint8List manifestBytes,
     required DateTime sentAt,
+
+    /// Whether it came straight from the sender's phone over Bluetooth —
+    /// AirDrop takes files by no other road.
+    bool direct = false,
   }) async {
     if (!wasSigned) {
       DebugLog.instance.log('CRYPTO',
@@ -7956,6 +8040,25 @@ class MessagingService {
       return;
     }
     final key = _hexOf(manifest.mediaId);
+    // AirDrop's ids are AirDrop's to judge: one of its accepted offers, over
+    // a direct link, from the person who made the offer — or refused.
+    final senderHex = senderPub == null ? null : _hexOf(senderPub);
+    final nearby = manifest.kind == MediaKind.file && senderHex != null
+        ? nearbyFileSink?.judge(
+              mediaIdHex: key,
+              senderHex: senderHex,
+              direct: direct,
+            ) ??
+            NearbyFileVerdict.notNearby
+        : NearbyFileVerdict.notNearby;
+    if (nearby == NearbyFileVerdict.refuse) {
+      DebugLog.instance.log(
+        'AIRDROP',
+        'drop manifest $key from $peerId — no accepted offer over a direct '
+            'link from this sender',
+      );
+      return;
+    }
     // The one line that says a transfer started coming in.
     //
     // Every failure on this path was already logged and every success was
@@ -8023,6 +8126,14 @@ class MessagingService {
               status: FileTransferStatus.transferring,
               createdAt: now,
               updatedAt: now,
+              source: nearby == NearbyFileVerdict.keep
+                  ? FileTransferSource.airdrop
+                  : FileTransferSource.chat,
+              peerName: senderHex == null
+                  ? null
+                  : _ref
+                      .read(knownPeersControllerProvider)[senderHex]
+                      ?.displayName,
             ),
           );
     }
@@ -8698,6 +8809,7 @@ class MessagingService {
     required ChatSession? session,
     required String canonicalId,
     required bool relayOnly,
+    bool directOnly = false,
     Uint8List? senderIdentityPub,
     Uint8List? senderEphemeralPub,
   }) async {
@@ -8754,6 +8866,7 @@ class MessagingService {
       session: session,
       canonicalId: canonicalId,
       relayOnly: relayOnly,
+      directOnly: directOnly,
       gap: Duration.zero,
       // The one frame of a transfer that is news. See the parameter.
       wakesPeer: true,
@@ -9655,6 +9768,7 @@ class MessagingService {
           .values
           .where(
             (task) =>
+                task.source == FileTransferSource.chat &&
                 task.direction == FileTransferDirection.outgoing &&
                 task.status == FileTransferStatus.queued &&
                 _hasMediaRoute(task.chatId),
@@ -9789,6 +9903,7 @@ class MessagingService {
     /// rang it thirty. Reported as "three stickers, thirty-four messages" —
     /// and the count was right, it was counting events.
     bool wakesPeer = false,
+    bool directOnly = false,
   }) async {
     var next = gap;
     for (var attempt = 1; attempt <= _mediaChunkAttempts; attempt++) {
@@ -9798,6 +9913,7 @@ class MessagingService {
         canonicalId: canonicalId,
         relayOnly: relayOnly,
         wakesPeer: wakesPeer,
+        directOnly: directOnly,
       )) {
         return (sent: true, gap: next);
       }
@@ -9815,7 +9931,10 @@ class MessagingService {
     required String canonicalId,
     required bool relayOnly,
     bool wakesPeer = false,
+    bool directOnly = false,
   }) async {
+    // AirDrop: the person in reach, or nobody. See [_writeDirectOnly].
+    if (directOnly) return _writeDirectOnly(canonicalId, frameBytes);
     // Everything through here is a chunk or a manifest, which is the whole of
     // what [RelayLane.media] means.
     const lane = RelayLane.media;
@@ -11468,7 +11587,7 @@ class MessagingService {
       final signedBody = await buildSignedAnnouncement();
       final originHash = await _myPubkeyHash();
 
-      if (!_ref.read(discoverySettingsProvider).discoverable) {
+      if (!_discoverableNow) {
         await _announcePrivately(
             signedBody: signedBody, originHash: originHash);
         return;
@@ -12140,6 +12259,86 @@ class MessagingService {
       }
     }
     return false;
+  }
+
+  /// Whether [session] rides a Bluetooth link to that very phone — ours as
+  /// central, or theirs connected to our peripheral — rather than a mesh route
+  /// or the relay.
+  bool _isDirectSession(ChatSession session) {
+    final client = _clients[session.peerId];
+    if (client != null && client.isConnected) return true;
+    return _ref
+        .read(peripheralControllerProvider)
+        .connectedCentralIds
+        .contains(session.peerId);
+  }
+
+  ChatSession? _directSessionTo(String peerHex) {
+    for (final session in _ref.read(chatSessionManagerProvider).values) {
+      if (session.remotePubkeyHex == peerHex &&
+          session.isEstablished &&
+          _isDirectSession(session)) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  /// AirDrop's question: is this person in Bluetooth reach, with a session up?
+  bool hasDirectLinkTo(String peerHex) => _directSessionTo(peerHex) != null;
+
+  /// Everybody [hasDirectLinkTo] says yes to, each once.
+  Iterable<String> directPeerHexes() {
+    final out = <String>{};
+    for (final session in _ref.read(chatSessionManagerProvider).values) {
+      final hex = session.remotePubkeyHex;
+      if (hex == null || !session.isEstablished) continue;
+      if (_isDirectSession(session)) out.add(hex);
+    }
+    return out;
+  }
+
+  /// Write [frameBytes] to [peerHex] over the direct link and nothing else:
+  /// no mesh fan-out, no relay. False when there is no such link or it
+  /// refused the write.
+  ///
+  /// A frame notified from our peripheral reaches every central subscribed to
+  /// it, and those may pass it on — but it arrives at the person it is for in
+  /// one hop first, and the receiver's duplicate check drops the copies.
+  Future<bool> _writeDirectOnly(String peerHex, Uint8List frameBytes) async {
+    final session = _directSessionTo(peerHex);
+    if (session == null) return false;
+    final client = _clients[session.peerId];
+    try {
+      if (client != null && client.isConnected) {
+        return await _writeFrameToClient(client, frameBytes);
+      }
+      return await _notifyFrameToPeripheral(frameBytes);
+    } catch (e) {
+      DebugLog.instance.log('AIRDROP', 'direct write failed: $e');
+      return false;
+    }
+  }
+
+  /// One AirDrop frame to [peerHex], over the direct link only. Exactly one of
+  /// [offer] and [answer].
+  Future<bool> sendNearbyFrame(
+    String peerHex, {
+    NearbyOffer? offer,
+    NearbyAnswer? answer,
+  }) async {
+    assert((offer == null) != (answer == null), 'one of offer and answer');
+    if (_disposed || !hasDirectLinkTo(peerHex)) return false;
+    final peerPub = _resolvePeerPub(peerHex);
+    if (peerPub == null) return false;
+    final frame = await _sealedControlFrame(
+      peerPub: peerPub,
+      type: offer != null
+          ? InnerPayloadType.nearbyOffer
+          : InnerPayloadType.nearbyAnswer,
+      innerBody: offer?.encode() ?? answer!.encode(),
+    );
+    return _writeDirectOnly(peerHex, frame);
   }
 
   /// True while a held frame is recent enough to be worth spending radio on.
