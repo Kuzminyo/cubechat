@@ -58,6 +58,7 @@ class _Port implements AirDropPort {
     String from, {
     NearbyOffer? offer,
     NearbyAnswer? answer,
+    NearbyBump? bump,
     bool isDirect = true,
   }) =>
       inboundCtl.add(
@@ -66,6 +67,7 @@ class _Port implements AirDropPort {
           direct: isDirect,
           offer: offer,
           answer: answer,
+          bump: bump,
         ),
       );
 
@@ -563,6 +565,29 @@ void main() {
         async.flushMicrotasks();
         expect(port.sent, isEmpty);
         expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        c.dispose();
+      });
+    });
+
+    // The bump gesture itself: a later task's BumpController handles it.
+    // AirDrop must not answer it or start anything on its own.
+    test('a bump alone changes nothing — no answer, no transfer', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        port.deliver(
+          _bob,
+          bump: NearbyBump(
+            bumpId: _id(70),
+            hasFiles: true,
+            card: Uint8List.fromList([1, 2, 3]),
+          ),
+        );
+        async.flushMicrotasks();
+        expect(port.sent, isEmpty);
+        expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
         c.dispose();
       });
     });

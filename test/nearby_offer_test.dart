@@ -380,6 +380,19 @@ void main() {
       );
     });
 
+    // Symmetric with decode refusing cardLen 0 below: an encoder that let this
+    // through would build bytes its own decoder calls malformed.
+    test('refuses to encode an empty card', () {
+      expect(
+        () => NearbyBump(
+          bumpId: _id(1),
+          hasFiles: false,
+          card: card(0),
+        ),
+        throwsArgumentError,
+      );
+    });
+
     group('decode rejects', () {
       Uint8List good() => NearbyBump(
             bumpId: _id(4),

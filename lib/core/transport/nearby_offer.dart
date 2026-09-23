@@ -312,6 +312,11 @@ class NearbyBump {
     if (bumpId.length != nearbyIdLen) {
       throw ArgumentError.value(bumpId.length, 'bumpId', 'not $nearbyIdLen');
     }
+    // Symmetric with decode, which refuses a cardLen of 0 as malformed — an
+    // encoder that built one would produce bytes its own decoder rejects.
+    if (card.isEmpty) {
+      throw ArgumentError.value(card.length, 'card', 'must not be empty');
+    }
     if (card.length > maxCard) {
       throw ArgumentError.value(card.length, 'card', 'longer than $maxCard');
     }
