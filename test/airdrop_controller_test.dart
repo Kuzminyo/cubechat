@@ -805,26 +805,89 @@ void main() {
       });
     });
 
-    test('a bumped offer is still refused when already busy', () {
+    test('a bumped offer is still refused when the peer is already busy', () {
+      fakeAsync((async) {
+        // A contact, not a stranger: for a stranger the contacts-only check
+        // runs first and always wins, so it would never reach "busy" at
+        // all — that path is exercised by the sequential-offers test below.
+        final port = _Port()..direct.add(_bob);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        // An earlier, ordinary request from Bob is still sitting unanswered.
+        port.deliver(_bob, offer: _offer(84));
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).requests, hasLength(1));
+
+        c.read(bumpLedgerProvider).note(_bob, c.read(airdropClockProvider)());
+        port.deliver(_bob, offer: _offer(85));
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).requests, hasLength(1));
+        expect(port.answersTo(_bob).last.reason, NearbyDeclineReason.busy);
+        c.dispose();
+      });
+    });
+
+    test('one bump buys exactly one auto-accepted offer', () {
       fakeAsync((async) {
         final port = _Port()..direct.add(_eve);
         final c = make(port, async: async);
         c.read(airdropControllerProvider);
         c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
-        // Bumped and busy both land on the same phone: the first offer is
-        // taken (bumped) and runs to acceptance concurrently with the
-        // second being refused, so only "some answer was a busy decline"
-        // is safe to assert — the bumped offer's own "accepted" answer can
-        // legitimately land after it.
-        port
-          ..deliver(_eve, offer: _offer(84))
-          ..deliver(_eve, offer: _offer(85));
+        port.deliver(_eve, offer: _offer(87));
         async.flushMicrotasks();
-        expect(c.read(airdropControllerProvider).transfers, hasLength(1));
-        expect(
-          port.answersTo(_eve).any((a) => a.reason == NearbyDeclineReason.busy),
-          isTrue,
-        );
+        expect(port.answersTo(_eve).last.kind, NearbyAnswerKind.accepted);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+
+        // A second, non-overlapping offer within the same ten seconds: the
+        // note was already spent by the first one, so this is an ordinary
+        // stranger offer in contacts-only mode.
+        async.elapse(const Duration(seconds: 2));
+        port.deliver(_eve, offer: _offer(88));
+        async.flushMicrotasks();
+        final answers = port.answersTo(_eve);
+        expect(answers.last.kind, NearbyAnswerKind.declined);
+        expect(answers.last.reason, NearbyDeclineReason.contactsOnly);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+        c.dispose();
+      });
+    });
+
+    test('the ten-second window includes the boundary and excludes past it',
+        () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        async.elapse(const Duration(seconds: 10));
+        port.deliver(_eve, offer: _offer(89));
+        async.flushMicrotasks();
+        expect(port.answersTo(_eve).last.kind, NearbyAnswerKind.accepted);
+
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        async.elapse(const Duration(seconds: 10, milliseconds: 1));
+        port.deliver(_eve, offer: _offer(90));
+        async.flushMicrotasks();
+        final answers = port.answersTo(_eve);
+        expect(answers.last.kind, NearbyAnswerKind.declined);
+        expect(answers.last.reason, NearbyDeclineReason.contactsOnly);
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer with the Wi-Fi flag opens the receiver', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final wifi = _Wifi();
+        final c = make(port, async: async, wifi: wifi);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        port.deliver(_eve, offer: _offer(91, flags: nearbyFlagWifi));
+        async.flushMicrotasks();
+        final answer = port.answersTo(_eve).last;
+        expect(answer.kind, NearbyAnswerKind.accepted);
+        expect(answer.wifi, isNotNull);
+        expect(wifi.started, hasLength(1));
         c.dispose();
       });
     });

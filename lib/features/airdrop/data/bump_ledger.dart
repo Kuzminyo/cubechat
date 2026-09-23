@@ -9,8 +9,14 @@ class BumpLedger {
 
   void note(String peerHex, DateTime at) => _at[peerHex] = at;
 
-  bool recent(String peerHex, DateTime now) {
-    final at = _at[peerHex];
+  /// One bump buys exactly one auto-accepted offer: the spec ties the
+  /// auto-accept to *the* offer that follows the gesture, not to every offer
+  /// that happens to arrive in the next ten seconds. So this both answers
+  /// "was the bump recent enough" and spends the note — found or not, it is
+  /// gone after this call, and a second offer from the same person goes
+  /// through the ordinary rules.
+  bool take(String peerHex, DateTime now) {
+    final at = _at.remove(peerHex);
     return at != null && now.difference(at) <= acceptWithin;
   }
 

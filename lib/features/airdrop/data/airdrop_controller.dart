@@ -506,8 +506,10 @@ class AirDropController extends Notifier<AirDropState>
     // Bringing the phone to theirs is the consent that "Прийняти" would have
     // been: no spam accounting for it (nothing to guard against — the person
     // is standing right here), and it is not "a stranger asking", so the
-    // contacts-only filter below does not apply to it either.
-    final bumped = ref.read(bumpLedgerProvider).recent(peerHex, _now);
+    // contacts-only filter below does not apply to it either. `take` spends
+    // the note: one bump buys exactly one auto-accepted offer, not every
+    // offer that arrives in the next ten seconds.
+    final bumped = ref.read(bumpLedgerProvider).take(peerHex, _now);
     if (!bumped) {
       final spam = ref.read(airdropSpamProvider.notifier);
       if (contact) {
