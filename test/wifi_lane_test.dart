@@ -303,6 +303,59 @@ void main() {
     );
   });
 
+  test(
+      'close() called from onProgress mid-file leaves no leftover part file and never calls onFile',
+      () async {
+    final rxDir = await Directory('${tmp.path}/rx4').create();
+    var onFileCalled = false;
+    var closedOnce = false;
+    late final WifiLaneReceiver rx;
+    rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'aa' * 16: 3 * 1024 * 1024},
+      tempDir: rxDir,
+      onProgress: (_, __, ___) {
+        if (closedOnce) return;
+        closedOnce = true;
+        // Fires synchronously from inside the very batch that just
+        // completed `await raf.writeFrom(...)` for this data record — the
+        // exact window the queue-tail fix in close() targets, without
+        // depending on any real-time delay to land inside it. Not awaited:
+        // the app is entitled to call close() from a progress callback
+        // without knowing it must not block on the result.
+        unawaited(rx.close());
+      },
+      onFile: (_, __) async {
+        onFileCalled = true;
+        return true;
+      },
+    );
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: rx.port, key: key),
+      transferId: tid,
+    );
+    final f = await source('big3.bin', 3 * 1024 * 1024, 9);
+    final ok = await tx!
+        .sendFile(
+          mediaIdHex: 'aa' * 16,
+          file: f,
+          size: 3 * 1024 * 1024,
+          onProgress: (_, __, ___) {},
+          cancelled: () => false,
+        )
+        .timeout(const Duration(seconds: 5));
+    expect(ok, isFalse);
+    await tx.close();
+    expect(onFileCalled, isFalse);
+    expect(
+      rxDir.listSync().where((e) => e.path.endsWith('.part')),
+      isEmpty,
+    );
+  });
+
   group('pickLanAddress', () {
     InternetAddress ip(String s) => InternetAddress(s);
     test('Wi-Fi over cellular, private IPv4 first', () {

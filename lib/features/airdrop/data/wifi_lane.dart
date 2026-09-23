@@ -151,11 +151,6 @@ class WifiLaneReceiver {
   bool _closed = false;
   final Completer<void> _done = Completer<void>();
 
-  /// True while a batch handler is running as the current `_queue` entry —
-  /// so a `close()` called *from inside* that handler (a manifest violation,
-  /// say) knows not to wait on `_queue` for itself. See [close].
-  bool _insideQueue = false;
-
   /// Every socket accepted and not yet destroyed — not just the proven one.
   /// A decoy connection can still be mid-handshake when [close] runs (the
   /// idle timer firing while a second phone is dialling in), and it must not
@@ -204,13 +199,18 @@ class WifiLaneReceiver {
           DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
           _destroy(socket);
           sub.cancel();
+          // Nothing is queued for this chunk (we bailed before pausing or
+          // enqueueing anything), so `_queue`'s current value — whatever
+          // batch, on any socket, happens to be running right now — does
+          // not depend on this callback returning. The public close() is
+          // therefore safe here, not the internal variant.
+          if (socket == _proven) close();
           return;
         }
         if (sealed.isEmpty) return;
         sub.pause();
         _queue = _queue.then((_) async {
           if (_closed) return;
-          _insideQueue = true;
           try {
             List<WifiRecord> records;
             try {
@@ -219,9 +219,12 @@ class WifiLaneReceiver {
               DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
               // A corrupt record from the proven socket ends the whole
               // transfer right away rather than waiting for the idle timer
-              // to notice nothing more will ever arrive on it.
+              // to notice nothing more will ever arrive on it. This runs as
+              // part of the current batch, so it must use the internal
+              // close path — the public one awaits `_queue`, which is this
+              // very batch, and would deadlock.
               if (socket == _proven) {
-                await close();
+                await _closeInternal();
               } else {
                 _destroy(socket);
               }
@@ -256,15 +259,14 @@ class WifiLaneReceiver {
             // leaves this batch unable to finish cleanly. Uncaught, the
             // future this batch produces would carry the error forward and
             // nothing awaits `_queue` to ever see it — closing now is the
-            // only response that leaves nothing half-done or silently stuck.
+            // only response that leaves nothing half-done or silently
+            // stuck. Internal path: see the comment above.
             DebugLog.instance.log('AIRDROP', 'wifi: receive failed, closing');
             if (socket == _proven) {
-              await close();
+              await _closeInternal();
             } else {
               _destroy(socket);
             }
-          } finally {
-            _insideQueue = false;
           }
         }).whenComplete(() {
           // Resume only after this batch has fully run (however it ended) —
@@ -319,9 +321,10 @@ class WifiLaneReceiver {
     if (want == null || want != size) {
       // A size that disagrees with the offer is a manifest violation, not a
       // file this app happens not to want — refuse and end the connection
-      // rather than keep trusting a sender that already lied once.
+      // rather than keep trusting a sender that already lied once. Internal
+      // path: this runs as part of the current batch.
       await _refuseSend(socket, mediaIdHex);
-      await close();
+      await _closeInternal();
       return;
     }
     // A second fileStart for an id already open closes the earlier handle
@@ -354,17 +357,29 @@ class WifiLaneReceiver {
     if (w.received + body.length > w.size) {
       // Stop writing this file right away — an over-long stream is either a
       // bug on the other end or an attempt to fill this phone's disk, and
-      // the handle must not stay open past the refusal.
+      // the handle must not stay open past the refusal. Internal path: this
+      // runs as part of the current batch.
       _writing.remove(id);
       _currentId = null;
       await _closeRaf(w.raf);
       await _deletePart(w.file);
       await _refuseSend(socket, id);
-      await close();
+      await _closeInternal();
       return;
     }
     await w.raf.writeFrom(body);
-    if (_closed) return;
+    if (_closed) {
+      // A close() that started while this write was in flight (the idle
+      // timer, the app, a proven-socket hang-up) is guaranteed by `close()`
+      // to still be waiting on this very batch to finish before it sweeps
+      // `_writing` — so nothing else can be touching `w` right now. Clean
+      // it up directly rather than leaving it for that sweep to find: same
+      // outcome, but it means the sweep never has to.
+      _writing.remove(id);
+      await _closeRaf(w.raf);
+      await _deletePart(w.file);
+      return;
+    }
     w.received += body.length;
     final now = DateTime.now();
     if (now.difference(w.lastProgress) >= const Duration(milliseconds: 250) ||
@@ -384,18 +399,24 @@ class WifiLaneReceiver {
     final w = _writing[id];
     _currentId = null;
     if (w == null) return;
-    await _closeRaf(w.raf);
-    if (_closed) return;
-    if (w.received != w.size) {
+    // Flush-then-close, not the swallowing `_closeRaf` — a real failure
+    // here means what's on disk may not be the whole, correct file, and
+    // that must refuse the file rather than silently pass it to onFile.
+    // `_closeRaf` stays for teardown paths, where the file is being thrown
+    // away regardless of whether the handle closes cleanly.
+    final finished = await _finishWriting(w.raf);
+    if (_closed) {
+      _writing.remove(id);
+      await _deletePart(w.file);
+      return;
+    }
+    if (!finished || w.received != w.size) {
       await _refuseSend(socket, id);
       await _deletePart(w.file);
       _writing.remove(id);
       await _resolved(id);
       return;
     }
-    // Never hand a file to the app once shutting down — the caller that
-    // asked for it may already have moved on.
-    if (_closed) return;
     final kept = await _onFile(id, w.file);
     if (!kept) {
       await _refuseSend(socket, id);
@@ -411,12 +432,13 @@ class WifiLaneReceiver {
 
   /// This id will never arrive again on this one-shot connection, whether it
   /// was kept or refused — drop it from what we're still waiting on, and end
-  /// the transfer once nothing is left.
+  /// the transfer once nothing is left. Internal path: called only from
+  /// `_onFileEnd`, itself only ever reached from inside the current batch.
   Future<void> _resolved(String mediaIdHex) async {
     _expected.remove(mediaIdHex);
     if (_expected.isEmpty) {
       _completeDone();
-      await close();
+      await _closeInternal();
     }
   }
 
@@ -450,13 +472,64 @@ class WifiLaneReceiver {
     }
   }
 
+  /// Flushes and closes a file's handle, reporting failure instead of
+  /// swallowing it — unlike [_closeRaf], which teardown paths use once the
+  /// file is being discarded regardless. Used only at `fileEnd`, the one
+  /// place a real filesystem error must stop the file from being handed to
+  /// [WifiKeep] as if it arrived intact. Close is always attempted even when
+  /// flush fails, so the handle isn't left open on a flush-only failure.
+  Future<bool> _finishWriting(RandomAccessFile raf) async {
+    var ok = true;
+    try {
+      await raf.flush();
+    } on FileSystemException {
+      ok = false;
+    }
+    try {
+      await raf.close();
+    } on FileSystemException {
+      ok = false;
+    }
+    return ok;
+  }
+
   void _completeDone() {
     if (!_done.isCompleted) _done.complete();
   }
 
+  /// Ends the receiver. Call this from any *external* context — the idle
+  /// timer, the app, `onDone`/`onError` on a socket. It always waits for
+  /// whatever batch is currently the tail of `_queue` to finish before it
+  /// touches `_writing`, which is what stops it from closing a
+  /// `RandomAccessFile` a batch still has an `await writeFrom` pending
+  /// against: by the time this reaches that sweep, the in-flight write has
+  /// already completed (or that batch already cleaned up after itself — see
+  /// `_onData`). Code running *as* that batch must use [_closeInternal]
+  /// instead — awaiting `_queue` from inside the very future it refers to
+  /// would wait on itself forever.
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    await _teardownSockets();
+    await _queue;
+    await _sweepWriting();
+    _completeDone();
+  }
+
+  /// The same shutdown as [close], for code running inside the batch that is
+  /// currently the tail of `_queue` (a manifest violation, the transfer
+  /// finishing, an unrecoverable error while handling a record). Never call
+  /// this from outside that context — nothing then guarantees an in-flight
+  /// write on some *other* batch has finished before `_writing` is swept.
+  Future<void> _closeInternal() async {
+    if (_closed) return;
+    _closed = true;
+    await _teardownSockets();
+    await _sweepWriting();
+    _completeDone();
+  }
+
+  Future<void> _teardownSockets() async {
     _idleTimer?.cancel();
     _idleTimer = null;
     await _sub?.cancel();
@@ -470,24 +543,15 @@ class WifiLaneReceiver {
     } on SocketException {
       // Already down.
     }
-    // A call from *inside* a queued handler (a manifest violation refusing
-    // and closing) is itself the in-flight batch — awaiting `_queue` here
-    // would wait on itself and never return. A call from outside that chain
-    // (the idle timer, or a caller ending the transfer) is not part of it,
-    // so it waits for whatever batch is currently running to reach its next
-    // checkpoint (or finish) first. That's what keeps this from closing a
-    // RandomAccessFile that a batch still has an `await writeFrom` pending
-    // against — the two can no longer land at the same moment.
-    if (!_insideQueue) {
-      await _queue;
-    }
+  }
+
+  Future<void> _sweepWriting() async {
     final writing = _writing.values.toList();
     _writing.clear();
     for (final w in writing) {
       await _closeRaf(w.raf);
       await _deletePart(w.file);
     }
-    _completeDone();
   }
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {
