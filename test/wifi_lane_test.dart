@@ -220,6 +220,89 @@ void main() {
     );
   });
 
+  test(
+      'onFile throwing does not wedge the receiver: sendFile fails promptly and done completes',
+      () async {
+    final rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'aa' * 16: 5},
+      tempDir: tmp,
+      onProgress: (_, __, ___) {},
+      onFile: (_, __) async => throw Exception('boom'),
+    );
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: rx.port, key: key),
+      transferId: tid,
+    );
+    final f = await source('z.bin', 5, 6);
+    final sw = Stopwatch()..start();
+    final ok = await tx!
+        .sendFile(
+          mediaIdHex: 'aa' * 16,
+          file: f,
+          size: 5,
+          onProgress: (_, __, ___) {},
+          cancelled: () => false,
+        )
+        .timeout(const Duration(seconds: 5));
+    expect(ok, isFalse);
+    // "Promptly" means nowhere near the 2-minute idle close this receiver
+    // was given by default — a wedged queue used to make the sender sit in
+    // flush() until that timer finally gave up on it.
+    expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+    await rx.done.timeout(const Duration(seconds: 5));
+    await tx.close();
+  });
+
+  test(
+      'close() during a large transfer leaves no leftover part file and never calls onFile',
+      () async {
+    final rxDir = await Directory('${tmp.path}/rx3').create();
+    var onFileCalled = false;
+    final firstProgress = Completer<void>();
+    final rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'aa' * 16: 3 * 1024 * 1024},
+      tempDir: rxDir,
+      onProgress: (_, __, ___) {
+        if (!firstProgress.isCompleted) firstProgress.complete();
+      },
+      onFile: (_, __) async {
+        onFileCalled = true;
+        return true;
+      },
+    );
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: rx.port, key: key),
+      transferId: tid,
+    );
+    final f = await source('big2.bin', 3 * 1024 * 1024, 8);
+    // Deliberately not awaited here — the point is to close the receiver
+    // while a batch is still mid-write, not after the transfer finishes.
+    final sendDone = tx!.sendFile(
+      mediaIdHex: 'aa' * 16,
+      file: f,
+      size: 3 * 1024 * 1024,
+      onProgress: (_, __, ___) {},
+      cancelled: () => false,
+    );
+    await firstProgress.future.timeout(const Duration(seconds: 5));
+    await rx.close();
+    expect(await sendDone.timeout(const Duration(seconds: 5)), isFalse);
+    await tx.close();
+    expect(onFileCalled, isFalse);
+    expect(
+      rxDir.listSync().where((e) => e.path.endsWith('.part')),
+      isEmpty,
+    );
+  });
+
   group('pickLanAddress', () {
     InternetAddress ip(String s) => InternetAddress(s);
     test('Wi-Fi over cellular, private IPv4 first', () {

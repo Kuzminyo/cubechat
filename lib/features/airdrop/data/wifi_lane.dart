@@ -57,6 +57,17 @@ InternetAddress? pickLanAddress(
   return ok.isEmpty ? null : ok.first.address;
 }
 
+/// Closes a [RandomAccessFile], swallowing the "already closed" case — the
+/// one shape this ever needs, shared by both directions of the lane so a
+/// violation and a close racing each other don't each need their own copy.
+Future<void> _closeRaf(RandomAccessFile raf) async {
+  try {
+    await raf.close();
+  } on FileSystemException {
+    // Already closed.
+  }
+}
+
 /// One file being written to disk by the receiver.
 class _Incoming {
   _Incoming(this.file, this.raf, this.size);
@@ -140,6 +151,11 @@ class WifiLaneReceiver {
   bool _closed = false;
   final Completer<void> _done = Completer<void>();
 
+  /// True while a batch handler is running as the current `_queue` entry —
+  /// so a `close()` called *from inside* that handler (a manifest violation,
+  /// say) knows not to wait on `_queue` for itself. See [close].
+  bool _insideQueue = false;
+
   /// Every socket accepted and not yet destroyed — not just the proven one.
   /// A decoy connection can still be mid-handshake when [close] runs (the
   /// idle timer firing while a second phone is dialling in), and it must not
@@ -174,7 +190,12 @@ class WifiLaneReceiver {
     late final StreamSubscription<Uint8List> sub;
     sub = socket.listen(
       (chunk) {
-        _armIdle();
+        if (_closed) return;
+        // Only the socket that has already proven itself can keep this
+        // receiver alive — an unauthenticated connection resetting the idle
+        // clock would let anyone on the LAN hold the port open forever just
+        // by sending noise at it.
+        if (socket == _proven) _armIdle();
         framer.add(chunk);
         List<Uint8List> sealed;
         try {
@@ -189,51 +210,82 @@ class WifiLaneReceiver {
         sub.pause();
         _queue = _queue.then((_) async {
           if (_closed) return;
-          List<WifiRecord> records;
+          _insideQueue = true;
           try {
-            records = await openCipher.open(sealed);
-          } on FormatException {
-            DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
-            _destroy(socket);
-            return;
-          }
-          if (!provedThisSocket) {
-            final first = records.isEmpty ? null : records.first;
-            if (first == null ||
-                first.kind != WifiRecordKind.hello ||
-                !_bytesEqual(first.body, _transferId)) {
+            List<WifiRecord> records;
+            try {
+              records = await openCipher.open(sealed);
+            } on FormatException {
               DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
-              _destroy(socket);
+              // A corrupt record from the proven socket ends the whole
+              // transfer right away rather than waiting for the idle timer
+              // to notice nothing more will ever arrive on it.
+              if (socket == _proven) {
+                await close();
+              } else {
+                _destroy(socket);
+              }
               return;
             }
-            provedThisSocket = true;
-            if (_proven != null) {
-              // Another socket proved itself first while this one was being
-              // opened; only the first winner stays.
-              _destroy(socket);
-              return;
+            if (!provedThisSocket) {
+              final first = records.isEmpty ? null : records.first;
+              if (first == null ||
+                  first.kind != WifiRecordKind.hello ||
+                  !_bytesEqual(first.body, _transferId)) {
+                DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
+                _destroy(socket);
+                return;
+              }
+              if (_proven != null) {
+                // Another socket proved itself first while this one was
+                // being opened; only the first winner stays.
+                _destroy(socket);
+                return;
+              }
+              provedThisSocket = true;
+              _proven = socket;
+              _provenSub = sub;
+              _sealCipher = sealCipher;
+              _onConnected?.call();
+              records = records.skip(1).toList();
             }
-            _proven = socket;
-            _provenSub = sub;
-            _sealCipher = sealCipher;
-            _onConnected?.call();
-            records = records.skip(1).toList();
+            await _handleRecords(socket, records);
+          } catch (e) {
+            // Anything else — a disk-full FileSystemException from
+            // writeFrom/open, or a throwing onFile/onProgress/onConnected —
+            // leaves this batch unable to finish cleanly. Uncaught, the
+            // future this batch produces would carry the error forward and
+            // nothing awaits `_queue` to ever see it — closing now is the
+            // only response that leaves nothing half-done or silently stuck.
+            DebugLog.instance.log('AIRDROP', 'wifi: receive failed, closing');
+            if (socket == _proven) {
+              await close();
+            } else {
+              _destroy(socket);
+            }
+          } finally {
+            _insideQueue = false;
           }
-          await _handleRecords(socket, records);
-        });
-        // Resume only after this batch has been fully opened and acted on —
-        // that is the backpressure: a sender that races ahead just fills the
-        // TCP send buffer instead of racing the order records are applied in.
-        _queue = _queue.then((_) {
+        }).whenComplete(() {
+          // Resume only after this batch has fully run (however it ended) —
+          // that is the backpressure: a sender that races ahead just fills
+          // the TCP receive buffer instead of racing the order records are
+          // applied in. `whenComplete` (not `then`) guarantees this runs
+          // even on a batch that somehow still throws past the catch above.
           if (!_closed) sub.resume();
         });
       },
-      // Beyond forgetting the socket: if this was the proven one and it hung
-      // up before every expected file was kept, `done` never completes on
-      // its own — the idle timer (or an explicit close()) is what ends the
-      // receiver in that case.
-      onDone: () => _liveSockets.remove(socket),
-      onError: (Object _, StackTrace __) => _liveSockets.remove(socket),
+      onDone: () {
+        _liveSockets.remove(socket);
+        // The proven socket hanging up means nothing more is ever coming;
+        // waiting out the idle timer would just leave the port bound and
+        // the caller guessing for up to two minutes.
+        if (socket == _proven) close();
+      },
+      onError: (Object _, StackTrace __) {
+        _liveSockets.remove(socket);
+        if (socket == _proven) close();
+      },
       cancelOnError: true,
     );
   }
@@ -272,8 +324,24 @@ class WifiLaneReceiver {
       await close();
       return;
     }
+    // A second fileStart for an id already open closes the earlier handle
+    // first — otherwise that RandomAccessFile is orphaned, still open, and
+    // its bytes on disk belong to nothing.
+    final previous = _writing.remove(mediaIdHex);
+    if (previous != null) {
+      await _closeRaf(previous.raf);
+      await _deletePart(previous.file);
+    }
+    if (_closed) return;
     final file = File('${_tempDir.path}/wifi-$mediaIdHex.part');
     final raf = await file.open(mode: FileMode.write);
+    if (_closed) {
+      // close() ran while the file was opening — nobody will ever sweep an
+      // entry we're about to add, so clean up this one ourselves.
+      await _closeRaf(raf);
+      await _deletePart(file);
+      return;
+    }
     _writing[mediaIdHex] = _Incoming(file, raf, size);
     _currentId = mediaIdHex;
   }
@@ -289,17 +357,14 @@ class WifiLaneReceiver {
       // the handle must not stay open past the refusal.
       _writing.remove(id);
       _currentId = null;
-      try {
-        await w.raf.close();
-      } on FileSystemException {
-        // Already closed.
-      }
+      await _closeRaf(w.raf);
       await _deletePart(w.file);
       await _refuseSend(socket, id);
       await close();
       return;
     }
     await w.raf.writeFrom(body);
+    if (_closed) return;
     w.received += body.length;
     final now = DateTime.now();
     if (now.difference(w.lastProgress) >= const Duration(milliseconds: 250) ||
@@ -312,25 +377,35 @@ class WifiLaneReceiver {
   Future<void> _onFileEnd(Socket socket, Uint8List body) async {
     final id = _currentId;
     if (id == null) return;
-    final w = _writing.remove(id);
+    // Left in `_writing` until the very end of whichever branch below
+    // resolves it: if something throws partway through (onFile, a control
+    // send), `close()`'s sweep of `_writing` still finds and cleans it up,
+    // rather than it being lost the moment it was removed here.
+    final w = _writing[id];
     _currentId = null;
     if (w == null) return;
-    await w.raf.flush();
-    await w.raf.close();
+    await _closeRaf(w.raf);
+    if (_closed) return;
     if (w.received != w.size) {
       await _refuseSend(socket, id);
       await _deletePart(w.file);
+      _writing.remove(id);
       await _resolved(id);
       return;
     }
+    // Never hand a file to the app once shutting down — the caller that
+    // asked for it may already have moved on.
+    if (_closed) return;
     final kept = await _onFile(id, w.file);
     if (!kept) {
       await _refuseSend(socket, id);
       await _deletePart(w.file);
+      _writing.remove(id);
       await _resolved(id);
       return;
     }
     await _sendControl(socket, WifiRecordKind.fileKept, nearbyUnhex(id));
+    _writing.remove(id);
     await _resolved(id);
   }
 
@@ -395,15 +470,23 @@ class WifiLaneReceiver {
     } on SocketException {
       // Already down.
     }
-    for (final w in _writing.values) {
-      try {
-        await w.raf.close();
-      } on FileSystemException {
-        // Already closed.
-      }
+    // A call from *inside* a queued handler (a manifest violation refusing
+    // and closing) is itself the in-flight batch — awaiting `_queue` here
+    // would wait on itself and never return. A call from outside that chain
+    // (the idle timer, or a caller ending the transfer) is not part of it,
+    // so it waits for whatever batch is currently running to reach its next
+    // checkpoint (or finish) first. That's what keeps this from closing a
+    // RandomAccessFile that a batch still has an `await writeFrom` pending
+    // against — the two can no longer land at the same moment.
+    if (!_insideQueue) {
+      await _queue;
+    }
+    final writing = _writing.values.toList();
+    _writing.clear();
+    for (final w in writing) {
+      await _closeRaf(w.raf);
       await _deletePart(w.file);
     }
-    _writing.clear();
     _completeDone();
   }
 
@@ -478,6 +561,11 @@ class WifiLaneSender {
   Future<void> _queue = Future<void>.value();
   bool _closed = false;
 
+  /// Set once the connection is known broken — a stream error, a hang-up, or
+  /// a record that failed to open. A later `sendFile` call fails fast on it
+  /// instead of writing into a socket that will only ever error back out.
+  bool _dead = false;
+
   final Map<String, Completer<bool>> _pending = {};
 
   void _onData(Uint8List chunk) {
@@ -486,6 +574,7 @@ class WifiLaneSender {
     try {
       sealed = _framer.take();
     } on FormatException {
+      _socket.destroy();
       _failAll();
       return;
     }
@@ -496,6 +585,7 @@ class WifiLaneSender {
       try {
         records = await _openCipher.open(sealed);
       } on FormatException {
+        _socket.destroy();
         _failAll();
         return;
       }
@@ -523,6 +613,7 @@ class WifiLaneSender {
   }
 
   void _failAll() {
+    _dead = true;
     for (final c in _pending.values) {
       if (!c.isCompleted) c.complete(false);
     }
@@ -537,7 +628,7 @@ class WifiLaneSender {
     required WifiProgress onProgress,
     required bool Function() cancelled,
   }) async {
-    if (_closed) return false;
+    if (_closed || _dead) return false;
     final completer = Completer<bool>();
     _pending[mediaIdHex] = completer;
     RandomAccessFile? raf;
@@ -554,7 +645,14 @@ class WifiLaneSender {
           await close();
           return false;
         }
-        final chunk = await raf.read(1 << 20);
+        // Capped at what's left to send: the file on disk may be larger
+        // than the size promised in fileStart (it changed after the offer,
+        // or the caller passed the wrong number), and reading past `size`
+        // would send more than the receiver was told to expect, which it
+        // then refuses.
+        final remaining = size - sent;
+        final toRead = remaining < (1 << 20) ? remaining : (1 << 20);
+        final chunk = await raf.read(toRead);
         if (chunk.isEmpty) break;
         final records = <WifiRecord>[];
         for (var at = 0; at < chunk.length; at += WifiLaneCodec.dataBytes) {
@@ -577,12 +675,15 @@ class WifiLaneSender {
     } on SocketException {
       _pending.remove(mediaIdHex);
       return false;
+    } on FileSystemException {
+      // The controller falls back to Bluetooth on false — this must never
+      // throw past sendFile, even when the source file can't be opened or
+      // read (permissions, it moved, the disk went away mid-send).
+      _pending.remove(mediaIdHex);
+      return false;
     } finally {
-      try {
-        await raf?.close();
-      } on FileSystemException {
-        // Already closed.
-      }
+      final r = raf;
+      if (r != null) await _closeRaf(r);
     }
     return completer.future.timeout(
       const Duration(seconds: 30),
