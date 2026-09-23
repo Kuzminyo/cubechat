@@ -185,7 +185,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   t.peersSubtitle,
                   key: const Key('nearby-section-subtitle'),
@@ -296,7 +296,12 @@ class _FilesPage extends ConsumerWidget {
               ],
             ),
           ),
-        const Expanded(child: FileTransferList(bottomPadding: 140)),
+        // The list's own leading gap is dropped too — NearbyScreen's header
+        // padding is what puts space under the switch now (see the Peers and
+        // AirDrop pages, which do the same).
+        const Expanded(
+          child: FileTransferList(bottomPadding: 140, topPadding: 0),
+        ),
       ],
     );
   }

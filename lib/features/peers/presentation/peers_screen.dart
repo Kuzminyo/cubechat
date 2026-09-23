@@ -77,13 +77,21 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
     final state = ref.watch(peerDiscoveryControllerProvider);
     final peripheral = ref.watch(peripheralControllerProvider);
     final controller = ref.read(peerDiscoveryControllerProvider.notifier);
+    // NearbyScreen's shared header already pads the switch away from the
+    // page below it (see nearby_screen.dart's header Padding). This screen's
+    // own top padding and the fixed gap after _Header used to add on top of
+    // that unconditionally, leaving ~40px of dead air under the switch
+    // whenever _Header had nothing to show. Only the scanning pulse and the
+    // broadcast chip need room of their own.
+    final headerHasContent = state.status == PeerDiscoveryStatus.scanning ||
+        peripheral.status == PeripheralStatus.broadcasting;
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+        padding: EdgeInsets.fromLTRB(16, headerHasContent ? 12 : 0, 16, 140),
         children: [
           _Header(state: state, peripheral: peripheral),
-          const SizedBox(height: 12),
+          if (headerHasContent) const SizedBox(height: 12),
           ..._buildBody(context, t, state, controller),
         ],
       ),

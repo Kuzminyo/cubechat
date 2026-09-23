@@ -33,9 +33,10 @@ class AirDropPage extends ConsumerWidget {
 
     return AppearOnce(
       builder: (context, animate) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
-        // No display title here — the Nearby tab's shared section header
-        // above the switch already names this page (nearby_screen.dart).
+        // No display title here, and no leading top padding of its own —
+        // the Nearby tab's shared header above the switch already names this
+        // page and already pads the switch away from it (nearby_screen.dart).
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
         children: [
           AppearAnimation(
             enabled: animate && !reduced,

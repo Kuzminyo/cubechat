@@ -57,10 +57,19 @@ class FileTransferCenterScreen extends ConsumerWidget {
 /// included. Its own widget so the Nearby tab's Files page shows the very same
 /// list the Profile opens.
 class FileTransferList extends ConsumerWidget {
-  const FileTransferList({super.key, this.bottomPadding = 40});
+  const FileTransferList({
+    super.key,
+    this.bottomPadding = 40,
+    this.topPadding = 8,
+  });
 
   /// 40 as a screen of its own; 140 inside a tab, above the floating bar.
   final double bottomPadding;
+
+  /// 8 as a screen of its own, under its AppBar; 0 inside the Nearby tab's
+  /// Files page, which already gets its leading gap from the shared header
+  /// above the switch (see nearby_screen.dart's `_FilesPage`).
+  final double topPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,7 +80,7 @@ class FileTransferList extends ConsumerWidget {
     final history = transfers.where((task) => !task.active).toList();
     if (transfers.isEmpty) return _EmptyState(label: t.fileTransfersEmpty);
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, bottomPadding),
       children: [
         if (active.isNotEmpty) ...[
           _SectionLabel(t.fileTransfersActive),
