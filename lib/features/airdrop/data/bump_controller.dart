@@ -86,6 +86,14 @@ final bumpDirectPeersProvider = Provider<Set<String>>(
   (ref) => {for (final p in ref.watch(airdropDirectPeersProvider)) p.hex},
 );
 
+/// Adds a contact from their signed card; the pubkey hex. Injectable for
+/// tests.
+final bumpAddContactProvider = Provider<Future<String> Function(Uint8List)>(
+  (ref) => (card) => ref
+      .read(messagingServiceProvider)
+      .addContactFromCard(ContactCard.encode(card)),
+);
+
 /// Whether [card] is a validly signed announcement of [senderHex] itself.
 /// A bump carrying somebody else's card would put a stranger's name on the
 /// contact card the person is about to add.
@@ -101,16 +109,27 @@ final bumpCardCheckProvider =
   },
 );
 
-/// The scan's readings of people we can put a name to. Auto-disposed: the
-/// controller listens only while the AirDrop page is open, so the list is not
-/// rebuilt on every advertisement the rest of the time.
+/// The scan's readings. Auto-disposed: the controller listens only while the
+/// AirDrop page is open, so the list is not rebuilt on every advertisement
+/// the rest of the time.
+///
+/// A phone nobody can put a name to still goes in, under `anon:<device id>`:
+/// it can never be bumped (it has no session), but a louder one must still
+/// stop a quieter named phone from counting as the one touching.
 final bumpReadingsProvider = Provider.autoDispose<List<BumpReading>>(
   (ref) => [
     for (final p in ref.watch(peerDiscoveryControllerProvider).peers)
-      if (p.resolvedPubkeyHex != null && p.hasSignalReading)
-        (hex: p.resolvedPubkeyHex!, rssi: p.rssi, seen: p.lastSeen),
+      if (p.hasSignalReading)
+        (
+          hex: p.resolvedPubkeyHex ?? '$bumpAnonPrefix${p.id}',
+          rssi: p.rssi,
+          seen: p.lastSeen,
+        ),
   ],
 );
+
+/// Key prefix of a reading from a phone with no known identity.
+const String bumpAnonPrefix = 'anon:';
 
 /// The bump gesture: two phones held together on the open AirDrop page agree
 /// they touched, then send the staged files or swap contact cards.
@@ -142,6 +161,11 @@ class BumpController extends Notifier<BumpState> {
   /// Newest advertisement already fed, per person — see [BumpReading].
   final Map<String, DateTime> _fed = {};
 
+  /// Our bump to each person as it is being handed to the port. A bumped
+  /// offer waits on it: the receiver opens its door for the offer when our
+  /// bump arrives, so an offer that overtook it would be met by a closed one.
+  final Map<String, Future<void>> _sending = {};
+
   StreamSubscription<NearbyInbound>? _inbound;
   ProviderSubscription<List<BumpReading>>? _readings;
   Timer? _tick;
@@ -150,6 +174,10 @@ class BumpController extends Notifier<BumpState> {
   /// closed cannot land in the next visit.
   int _visit = 0;
   DateTime? _lastLog;
+
+  /// Our signed card for this visit. Fetched when the page opens: building it
+  /// signs an announcement, which the first bump of a visit should not wait
+  /// on.
   Future<Uint8List>? _ownCard;
   final _random = Random.secure();
 
@@ -157,12 +185,9 @@ class BumpController extends Notifier<BumpState> {
 
   @override
   BumpState build() {
-    _inbound = ref
-        .read(airdropPortProvider)
-        .inbound
-        .listen((m) => unawaited(_onInbound(m)));
-    // Not fireImmediately: stopping clears the staged files, and a provider
-    // must not change another one while it is being built.
+    _inbound = ref.read(airdropPortProvider).inbound.listen(_onInbound);
+    // Not fireImmediately: stopping writes `state`, which cannot be read
+    // before build() has returned.
     ref.listen<bool>(
       airdropPageOnScreenProvider,
       (_, on) => on ? _start() : _stop(),
@@ -186,8 +211,13 @@ class BumpController extends Notifier<BumpState> {
       bumpReadingsProvider,
       (_, next) => _onReadings(next),
     );
+    _ownCard = _loadCard();
   }
 
+  /// Staged files are deliberately left alone here: Android's system picker
+  /// pauses the app, which turns the page "off" — clearing them on the way
+  /// out wiped the very selection being made. They go when they are sent, or
+  /// when the person clears them.
   void _stop() {
     _tick?.cancel();
     _tick = null;
@@ -197,14 +227,27 @@ class BumpController extends Notifier<BumpState> {
     _fed.clear();
     _sentAt.clear();
     _heard.clear();
+    _sending.clear();
     // Built afresh on the next visit: the name or the picture may have
     // changed in between.
     _ownCard = null;
-    // "Held while the section stays open" — leaving it lets them go.
-    if (ref.read(airdropStagedProvider).isNotEmpty) {
-      ref.read(airdropStagedProvider.notifier).state = const [];
-    }
     if (state.warmth != 0) state = BumpState(event: state.event);
+  }
+
+  Future<Uint8List> _loadCard() {
+    final card = ref.read(bumpOwnCardProvider)();
+    // Observed here so a failure is not an unhandled error while nobody is
+    // bumping yet; the next bump asks again.
+    unawaited(
+      card.then<void>(
+        (_) {},
+        onError: (Object e) {
+          if (identical(_ownCard, card)) _ownCard = null;
+          DebugLog.instance.log('BUMP', 'own card unavailable: $e');
+        },
+      ),
+    );
+    return card;
   }
 
   void _onReadings(List<BumpReading> readings) {
@@ -236,9 +279,9 @@ class BumpController extends Notifier<BumpState> {
   Future<String?> addContact() async {
     final e = state.event;
     if (e is! BumpContact) return null;
-    final messaging = ref.read(messagingServiceProvider);
+    final add = ref.read(bumpAddContactProvider);
     try {
-      final hex = await messaging.addContactFromCard(ContactCard.encode(e.card));
+      final hex = await add(e.card);
       if (identical(state.event, e)) dismiss();
       return hex;
     } catch (err) {
@@ -266,17 +309,18 @@ class BumpController extends Notifier<BumpState> {
     // side still finds one of ours recent enough.
     if (sent != null && now.difference(sent) < mutualWithin) return;
     _sentAt[hex] = now;
-    unawaited(_sendBump(hex));
+    _sending[hex] = _sendBump(hex);
     final heard = _heard[hex];
     if (heard != null && now.difference(heard.at) <= mutualWithin) {
       _fire(hex, heard.bump, now);
     }
   }
 
+  /// Never throws: a bumped offer awaits it.
   Future<void> _sendBump(String hex) async {
     final port = ref.read(airdropPortProvider);
     final hasFiles = ref.read(airdropStagedProvider).isNotEmpty;
-    final card = _ownCard ??= ref.read(bumpOwnCardProvider)();
+    final card = _ownCard ??= _loadCard();
     try {
       final ok = await port.send(
         hex,
@@ -284,79 +328,116 @@ class BumpController extends Notifier<BumpState> {
       );
       if (!ok) DebugLog.instance.log('BUMP', 'could not reach ${_short(hex)}');
     } catch (e) {
-      if (identical(_ownCard, card)) _ownCard = null;
       DebugLog.instance.log('BUMP', 'sending to ${_short(hex)} failed: $e');
     }
   }
 
-  Future<void> _onInbound(NearbyInbound m) async {
+  /// Synchronous on purpose, up to the ledger note in [_fire]: the offer that
+  /// follows their bump is judged by `AirDropController` the moment it lands,
+  /// and anything awaited here first (the Ed25519 card check was) let it land
+  /// before the door was opened — a stranger's bumped offer then read as an
+  /// ordinary one and was declined for "contacts only".
+  ///
+  /// The sender is already known without the card: [NearbyInbound.direct]
+  /// means it came over the Noise session with [NearbyInbound.peerHex]. The
+  /// card is only shown — and checked — for a contact swap, in [_contact].
+  void _onInbound(NearbyInbound m) {
     final bump = m.bump;
     if (bump == null || !m.direct || _tick == null) return;
     final hex = m.peerHex;
     final at = _now;
     if (!_remember(nearbyHex(bump.bumpId), at)) return;
-    final visit = _visit;
-    final bool ok;
-    try {
-      ok = await ref.read(bumpCardCheckProvider)(bump.card, hex);
-    } catch (_) {
-      return;
-    }
-    // The page may have closed (or the app ended) while the card was being
-    // checked: a bump from then belongs to no gesture now.
-    if (_tick == null || visit != _visit) return;
-    if (!ok) {
-      DebugLog.instance.log('BUMP', 'dropped ${_short(hex)}: not their card');
-      return;
-    }
     // Quiet means quiet: a bump from them in the pause is the same pair of
     // phones still lying together, not a new gesture waiting to happen.
     if (_quiet(hex, at)) return;
     _heard[hex] = (at: at, bump: bump);
     final sent = _sentAt[hex];
-    if (sent != null && at.difference(sent).abs() <= mutualWithin) {
+    if (sent != null && at.difference(sent) <= mutualWithin) {
       _fire(hex, bump, at);
     }
   }
 
   void _fire(String hex, NearbyBump theirs, DateTime now) {
     _quietUntil[hex] = now.add(cooldown);
-    ref.read(bumpLedgerProvider).note(hex, now);
+    // The ledger is a door for *their* offer, auto-accepted: opened only when
+    // their bump said files are coming. A bump without files is a contact
+    // swap, and a stranger must not get a free offer out of it too.
+    if (theirs.hasFiles) ref.read(bumpLedgerProvider).note(hex, now);
     _sentAt.remove(hex);
     _heard.remove(hex);
+    final ours = _sending.remove(hex) ?? Future<void>.value();
     DebugLog.instance.log('BUMP', 'fired with ${_short(hex)}');
     final name = ref.read(airdropPeerNameProvider)(hex);
     final staged = ref.read(airdropStagedProvider);
-    final BumpEvent event;
     if (staged.isNotEmpty) {
-      ref.read(airdropStagedProvider.notifier).state = const [];
-      event = BumpSentFiles(hex, name, now, staged.length);
-      unawaited(_offer(hex, name, staged));
+      _show(BumpSentFiles(hex, name, now, staged.length));
+      unawaited(_offer(hex, name, staged, after: ours));
     } else if (theirs.hasFiles) {
-      event = BumpReceivingFiles(hex, name, now);
+      _show(BumpReceivingFiles(hex, name, now));
     } else {
-      event = BumpContact(
-        hex,
-        name,
-        now,
-        card: theirs.card,
-        alreadyContact: ref.read(airdropContactsProvider).contains(hex),
-      );
+      unawaited(_contact(hex, name, theirs.card, now));
     }
-    state = BumpState(warmth: state.warmth, event: event);
   }
 
+  void _show(BumpEvent event) =>
+      state = BumpState(warmth: state.warmth, event: event);
+
+  /// A contact swap shows their card only once it is proven to be theirs.
+  ///
+  /// The "not their card" line needs no limiter of its own: this runs only
+  /// after a fire, and a fire starts the per-person [cooldown], so it is
+  /// written at most once per person per five seconds.
+  Future<void> _contact(
+    String hex,
+    String name,
+    Uint8List card,
+    DateTime at,
+  ) async {
+    final visit = _visit;
+    final check = ref.read(bumpCardCheckProvider);
+    bool ok;
+    try {
+      ok = await check(card, hex);
+    } catch (_) {
+      ok = false;
+    }
+    // The page may have closed (or the app ended) while the card was being
+    // checked: nothing to show it on now.
+    if (_tick == null || visit != _visit) return;
+    if (!ok) {
+      DebugLog.instance.log('BUMP', 'no card from ${_short(hex)}: not theirs');
+      return;
+    }
+    _show(
+      BumpContact(
+        hex,
+        name,
+        at,
+        card: card,
+        alreadyContact: ref.read(airdropContactsProvider).contains(hex),
+      ),
+    );
+  }
+
+  /// Sends [files] once our bump has been handed to the port — see
+  /// [_sending] — and lets go of the staging only once the offer is out.
   Future<void> _offer(
     String hex,
     String name,
-    List<AirDropSource> files,
-  ) async {
+    List<AirDropSource> files, {
+    required Future<void> after,
+  }) async {
     final airdrop = ref.read(airdropControllerProvider.notifier);
+    final staged = ref.read(airdropStagedProvider.notifier);
+    await after;
     try {
       final t = await airdrop.offer(peerHex: hex, peerName: name, files: files);
       if (t == null) {
         DebugLog.instance.log('BUMP', 'offer to ${_short(hex)} did not go');
+        return;
       }
+      // Only if the person has not picked something else meanwhile.
+      if (identical(staged.state, files)) staged.state = const [];
     } catch (e) {
       DebugLog.instance.log('BUMP', 'offer to ${_short(hex)} failed: $e');
     }

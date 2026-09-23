@@ -21,6 +21,8 @@ import 'package:cubechat/features/airdrop/domain/airdrop_spam_guard.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_navigation.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
+import 'package:cubechat/features/peers/data/peer_discovery_controller.dart';
+import 'package:cubechat/features/peers/models/discovered_peer.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,11 +41,23 @@ Uint8List _id(int seed) => Uint8List.fromList(
 NearbyBump _bump(int seed, {bool hasFiles = false}) =>
     NearbyBump(bumpId: _id(seed), hasFiles: hasFiles, card: _theirCard);
 
+AirDropSource _src([String name = 'a.jpg']) => AirDropSource(
+      file: File('${Directory.systemTemp.path}${Platform.pathSeparator}$name'),
+      name: name,
+      size: 10,
+      mime: 'image/jpeg',
+    );
+
 class _Port implements AirDropPort {
   // Created inside the fake zone by each test, sync so a delivery is handled
   // before the next line runs.
   final inboundCtl = StreamController<NearbyInbound>.broadcast(sync: true);
   final direct = <String>{};
+
+  /// The other phone's port, for two-phone tests: whatever this one sends
+  /// arrives there, from [me], in the order it was sent.
+  _Port? other;
+  String me = '';
   final sent = <({
     String to,
     NearbyOffer? offer,
@@ -93,6 +107,7 @@ class _Port implements AirDropPort {
   }) async {
     if (!direct.contains(peerHex)) return false;
     sent.add((to: peerHex, offer: offer, answer: answer, bump: bump));
+    other?.deliver(me, offer: offer, answer: answer, bump: bump);
     return true;
   }
 
@@ -146,6 +161,16 @@ class _Lane extends AirDropLaneController {
   Future<void> set(AirDropLane lane) async => state = lane;
 }
 
+class _Discovery extends PeerDiscoveryController {
+  _Discovery(this.peers);
+
+  final List<DiscoveredPeer> peers;
+
+  @override
+  PeerDiscoveryState build() =>
+      PeerDiscoveryState(status: PeerDiscoveryStatus.scanning, peers: peers);
+}
+
 /// Readings as the discovery controller would hand them over, settable from
 /// the test.
 final _readings = StateProvider<List<BumpReading>>((_) => const []);
@@ -160,6 +185,8 @@ void main() {
     Set<String> direct = const {_bob},
     Set<String> contacts = const {},
     Future<bool> Function(Uint8List card, String senderHex)? check,
+    Future<Uint8List> Function()? ownCard,
+    Future<String> Function(Uint8List card)? addContact,
   }) =>
       ProviderContainer(
         overrides: [
@@ -169,9 +196,13 @@ void main() {
           airdropPortProvider.overrideWithValue(port),
           airdropPageOnScreenProvider.overrideWith((_) => page),
           bumpDirectPeersProvider.overrideWithValue(direct),
-          bumpOwnCardProvider.overrideWithValue(() async => _ownCard),
+          bumpOwnCardProvider
+              .overrideWithValue(ownCard ?? () async => _ownCard),
           bumpCardCheckProvider
               .overrideWithValue(check ?? (card, sender) async => true),
+          bumpAddContactProvider.overrideWithValue(
+            addContact ?? (card) async => throw StateError('not in this test'),
+          ),
           bumpReadingsProvider.overrideWith((ref) => ref.watch(_readings)),
           airdropContactsProvider.overrideWithValue(contacts),
           airdropPeerNameProvider.overrideWithValue((_) => 'Боб'),
@@ -233,7 +264,7 @@ void main() {
     });
   });
 
-  test('mutual within 2 s: a contact event, and the ledger noted', () {
+  test('mutual within 2 s: a contact event, and no door for an offer', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
@@ -250,6 +281,43 @@ void main() {
       expect(e.peerName, 'Боб');
       expect(e.card, _theirCard);
       expect(e.alreadyContact, isFalse);
+      // A contact swap: a stranger gets a card, not an auto-accepted offer
+      // as well.
+      expect(
+        c.read(bumpLedgerProvider).take(_bob, c.read(airdropClockProvider)()),
+        isFalse,
+      );
+      c.dispose();
+    });
+  });
+
+  test('their bump with files opens the door for their offer', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(40, hasFiles: true));
+      expect(
+        c.read(bumpLedgerProvider).take(_bob, c.read(airdropClockProvider)()),
+        isTrue,
+        reason: 'noted synchronously, before anything could overtake it',
+      );
+      c.dispose();
+    });
+  });
+
+  test('both have files: each sends, and theirs is let in too', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      c.read(airdropStagedProvider.notifier).state = [_src()];
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(41, hasFiles: true));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpSentFiles>());
+      expect(port.offersTo(_bob), hasLength(1));
       expect(
         c.read(bumpLedgerProvider).take(_bob, c.read(airdropClockProvider)()),
         isTrue,
@@ -328,14 +396,7 @@ void main() {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
       c.read(bumpControllerProvider);
-      c.read(airdropStagedProvider.notifier).state = [
-        AirDropSource(
-          file: File('${Directory.systemTemp.path}/a.jpg'),
-          name: 'a.jpg',
-          size: 10,
-          mime: 'image/jpeg',
-        ),
-      ];
+      c.read(airdropStagedProvider.notifier).state = [_src()];
       feed(async, c, _bob, const Duration(milliseconds: 500));
       expect(port.bumpsTo(_bob).single.hasFiles, isTrue);
       port.deliver(_bob, bump: _bump(7));
@@ -345,6 +406,43 @@ void main() {
       final e = event(c);
       expect(e, isA<BumpSentFiles>());
       expect((e! as BumpSentFiles).count, 1);
+      c.dispose();
+    });
+  });
+
+  test('an offer that did not go keeps the staging', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      c.read(airdropStagedProvider.notifier).state = [_src()];
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      // The link drops between the bumps and the offer.
+      port.direct.remove(_bob);
+      port.deliver(_bob, bump: _bump(42));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpSentFiles>());
+      expect(port.offersTo(_bob), isEmpty);
+      expect(c.read(airdropStagedProvider), hasLength(1));
+      c.dispose();
+    });
+  });
+
+  test('our offer waits for our bump, however slow our card is', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final card = Completer<Uint8List>();
+      final c = make(async, port, ownCard: () => card.future);
+      c.read(bumpControllerProvider);
+      c.read(airdropStagedProvider.notifier).state = [_src()];
+      port.deliver(_bob, bump: _bump(43));
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      expect(event(c), isA<BumpSentFiles>(), reason: 'fired as ours went');
+      expect(port.sent, isEmpty, reason: 'neither bump nor offer yet');
+      card.complete(_ownCard);
+      async.flushMicrotasks();
+      expect(port.sent.first.bump, isNotNull);
+      expect(port.sent.last.offer, isNotNull);
       c.dispose();
     });
   });
@@ -443,6 +541,92 @@ void main() {
     });
   });
 
+  test('a bad card costs only the contact card, not their files', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port, check: (card, sender) async => false);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(44, hasFiles: true));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpReceivingFiles>());
+      c.dispose();
+    });
+  });
+
+  test('"not theirs" is written once per person per five seconds', () {
+    final lines = <String>[];
+    final previous = debugPrint;
+    debugPrint = (String? m, {int? wrapWidth}) {
+      if (m != null && m.contains('not theirs')) lines.add(m);
+    };
+    addTearDown(() => debugPrint = previous);
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port, check: (card, sender) async => false);
+      c.read(bumpControllerProvider);
+      // Held together for 4.5 s while Bob's phone keeps sending forged cards.
+      for (var i = 0; i < 9; i++) {
+        feed(async, c, _bob, const Duration(milliseconds: 500));
+        port.deliver(_bob, bump: _bump(60 + i));
+        async.flushMicrotasks();
+      }
+      expect(lines, hasLength(1));
+      c.dispose();
+    });
+  });
+
+  test('nothing is added until addContact, and then exactly their card', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final added = <Uint8List>[];
+      final c = make(
+        async,
+        port,
+        addContact: (card) async {
+          added.add(card);
+          return _bob;
+        },
+      );
+      final ctl = c.read(bumpControllerProvider.notifier);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(45));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>());
+      async.elapse(const Duration(seconds: 10));
+      expect(added, isEmpty);
+
+      String? hex;
+      unawaited(ctl.addContact().then((v) => hex = v));
+      async.flushMicrotasks();
+      expect(added.single, _theirCard);
+      expect(hex, _bob);
+      expect(event(c), isNull);
+
+      // No card on screen: nothing to add.
+      unawaited(ctl.addContact());
+      async.flushMicrotasks();
+      expect(added, hasLength(1));
+      c.dispose();
+    });
+  });
+
+  test('a louder phone nobody can name blocks the bump', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      final ctl = c.read(bumpControllerProvider.notifier);
+      for (var i = 0; i < 15; i++) {
+        ctl
+          ..sample(_bob, -38)
+          ..sample('${bumpAnonPrefix}AA:BB', -30);
+        async.elapse(tick);
+      }
+      expect(port.sent, isEmpty);
+      c.dispose();
+    });
+  });
+
   test('a bump relayed through someone else is ignored', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
@@ -456,7 +640,7 @@ void main() {
     });
   });
 
-  test('a card check still running when the page closes records nothing', () {
+  test('a card check still running when the page closes shows nothing', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
       final gate = Completer<bool>();
@@ -469,36 +653,41 @@ void main() {
       c.read(airdropPageOnScreenProvider.notifier).state = true;
       gate.complete(true);
       async.flushMicrotasks();
-      // Back on the page, ours goes out again: the bump heard before the
-      // page closed must not be waiting for it.
-      feed(async, c, _bob, const Duration(milliseconds: 500));
-      expect(port.bumpsTo(_bob), hasLength(2));
       expect(event(c), isNull);
       c.dispose();
     });
   });
 
-  test('the tick runs only while the page is on; leaving clears the staging',
+  test('a card check still running at dispose touches nothing', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final gate = Completer<bool>();
+      final c = make(async, port, check: (card, sender) => gate.future);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(16));
+      async.flushMicrotasks();
+      c.dispose();
+      gate.complete(true);
+      async.flushMicrotasks();
+    });
+  });
+
+  test('the tick runs only while the page is on; leaving keeps the staging',
       () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
       c.read(bumpControllerProvider);
       expect(async.periodicTimerCount, 1);
-      c.read(airdropStagedProvider.notifier).state = [
-        AirDropSource(
-          file: File('${Directory.systemTemp.path}/a.jpg'),
-          name: 'a.jpg',
-          size: 10,
-          mime: 'image/jpeg',
-        ),
-      ];
+      c.read(airdropStagedProvider.notifier).state = [_src()];
       feed(async, c, _bob, const Duration(milliseconds: 1000));
       expect(c.read(bumpControllerProvider).warmth, 1);
 
+      // What Android's file picker does to the page: it pauses the app.
       c.read(airdropPageOnScreenProvider.notifier).state = false;
       expect(async.periodicTimerCount, 0);
-      expect(c.read(airdropStagedProvider), isEmpty);
+      expect(c.read(airdropStagedProvider), hasLength(1));
       expect(c.read(bumpControllerProvider).warmth, 0);
 
       c.read(airdropPageOnScreenProvider.notifier).state = true;
@@ -571,6 +760,97 @@ void main() {
       expect(lines, isEmpty);
       c.dispose();
     });
+  });
+
+  test('two phones: the one with files feels it second, the stranger\'s '
+      'offer is still taken without asking', () {
+    fakeAsync((async) {
+      const alice = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
+      final aPort = _Port()
+        ..me = alice
+        ..direct.add(_bob);
+      final bPort = _Port()
+        ..me = _bob
+        ..direct.add(alice);
+      aPort.other = bPort;
+      bPort.other = aPort;
+      // Alice's card is slow to build, as a real signed announcement is.
+      final a = make(
+        async,
+        aPort,
+        direct: {_bob},
+        ownCard: () =>
+            Future.delayed(const Duration(milliseconds: 900), () => _ownCard),
+      );
+      // Bob: contacts only, and Alice is not one of them. His card check
+      // takes as long as an Ed25519 verify might — it must not stand between
+      // her bump and her offer.
+      final b = make(
+        async,
+        bPort,
+        direct: {alice},
+        check: (card, sender) =>
+            Future.delayed(const Duration(milliseconds: 20), () => true),
+      );
+      a.read(bumpControllerProvider);
+      b.read(bumpControllerProvider);
+      b.read(airdropControllerProvider);
+      a.read(airdropStagedProvider.notifier).state = [_src()];
+
+      // Bob's phone reads "close" first; Alice's half a second later.
+      feed(async, b, alice, const Duration(milliseconds: 500));
+      expect(bPort.bumpsTo(alice), hasLength(1));
+      feed(async, a, _bob, const Duration(milliseconds: 1000));
+      async.flushMicrotasks();
+
+      expect(a.read(bumpControllerProvider).event, isA<BumpSentFiles>());
+      expect(b.read(bumpControllerProvider).event, isA<BumpReceivingFiles>());
+      final kinds = [
+        for (final s in bPort.sent)
+          if (s.answer != null) s.answer!.kind,
+      ];
+      expect(kinds, contains(NearbyAnswerKind.accepted));
+      expect(kinds, isNot(contains(NearbyAnswerKind.declined)));
+      expect(b.read(airdropControllerProvider).requests, isEmpty);
+      a.dispose();
+      b.dispose();
+    });
+  });
+
+  test('the scan\'s readings: named by identity, the rest as anon', () {
+    final seen = DateTime(2026, 9, 23, 12);
+    final c = ProviderContainer(
+      overrides: [
+        peerDiscoveryControllerProvider.overrideWith(
+          () => _Discovery([
+            DiscoveredPeer(
+              id: 'AA',
+              advertisedName: 'x',
+              rssi: -40,
+              lastSeen: seen,
+              resolvedPubkeyHex: _bob,
+            ),
+            DiscoveredPeer(
+              id: 'BB',
+              advertisedName: 'y',
+              rssi: -30,
+              lastSeen: seen,
+            ),
+            DiscoveredPeer(
+              id: 'CC',
+              advertisedName: 'z',
+              rssi: DiscoveredPeer.unknownRssi,
+              lastSeen: seen,
+            ),
+          ]),
+        ),
+      ],
+    );
+    addTearDown(c.dispose);
+    expect(c.read(bumpReadingsProvider), [
+      (hex: _bob, rssi: -40, seen: seen),
+      (hex: '${bumpAnonPrefix}BB', rssi: -30, seen: seen),
+    ]);
   });
 
   group('the default card check', () {

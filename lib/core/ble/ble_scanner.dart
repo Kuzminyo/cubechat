@@ -79,6 +79,20 @@ class BleScanner {
       _active ? const Duration(seconds: 4) : _window + _gap;
 
   final _peers = <String, DiscoveredPeer>{};
+
+  /// Proximity mode only: the newest advertisement already taken, per device
+  /// address. `FlutterBluePlus.scanResults` hands over every device seen since
+  /// the scan started on every callback, each with the time of its own latest
+  /// advertisement — so without this, any one phone advertising would stamp
+  /// every other entry "seen now" with its old RSSI, and the bump gesture
+  /// would count one reading as many. Cleared per window: a new scan starts
+  /// its list afresh.
+  final _advertAt = <String, DateTime>{};
+
+  /// Proximity mode's emit throttle — see [_emitThrottled].
+  Timer? _emitTimer;
+  bool _emitPending = false;
+
   final _controller = StreamController<List<DiscoveredPeer>>.broadcast();
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
@@ -181,6 +195,9 @@ class BleScanner {
     // start() skip arming the sweep entirely.
     _gcTimer = null;
     _gcTimerPeriod = null;
+    _emitTimer?.cancel();
+    _emitTimer = null;
+    _emitPending = false;
     await _adapterSub?.cancel();
     _adapterSub = null;
     await _stopScanWindow();
@@ -319,6 +336,7 @@ class BleScanner {
     _cycleTimer = null;
     await _scanSub?.cancel();
     _scanSub = null;
+    _advertAt.clear();
     try {
       if (FlutterBluePlus.isScanningNow) {
         await FlutterBluePlus.stopScan();
@@ -333,6 +351,11 @@ class BleScanner {
     final now = DateTime.now();
     for (final r in results) {
       final mac = r.device.remoteId.str;
+      if (_proximity) {
+        final prev = _advertAt[mac];
+        if (prev != null && !r.timeStamp.isAfter(prev)) continue;
+        _advertAt[mac] = r.timeStamp;
+      }
       final advName = r.advertisementData.advName;
       final rotatingId = _rotatingIdOf(r);
       final advertisedName = _resolveName(r);
@@ -404,7 +427,13 @@ class BleScanner {
         rotatingId: rotatingId ?? existing.rotatingId,
         resolvedPubkeyHex: existing.resolvedPubkeyHex,
       );
-      if (rssiMoved || macChanged ||
+      // Proximity: every fresh advertisement is a sample, moved or not. Two
+      // phones held still (or both saturated) read the same dBm over and
+      // over, and "only when it moved" then gave the bump gesture nothing to
+      // count — it needs three readings a second.
+      if (_proximity ||
+          rssiMoved ||
+          macChanged ||
           existing.advertisedName != advertisedName) {
         changed = true;
       }
@@ -413,8 +442,44 @@ class BleScanner {
     // the base one — an arrival is the event the idle cadence exists to catch,
     // and we want the cycle tight again from that moment on.
     if (results.isNotEmpty) _emptyIdleWindows = 0;
-    if (changed) _emit();
+    if (!changed) return;
+    if (_proximity) {
+      _emitThrottled();
+    } else {
+      _emit();
+    }
   }
+
+  static const Duration _proximityEmitEvery = Duration(milliseconds: 100);
+
+  /// At most one snapshot per [_proximityEmitEvery] in proximity
+  /// mode, the last change always delivered by a trailing emit.
+  ///
+  /// Every advertisement counts there (see [_onResults]), and an Android phone
+  /// advertises about every 250 ms at `AdvertiseMode.BALANCED` — several phones
+  /// in a room would otherwise re-sort the Nearby list and re-run discovery's
+  /// id resolution at the raw advertising rate. A tenth of a second still
+  /// carries each phone's every advertisement to the gesture, whose own tick is
+  /// 200 ms.
+  void _emitThrottled() {
+    if (_emitTimer != null) {
+      _emitPending = true;
+      return;
+    }
+    _emit();
+    _emitTimer = Timer(_proximityEmitEvery, () {
+      _emitTimer = null;
+      if (_emitPending) {
+        _emitPending = false;
+        _emitThrottled();
+      }
+    });
+  }
+
+  /// Hands [results] to the scan callback as if the platform had, for tests
+  /// that cannot run a radio.
+  @visibleForTesting
+  void debugOnResults(List<ScanResult> results) => _onResults(results);
 
   /// The rotating peer id this advertisement carried, lowercase hex, or null.
   ///
