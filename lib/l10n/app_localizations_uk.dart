@@ -3246,6 +3246,28 @@ class AppLocalizationsUk extends AppLocalizations {
   String get airdropSendFiles => 'Надіслати файли';
 
   @override
+  String get airdropChooseFiles => 'Вибрати файли';
+
+  @override
+  String airdropStagedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count файлів готові',
+      few: '$count файли готові',
+      one: '1 файл готовий',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get airdropStagedHint =>
+      'Піднесіть телефон до іншого або виберіть людину';
+
+  @override
+  String get airdropStagedPickPerson => 'Вибрати людину';
+
+  @override
   String airdropRequestBody(String what, String size) {
     return 'хоче надіслати $what · $size';
   }

@@ -3208,6 +3208,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get airdropSendFiles => 'Send files';
 
   @override
+  String get airdropChooseFiles => 'Choose files';
+
+  @override
+  String airdropStagedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files ready',
+      one: '1 file ready',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get airdropStagedHint =>
+      'Hold your phone against theirs, or choose a person';
+
+  @override
+  String get airdropStagedPickPerson => 'Choose person';
+
+  @override
   String airdropRequestBody(String what, String size) {
     return 'wants to send $what · $size';
   }

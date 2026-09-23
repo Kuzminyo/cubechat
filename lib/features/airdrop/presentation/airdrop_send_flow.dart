@@ -24,7 +24,12 @@ import 'airdrop_people_sheet.dart';
 /// Everything between "send files" and the offer leaving: what, to whom,
 /// the checks, and the AirDrop page brought to the front to show it.
 /// [to] and [files] are filled in by entry points that already know them.
-Future<void> startAirDropSend(
+///
+/// Returns whether an offer actually went out — callers that stage files
+/// ahead of time (the AirDrop page's "choose files" card) need that to know
+/// whether it is safe to clear the staged list, since a cancelled picker or
+/// people sheet must leave the staged files in place.
+Future<bool> startAirDropSend(
   BuildContext context,
   WidgetRef ref, {
   AirDropPeer? to,
@@ -32,9 +37,9 @@ Future<void> startAirDropSend(
 }) async {
   final t = AppLocalizations.of(context);
   final chosen = files ?? await pickAirDropFiles(context, ref);
-  if (chosen == null || chosen.isEmpty || !context.mounted) return;
+  if (chosen == null || chosen.isEmpty || !context.mounted) return false;
   final peer = to ?? await showAirDropPeopleSheet(context);
-  if (peer == null || !context.mounted) return;
+  if (peer == null || !context.mounted) return false;
 
   const cap = MessagingService.maxFileBytesMesh;
   for (final f in chosen) {
@@ -44,7 +49,7 @@ Future<void> startAirDropSend(
         t.airdropTooLarge(f.name, cap ~/ (1024 * 1024)),
         tone: ToastTone.danger,
       );
-      return;
+      return false;
     }
   }
   final capped = chosen.take(nearbyMaxFiles).toList();
@@ -62,12 +67,13 @@ Future<void> startAirDropSend(
         peerName: peer.name,
         files: capped,
       );
-  if (!context.mounted) return;
+  if (!context.mounted) return false;
   if (sent == null) {
     showGlassToast(context, t.airdropNoDirect, tone: ToastTone.danger);
-    return;
+    return false;
   }
   ref.read(nearbyPageRequestProvider.notifier).state = kAirDropPage;
+  return true;
 }
 
 /// Photos and videos from the gallery grid, or documents from the system

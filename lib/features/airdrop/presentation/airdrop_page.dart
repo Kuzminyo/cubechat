@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/pill_button.dart';
 import '../../../core/widgets/section_switch.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/airdrop_clock.dart';
@@ -13,6 +15,8 @@ import '../data/airdrop_controller.dart';
 import '../data/airdrop_history_controller.dart';
 import '../data/airdrop_lane_controller.dart';
 import '../data/airdrop_receive_controller.dart';
+import '../data/airdrop_source.dart';
+import '../data/airdrop_staged.dart';
 import '../domain/airdrop_transfer.dart';
 import 'airdrop_cards.dart';
 import 'airdrop_send_flow.dart';
@@ -27,6 +31,7 @@ class AirDropPage extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final state = ref.watch(airdropControllerProvider);
     final history = ref.watch(airdropHistoryProvider);
+    final staged = ref.watch(airdropStagedProvider);
     final controller = ref.read(airdropControllerProvider.notifier);
     final reduced = MediaQuery.disableAnimationsOf(context);
     final now = DateTime.now();
@@ -72,6 +77,39 @@ class AirDropPage extends ConsumerWidget {
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 14),
+          AppearAnimation(
+            enabled: animate && !reduced,
+            delay: AppearAnimation.stagger(3),
+            child: staged.isEmpty
+                ? _ChooseFilesRow(
+                    onTap: () async {
+                      final picked = await pickAirDropFiles(context, ref);
+                      if (picked != null && picked.isNotEmpty) {
+                        ref.read(airdropStagedProvider.notifier).state =
+                            picked;
+                      }
+                    },
+                  )
+                : _StagedFilesCard(
+                    staged: staged,
+                    onPickPerson: () async {
+                      final sent = await startAirDropSend(
+                        context,
+                        ref,
+                        files: staged,
+                      );
+                      if (sent) {
+                        ref.read(airdropStagedProvider.notifier).state =
+                            const [];
+                      }
+                    },
+                    onClear: () {
+                      ref.read(airdropStagedProvider.notifier).state =
+                          const [];
+                    },
+                  ),
           ),
           const SizedBox(height: 14),
           // A request drops in from above; once accepted, the same slot turns
@@ -159,7 +197,7 @@ class AirDropPage extends ConsumerWidget {
                         now.difference(history[i].at) <
                             const Duration(seconds: 2)),
                 delay:
-                    animate ? AppearAnimation.stagger(i + 2) : Duration.zero,
+                    animate ? AppearAnimation.stagger(i + 3) : Duration.zero,
                 child: AirDropHistoryRow(entry: history[i]),
               ),
             ),
@@ -264,6 +302,104 @@ class _LaneSwitch extends ConsumerWidget {
           style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
         ),
       ],
+    );
+  }
+}
+
+/// "Choose files" — the same row style as "Send files" above it, but this
+/// one only stages what was picked; nothing goes out until a bump or a
+/// person is chosen.
+class _ChooseFilesRow extends StatelessWidget {
+  const _ChooseFilesRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return FloatingGlass(
+      blur: false,
+      borderRadius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(Icons.touch_app_rounded, color: AppColors.brandPrimary),
+          const SizedBox(width: 12),
+          Text(
+            t.airdropChooseFiles,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What "Choose files" turns into once something is staged: how many, and
+/// the two ways to send them — bring the phones together (BumpController
+/// reads this same provider and clears it once its offer goes out) or pick
+/// a person by hand.
+class _StagedFilesCard extends StatelessWidget {
+  const _StagedFilesCard({
+    required this.staged,
+    required this.onPickPerson,
+    required this.onClear,
+  });
+
+  final List<AirDropSource> staged;
+  final VoidCallback onPickPerson;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return GlassCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.touch_app_rounded, color: AppColors.brandPrimary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.airdropStagedTitle(staged.length),
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  t.airdropStagedHint,
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                PillButton(
+                  label: t.airdropStagedPickPerson,
+                  icon: Icons.person_rounded,
+                  active: true,
+                  onTap: onPickPerson,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: t.cancel,
+            onPressed: onClear,
+            icon: const Icon(Icons.close_rounded, size: 20),
+            color: AppColors.textOnGlass,
+          ),
+        ],
+      ),
     );
   }
 }

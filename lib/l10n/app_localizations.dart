@@ -5594,6 +5594,30 @@ abstract class AppLocalizations {
   /// **'Send files'**
   String get airdropSendFiles;
 
+  /// No description provided for @airdropChooseFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose files'**
+  String get airdropChooseFiles;
+
+  /// No description provided for @airdropStagedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{1 file ready} other{{count} files ready}}'**
+  String airdropStagedTitle(int count);
+
+  /// No description provided for @airdropStagedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold your phone against theirs, or choose a person'**
+  String get airdropStagedHint;
+
+  /// No description provided for @airdropStagedPickPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose person'**
+  String get airdropStagedPickPerson;
+
   /// No description provided for @airdropRequestBody.
   ///
   /// In en, this message translates to:

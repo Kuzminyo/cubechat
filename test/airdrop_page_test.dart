@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:cubechat/core/transport/nearby_offer.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_history_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_lane_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
+import 'package:cubechat/features/airdrop/data/airdrop_source.dart';
+import 'package:cubechat/features/airdrop/data/airdrop_staged.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_page.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_people_sheet.dart';
@@ -299,5 +303,49 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Не в одній мережі'), findsOneWidget);
+  });
+
+  testWidgets('with nothing staged, the page offers to choose files',
+      (tester) async {
+    final airdrop = _FakeAirDrop(const AirDropState());
+    await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+    await tester.pumpAndSettle();
+    expect(find.text('Вибрати файли'), findsOneWidget);
+  });
+
+  testWidgets(
+      'staged files show the ready count and hint, and let you clear or '
+      'pick a person', (tester) async {
+    final airdrop = _FakeAirDrop(const AirDropState());
+    final staged = [
+      AirDropSource(file: File('a.jpg'), name: 'a.jpg', size: 10, mime: 'image/jpeg'),
+      AirDropSource(file: File('b.jpg'), name: 'b.jpg', size: 20, mime: 'image/jpeg'),
+    ];
+    await tester.pumpWidget(
+      _app(const AirDropPage(), [
+        ...overrides(airdrop),
+        airdropStagedProvider.overrideWith((ref) => staged),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 файли готові'), findsOneWidget);
+    expect(
+      find.text('Піднесіть телефон до іншого або виберіть людину'),
+      findsOneWidget,
+    );
+    expect(find.text('Вибрати людину'), findsOneWidget);
+    expect(find.text('Вибрати файли'), findsNothing);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AirDropPage)),
+    );
+    expect(container.read(airdropStagedProvider), staged);
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    expect(container.read(airdropStagedProvider), isEmpty);
+    expect(find.text('Вибрати файли'), findsOneWidget);
   });
 }

@@ -1585,6 +1585,15 @@
     }
   },
   "airdropSendFiles": "Send files",
+  "airdropChooseFiles": "Choose files",
+  "airdropStagedTitle": "{count, plural, one{1 file ready} other{{count} files ready}}",
+  "@airdropStagedTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "airdropStagedHint": "Hold your phone against theirs, or choose a person",
+  "airdropStagedPickPerson": "Choose person",
   "airdropRequestBody": "wants to send {what} · {size}",
   "@airdropRequestBody": {
     "placeholders": {
