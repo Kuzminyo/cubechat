@@ -1665,5 +1665,19 @@
   "airdropLaneBluetooth": "Bluetooth",
   "airdropLaneWifi": "Wi‑Fi",
   "airdropLaneHint": "Wi‑Fi works when you are both on one network or one shares a hotspot.",
-  "airdropWifiUnreachable": "Not on the same network"
+  "airdropWifiUnreachable": "Not on the same network",
+  "airdropBumpAdd": "Add",
+  "airdropBumpAlreadyContact": "Already in your contacts",
+  "airdropBumpSending": "Sending to {name}",
+  "@airdropBumpSending": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "airdropBumpReceiving": "{name} is sending you files",
+  "@airdropBumpReceiving": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
 }

@@ -5857,6 +5857,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not on the same network'**
   String get airdropWifiUnreachable;
+
+  /// No description provided for @airdropBumpAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get airdropBumpAdd;
+
+  /// No description provided for @airdropBumpAlreadyContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Already in your contacts'**
+  String get airdropBumpAlreadyContact;
+
+  /// No description provided for @airdropBumpSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending to {name}'**
+  String airdropBumpSending(String name);
+
+  /// No description provided for @airdropBumpReceiving.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is sending you files'**
+  String airdropBumpReceiving(String name);
 }
 
 class _AppLocalizationsDelegate

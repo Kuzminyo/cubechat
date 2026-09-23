@@ -7,6 +7,7 @@ import 'package:cubechat/features/airdrop/data/airdrop_lane_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_source.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_staged.dart';
+import 'package:cubechat/features/airdrop/data/bump_controller.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_page.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_people_sheet.dart';
@@ -69,6 +70,13 @@ class _Lane extends AirDropLaneController {
   Future<void> set(AirDropLane lane) async => state = lane;
 }
 
+/// The bump gesture at rest — the page mounts its glow, and the real
+/// controller would reach for the messaging service.
+class _IdleBump extends BumpController {
+  @override
+  BumpState build() => const BumpState();
+}
+
 class _MemTransfers extends FileTransferController {
   @override
   Map<String, FileTransferTask> build() => const {};
@@ -125,6 +133,7 @@ void main() {
         airdropReceiveProvider.overrideWith(() => receive),
         airdropLaneProvider.overrideWith(() => lane),
         fileTransferControllerProvider.overrideWith(_MemTransfers.new),
+        bumpControllerProvider.overrideWith(_IdleBump.new),
       ];
 
   setUp(() {

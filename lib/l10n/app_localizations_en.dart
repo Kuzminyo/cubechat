@@ -3380,4 +3380,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get airdropWifiUnreachable => 'Not on the same network';
+
+  @override
+  String get airdropBumpAdd => 'Add';
+
+  @override
+  String get airdropBumpAlreadyContact => 'Already in your contacts';
+
+  @override
+  String airdropBumpSending(String name) {
+    return 'Sending to $name';
+  }
+
+  @override
+  String airdropBumpReceiving(String name) {
+    return '$name is sending you files';
+  }
 }

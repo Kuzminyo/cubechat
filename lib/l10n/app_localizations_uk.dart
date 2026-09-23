@@ -3421,4 +3421,20 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get airdropWifiUnreachable => 'Не в одній мережі';
+
+  @override
+  String get airdropBumpAdd => 'Додати';
+
+  @override
+  String get airdropBumpAlreadyContact => 'Вже у контактах';
+
+  @override
+  String airdropBumpSending(String name) {
+    return 'Надсилаю $name';
+  }
+
+  @override
+  String airdropBumpReceiving(String name) {
+    return '$name надсилає вам файли';
+  }
 }

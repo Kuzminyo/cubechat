@@ -20,6 +20,7 @@ import '../data/airdrop_staged.dart';
 import '../domain/airdrop_transfer.dart';
 import 'airdrop_cards.dart';
 import 'airdrop_send_flow.dart';
+import 'bump_glow.dart';
 
 /// The middle page of Nearby: who may send, what is asking, what is moving,
 /// and what has been.
@@ -36,7 +37,7 @@ class AirDropPage extends ConsumerWidget {
     final reduced = MediaQuery.disableAnimationsOf(context);
     final now = DateTime.now();
 
-    return AppearOnce(
+    final list = AppearOnce(
       builder: (context, animate) => ListView(
         // No display title here, and no leading top padding of its own —
         // the Nearby tab's shared header above the switch already names this
@@ -203,6 +204,16 @@ class AirDropPage extends ConsumerWidget {
             ),
         ],
       ),
+    );
+    // The bump glow rides on top. Its spot here is an empty box that takes no
+    // touches — what it draws goes into the overlay, from the top of the
+    // screen (see BumpGlow for why), and only while a phone is close.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        list,
+        const Positioned.fill(child: BumpGlow()),
+      ],
     );
   }
 }

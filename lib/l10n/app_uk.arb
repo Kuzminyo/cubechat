@@ -1204,5 +1204,9 @@
   "airdropLaneBluetooth": "Bluetooth",
   "airdropLaneWifi": "Wi‑Fi",
   "airdropLaneHint": "Wi‑Fi працює, коли ви в одній мережі або один роздає точку доступу.",
-  "airdropWifiUnreachable": "Не в одній мережі"
+  "airdropWifiUnreachable": "Не в одній мережі",
+  "airdropBumpAdd": "Додати",
+  "airdropBumpAlreadyContact": "Вже у контактах",
+  "airdropBumpSending": "Надсилаю {name}",
+  "airdropBumpReceiving": "{name} надсилає вам файли"
 }
