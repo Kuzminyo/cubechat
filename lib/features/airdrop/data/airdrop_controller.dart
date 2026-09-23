@@ -31,6 +31,7 @@ import 'airdrop_receive_controller.dart';
 import 'airdrop_source.dart';
 import 'airdrop_spam_store.dart';
 import 'airdrop_storage.dart';
+import 'bump_ledger.dart';
 import 'wifi_lane.dart';
 
 /// Who counts as a contact for "Contacts only": the people on the Contacts
@@ -502,24 +503,34 @@ class AirDropController extends Notifier<AirDropState>
     final id = nearbyHex(offer.transferId);
     if (state.byId(id) != null) return;
     final contact = ref.read(airdropContactsProvider).contains(peerHex);
-    final spam = ref.read(airdropSpamProvider.notifier);
-    if (contact) {
-      spam.remove(peerHex);
-    } else {
-      final record = AirDropSpamGuard.onRequest(spam.recordFor(peerHex), _now);
-      spam.put(peerHex, record);
-      if (AirDropSpamGuard.isBanned(record, _now)) {
-        DebugLog.instance.log(
-          'AIRDROP',
-          'ignored an offer from ${_short(peerHex)} — declined too often',
-        );
-        return;
+    // Bringing the phone to theirs is the consent that "Прийняти" would have
+    // been: no spam accounting for it (nothing to guard against — the person
+    // is standing right here), and it is not "a stranger asking", so the
+    // contacts-only filter below does not apply to it either.
+    final bumped = ref.read(bumpLedgerProvider).recent(peerHex, _now);
+    if (!bumped) {
+      final spam = ref.read(airdropSpamProvider.notifier);
+      if (contact) {
+        spam.remove(peerHex);
+      } else {
+        final record =
+            AirDropSpamGuard.onRequest(spam.recordFor(peerHex), _now);
+        spam.put(peerHex, record);
+        if (AirDropSpamGuard.isBanned(record, _now)) {
+          DebugLog.instance.log(
+            'AIRDROP',
+            'ignored an offer from ${_short(peerHex)} — declined too often',
+          );
+          return;
+        }
       }
     }
     // Decided before the first await: a second offer from the same phone that
     // arrives while this one is being looked at must see it and be "busy".
     NearbyDeclineReason? refusal;
-    if (!contact && !ref.read(airdropReceiveProvider).everyoneAt(_now)) {
+    if (!bumped &&
+        !contact &&
+        !ref.read(airdropReceiveProvider).everyoneAt(_now)) {
       refusal = NearbyDeclineReason.contactsOnly;
     } else if (_evaluating.contains(peerHex) ||
         state.transfers.any(
@@ -577,8 +588,14 @@ class AirDropController extends Notifier<AirDropState>
       }
       if (offer.flags & nearbyFlagWifi != 0) _senderCanWifi.add(id);
       _put(request);
-      ref.read(airdropNotifyProvider)(request);
-      _after(id, AirDropRules.answerWithin, () => unawaited(_expire(id)));
+      if (bumped) {
+        // The bump already was the "yes" — no card to notify about and no
+        // sixty-second clock on an answer nobody needs to give.
+        await accept(id);
+      } else {
+        ref.read(airdropNotifyProvider)(request);
+        _after(id, AirDropRules.answerWithin, () => unawaited(_expire(id)));
+      }
     } finally {
       if (reserved) _evaluating.remove(peerHex);
     }

@@ -13,6 +13,7 @@ import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_source.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_spam_store.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_storage.dart';
+import 'package:cubechat/features/airdrop/data/bump_ledger.dart';
 import 'package:cubechat/features/airdrop/data/wifi_lane.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_spam_guard.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
@@ -320,6 +321,7 @@ void main() {
     int? free,
     _Wifi? wifi,
     AirDropLane lane = AirDropLane.auto,
+    void Function(AirDropTransfer)? notify,
   }) =>
       ProviderContainer(
         overrides: [
@@ -333,7 +335,7 @@ void main() {
           airdropReceiveProvider.overrideWith(() => _Receive(everyone)),
           airdropContactsProvider.overrideWithValue(contacts),
           airdropPeerNameProvider.overrideWithValue((_) => 'Жека'),
-          airdropNotifyProvider.overrideWithValue((_) {}),
+          airdropNotifyProvider.overrideWithValue(notify ?? (_) {}),
           freeSpaceProvider.overrideWithValue(() async => free),
           airdropDirectoryProvider.overrideWithValue(() async => dir),
           fileTransferControllerProvider.overrideWith(_MemTransfers.new),
@@ -723,6 +725,127 @@ void main() {
         expect(
           c.read(airdropHistoryProvider).single.outcome,
           AirDropOutcome.failed,
+        );
+        c.dispose();
+      });
+    });
+  });
+
+  group('bumped offers', () {
+    test('an offer from someone just bumped is taken without asking', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        async.elapse(const Duration(seconds: 3));
+        port.deliver(_eve, offer: _offer(80));
+        async.flushMicrotasks();
+        final answers = port.answersTo(_eve);
+        expect(answers.last.kind, NearbyAnswerKind.accepted);
+        expect(
+          answers.any((a) => a.kind == NearbyAnswerKind.declined),
+          isFalse,
+        );
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+        expect(
+          c.read(airdropControllerProvider).transfers.single.phase,
+          AirDropPhase.transferring,
+        );
+        c.dispose();
+      });
+    });
+
+    test('the same offer eleven seconds after the note is an ordinary '
+        'stranger request', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        async.elapse(const Duration(seconds: 11));
+        port.deliver(_eve, offer: _offer(81));
+        async.flushMicrotasks();
+        final answers = port.answersTo(_eve);
+        expect(answers.first.kind, NearbyAnswerKind.seen);
+        expect(answers.last.kind, NearbyAnswerKind.declined);
+        expect(answers.last.reason, NearbyDeclineReason.contactsOnly);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+        c.dispose();
+      });
+    });
+
+    test('an offer from someone else while the ledger holds only the '
+        'bumped person is an ordinary request', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        port.deliver(_bob, offer: _offer(82));
+        async.flushMicrotasks();
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.seen);
+        expect(c.read(airdropControllerProvider).requests, hasLength(1));
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer is still declined for no space', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async, free: 15);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        port.deliver(_eve, offer: _offer(83));
+        async.flushMicrotasks();
+        expect(port.answersTo(_eve).last.reason, NearbyDeclineReason.noSpace);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+        expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer is still refused when already busy', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        // Bumped and busy both land on the same phone: the first offer is
+        // taken (bumped) and runs to acceptance concurrently with the
+        // second being refused, so only "some answer was a busy decline"
+        // is safe to assert — the bumped offer's own "accepted" answer can
+        // legitimately land after it.
+        port
+          ..deliver(_eve, offer: _offer(84))
+          ..deliver(_eve, offer: _offer(85));
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).transfers, hasLength(1));
+        expect(
+          port.answersTo(_eve).any((a) => a.reason == NearbyDeclineReason.busy),
+          isTrue,
+        );
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer notifies nobody and arms no answer clock', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final notified = <AirDropTransfer>[];
+        final c = make(port, async: async, notify: notified.add);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        port.deliver(_eve, offer: _offer(86));
+        async.flushMicrotasks();
+        expect(notified, isEmpty);
+        async.elapse(const Duration(seconds: 61));
+        expect(c.read(airdropControllerProvider).transfers, hasLength(1));
+        expect(
+          port
+              .answersTo(_eve)
+              .any((a) => a.reason == NearbyDeclineReason.timeout),
+          isFalse,
         );
         c.dispose();
       });
