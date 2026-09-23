@@ -103,6 +103,13 @@ A room's key is derived from its name and password. Anyone who knows both can
 read the room. Rooms are not forward-secret, and a room password is only as
 good as the care taken in sharing it.
 
+### 4.4 AirDrop (sending files to someone nearby)
+
+Files you send someone nearby through AirDrop travel directly between the two
+phones, by default over Bluetooth like any other message. They may also
+travel over the local Wi-Fi network when both phones are on one, encrypted
+with a key that exists only for that transfer; no server is involved.
+
 ---
 
 ## 5. The push notification service

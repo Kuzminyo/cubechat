@@ -1,6 +1,7 @@
 import 'package:cubechat/core/transport/nearby_offer.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_history_controller.dart';
+import 'package:cubechat/features/airdrop/data/airdrop_lane_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_page.dart';
@@ -54,6 +55,16 @@ class _Receive extends AirDropReceiveController {
   Future<void> openToEveryone() async => opened++;
 }
 
+/// The channel setting without its Hive box — the real one opens the box in
+/// `build()`, and `set()` awaits it, which a widget test never lets finish.
+class _Lane extends AirDropLaneController {
+  @override
+  AirDropLane build() => AirDropLane.auto;
+
+  @override
+  Future<void> set(AirDropLane lane) async => state = lane;
+}
+
 class _MemTransfers extends FileTransferController {
   @override
   Map<String, FileTransferTask> build() => const {};
@@ -98,6 +109,7 @@ Widget _app(Widget home, List<Override> overrides) => ProviderScope(
 
 void main() {
   late _Receive receive;
+  late _Lane lane;
 
   List<Override> overrides(
     _FakeAirDrop airdrop, [
@@ -107,10 +119,14 @@ void main() {
         airdropControllerProvider.overrideWith(() => airdrop),
         airdropHistoryProvider.overrideWith(() => _MemHistory(history)),
         airdropReceiveProvider.overrideWith(() => receive),
+        airdropLaneProvider.overrideWith(() => lane),
         fileTransferControllerProvider.overrideWith(_MemTransfers.new),
       ];
 
-  setUp(() => receive = _Receive());
+  setUp(() {
+    receive = _Receive();
+    lane = _Lane();
+  });
 
   testWidgets('a request says who, what and how much, and both buttons work',
       (tester) async {
@@ -213,5 +229,75 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Поруч ніхто не підключений'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the lane switch offers Auto/Bluetooth/Wi-Fi, and picking Wi-Fi sets it',
+      (tester) async {
+    final airdrop = _FakeAirDrop(const AirDropState());
+    await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Авто'), findsOneWidget);
+    expect(find.text('Bluetooth'), findsOneWidget);
+    expect(find.text('Wi‑Fi'), findsOneWidget);
+
+    await tester.tap(find.text('Wi‑Fi'));
+    await tester.pumpAndSettle();
+    expect(lane.state, AirDropLane.wifi);
+  });
+
+  testWidgets('a transferring card over Wi-Fi shows the Wi-Fi icon',
+      (tester) async {
+    final sending = _transfer(
+      direction: AirDropDirection.outgoing,
+      phase: AirDropPhase.transferring,
+    ).copyWith(wifi: true);
+    final airdrop = _FakeAirDrop(AirDropState(transfers: [sending]));
+    await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.bluetooth_rounded), findsNothing);
+  });
+
+  testWidgets('a transferring card over Bluetooth shows the Bluetooth icon',
+      (tester) async {
+    final sending = _transfer(
+      direction: AirDropDirection.outgoing,
+      phase: AirDropPhase.transferring,
+    ).copyWith(wifi: false);
+    final airdrop = _FakeAirDrop(AirDropState(transfers: [sending]));
+    await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.bluetooth_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.wifi_rounded), findsNothing);
+  });
+
+  // A Wi-Fi-only send that fails leaves the live list the moment it fails
+  // (see AirDropTransitions), so `wifiUnreachable` on a live card is never
+  // actually seen on a phone. The reason survives only in the history entry
+  // — that is where this has to be tested instead of on the progress card.
+  testWidgets('a failed history row says it was not on the same network',
+      (tester) async {
+    final airdrop = _FakeAirDrop(const AirDropState());
+    final entry = AirDropHistoryEntry(
+      id: 'h2',
+      peerHex: 'bb' * 32,
+      peerName: 'Жека',
+      direction: AirDropDirection.outgoing,
+      at: DateTime(2026, 9, 22, 14, 5),
+      outcome: AirDropOutcome.failed,
+      noWifiRoute: true,
+      files: const [
+        AirDropHistoryFile(name: 'a.jpg', size: 10, mime: 'image/jpeg'),
+      ],
+    );
+    await tester.pumpWidget(
+      _app(const AirDropPage(), overrides(airdrop, [entry])),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Не в одній мережі'), findsOneWidget);
   });
 }

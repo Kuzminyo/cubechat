@@ -1194,5 +1194,11 @@
   "airdropTooLarge": "{name} більший за {limit} МБ",
   "airdropFromLabel": "AirDrop · {name}",
   "airdropWrite": "Написати",
-  "airdropAction": "AirDrop"
+  "airdropAction": "AirDrop",
+  "airdropLaneTitle": "Канал",
+  "airdropLaneAuto": "Авто",
+  "airdropLaneBluetooth": "Bluetooth",
+  "airdropLaneWifi": "Wi‑Fi",
+  "airdropLaneHint": "Wi‑Fi працює, коли ви в одній мережі або один роздає точку доступу.",
+  "airdropWifiUnreachable": "Не в одній мережі"
 }

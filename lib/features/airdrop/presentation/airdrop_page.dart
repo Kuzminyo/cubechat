@@ -12,6 +12,7 @@ import '../../../l10n/app_localizations.dart';
 import '../data/airdrop_clock.dart';
 import '../data/airdrop_controller.dart';
 import '../data/airdrop_history_controller.dart';
+import '../data/airdrop_lane_controller.dart';
 import '../data/airdrop_receive_controller.dart';
 import '../domain/airdrop_transfer.dart';
 import 'airdrop_cards.dart';
@@ -57,6 +58,12 @@ class AirDropPage extends ConsumerWidget {
           AppearAnimation(
             enabled: animate && !reduced,
             delay: AppearAnimation.stagger(1),
+            child: const _LaneSwitch(),
+          ),
+          const SizedBox(height: 12),
+          AppearAnimation(
+            enabled: animate && !reduced,
+            delay: AppearAnimation.stagger(2),
             child: FloatingGlass(
               blur: false,
               borderRadius: 18,
@@ -228,6 +235,45 @@ class _ReceiveSwitchState extends ConsumerState<_ReceiveSwitch> {
             final c = ref.read(airdropReceiveProvider.notifier);
             unawaited(i == 1 ? c.openToEveryone() : c.contactsOnly());
           },
+        ),
+      ],
+    );
+  }
+}
+
+/// "Channel: Auto / Bluetooth / Wi-Fi" — which radio an outgoing send goes
+/// out on. The receiver has no say (see [AirDropLaneController]), so this
+/// only ever governs sends this phone makes.
+class _LaneSwitch extends ConsumerWidget {
+  const _LaneSwitch();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final lane = ref.watch(airdropLaneProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          t.airdropLaneTitle,
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        SectionSwitch(
+          labels: [
+            t.airdropLaneAuto,
+            t.airdropLaneBluetooth,
+            t.airdropLaneWifi,
+          ],
+          selected: lane.index,
+          onSelect: (i) => unawaited(
+            ref.read(airdropLaneProvider.notifier).set(AirDropLane.values[i]),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          t.airdropLaneHint,
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
         ),
       ],
     );

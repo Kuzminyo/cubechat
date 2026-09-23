@@ -34,7 +34,11 @@ String airdropOutcomeLabel(AppLocalizations t, AirDropHistoryEntry e) {
     AirDropOutcome.failed => t.airdropInterrupted,
     AirDropOutcome.partial => t.airdropOutcomePartial,
   };
-  final why = airdropReasonLabel(t, e.reason);
+  // noWifiRoute is set on the history entry, not on e.reason (a
+  // NearbyDeclineReason) — a Wi-Fi-only send that never found a route never
+  // reached the decline handshake, so it has no NearbyDeclineReason at all.
+  final why =
+      e.noWifiRoute ? t.airdropWifiUnreachable : airdropReasonLabel(t, e.reason);
   return why == null ? base : '$base · $why';
 }
 
@@ -48,6 +52,11 @@ String airdropPhaseLabel(AppLocalizations t, AirDropTransfer x) =>
           ? '${t.airdropAccepted} · ${t.airdropSending}'
           : t.airdropReceiving,
       AirDropPhase.interrupted => t.airdropInterrupted,
+      // Dead in practice on a live card: a Wi-Fi-only send that fails this
+      // way leaves the live list at once (AirDropTransitions.interrupt /
+      // .expire), so nobody sees this phase/flag combination on screen. Kept
+      // because it is free and keeps the label honest if that ever changes.
+      AirDropPhase.failed when x.wifiUnreachable => t.airdropWifiUnreachable,
       _ => '',
     };
 
@@ -167,15 +176,35 @@ class AirDropProgressCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      transfer.peerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            transfer.peerName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.textOnGlass,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        // Which radio is actually moving the bytes, not the
+                        // channel setting — a transfer already in flight kept
+                        // whichever lane it started on.
+                        if (transfer.phase == AirDropPhase.transferring ||
+                            transfer.phase == AirDropPhase.interrupted) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            transfer.wifi
+                                ? Icons.wifi_rounded
+                                : Icons.bluetooth_rounded,
+                            size: 14,
+                            color: AppColors.textOnGlassDim,
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(

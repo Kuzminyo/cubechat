@@ -5797,6 +5797,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'AirDrop'**
   String get airdropAction;
+
+  /// No description provided for @airdropLaneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel'**
+  String get airdropLaneTitle;
+
+  /// No description provided for @airdropLaneAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get airdropLaneAuto;
+
+  /// No description provided for @airdropLaneBluetooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth'**
+  String get airdropLaneBluetooth;
+
+  /// No description provided for @airdropLaneWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Wi‑Fi'**
+  String get airdropLaneWifi;
+
+  /// No description provided for @airdropLaneHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Wi‑Fi works when you are both on one network or one shares a hotspot.'**
+  String get airdropLaneHint;
+
+  /// No description provided for @airdropWifiUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on the same network'**
+  String get airdropWifiUnreachable;
 }
 
 class _AppLocalizationsDelegate

@@ -109,7 +109,7 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Cubechat advertises itself over Bluetooth so other peers can find your device on the mesh.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Cubechat uses your local network only while transferring an encrypted profile between your phones.</string>
+	<string>Cubechat uses your local network only between your own phones and people you send files to nearby — to move a profile to a new phone, or AirDrop files over Wi‑Fi. Nothing is sent to the internet this way.</string>
 	<!-- In-app camera: take a photo to send, and record a round video message -->
 	<key>NSCameraUsageDescription</key>
 	<string>Cubechat uses the camera to take photos, record round video messages, and scan contact or channel QR codes.</string>

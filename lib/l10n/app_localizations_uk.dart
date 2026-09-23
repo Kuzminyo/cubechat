@@ -3380,4 +3380,23 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get airdropAction => 'AirDrop';
+
+  @override
+  String get airdropLaneTitle => 'Канал';
+
+  @override
+  String get airdropLaneAuto => 'Авто';
+
+  @override
+  String get airdropLaneBluetooth => 'Bluetooth';
+
+  @override
+  String get airdropLaneWifi => 'Wi‑Fi';
+
+  @override
+  String get airdropLaneHint =>
+      'Wi‑Fi працює, коли ви в одній мережі або один роздає точку доступу.';
+
+  @override
+  String get airdropWifiUnreachable => 'Не в одній мережі';
 }

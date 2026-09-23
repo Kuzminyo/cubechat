@@ -1650,5 +1650,11 @@
     }
   },
   "airdropWrite": "Message",
-  "airdropAction": "AirDrop"
+  "airdropAction": "AirDrop",
+  "airdropLaneTitle": "Channel",
+  "airdropLaneAuto": "Auto",
+  "airdropLaneBluetooth": "Bluetooth",
+  "airdropLaneWifi": "Wi‑Fi",
+  "airdropLaneHint": "Wi‑Fi works when you are both on one network or one shares a hotspot.",
+  "airdropWifiUnreachable": "Not on the same network"
 }

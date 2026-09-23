@@ -3340,4 +3340,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get airdropAction => 'AirDrop';
+
+  @override
+  String get airdropLaneTitle => 'Channel';
+
+  @override
+  String get airdropLaneAuto => 'Auto';
+
+  @override
+  String get airdropLaneBluetooth => 'Bluetooth';
+
+  @override
+  String get airdropLaneWifi => 'Wi‑Fi';
+
+  @override
+  String get airdropLaneHint =>
+      'Wi‑Fi works when you are both on one network or one shares a hotspot.';
+
+  @override
+  String get airdropWifiUnreachable => 'Not on the same network';
 }
