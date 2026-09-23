@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/routing/branch_pager.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/section_switch.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_navigation.dart';
@@ -161,12 +162,43 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       bottom: false,
       child: Column(
         children: [
+          // One section header owned by the shell — Contacts' title-then-switch
+          // arrangement, so the name isn't drawn twice (the pages used to draw
+          // their own display titles too; see peers_screen.dart's _Header and
+          // airdrop_page.dart).
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SectionSwitch(
-              labels: [t.peersTitle, t.airdropTab, t.nearbyTabFiles],
-              selected: _page,
-              onSelect: _select,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const CubeLogo(size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        t.peersTitle,
+                        key: const Key('nearby-section-title'),
+                        style: AppTypography.display(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  t.peersSubtitle,
+                  key: const Key('nearby-section-subtitle'),
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+                ),
+                const SizedBox(height: 14),
+                SectionSwitch(
+                  labels: [t.peersTitle, t.airdropTab, t.nearbyTabFiles],
+                  selected: _page,
+                  onSelect: _select,
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -242,14 +274,15 @@ class _FilesPage extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 12, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(t.nearbyTabFiles, style: AppTypography.display()),
-              ),
-              if (finished)
+        // No display title here any more — the section header above the
+        // switch already names this tab. Only the clear-finished action, kept
+        // right-aligned on a slim row so it isn't buried behind a menu.
+        if (finished)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
                 IconButton(
                   tooltip: t.fileTransfersClear,
                   onPressed: () => unawaited(
@@ -260,9 +293,9 @@ class _FilesPage extends ConsumerWidget {
                   icon: const Icon(Icons.cleaning_services_rounded),
                   color: AppColors.textOnGlass,
                 ),
-            ],
+              ],
+            ),
           ),
-        ),
         const Expanded(child: FileTransferList(bottomPadding: 140)),
       ],
     );

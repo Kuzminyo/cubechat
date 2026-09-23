@@ -6,14 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
-import '../../../core/theme/typography.dart';
 import '../../../core/ble/bluetooth_power.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
-import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
@@ -84,12 +82,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
         children: [
-          _Header(
-            title: t.peersTitle,
-            subtitle: t.peersSubtitle,
-            state: state,
-            peripheral: peripheral,
-          ),
+          _Header(state: state, peripheral: peripheral),
           const SizedBox(height: 12),
           ..._buildBody(context, t, state, controller),
         ],
@@ -194,16 +187,15 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
   }
 }
 
+/// What is left of this screen's own header now that NearbyScreen draws the
+/// shared title and subtitle above the switch: just the state that changes
+/// while the page sits open — the scanning pulse and the broadcasting chip.
 class _Header extends StatelessWidget {
   const _Header({
-    required this.title,
-    required this.subtitle,
     required this.state,
     required this.peripheral,
   });
 
-  final String title;
-  final String subtitle;
   final PeerDiscoveryState state;
   final PeripheralState peripheral;
 
@@ -217,20 +209,14 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const CubeLogo(size: 32),
-              const SizedBox(width: 12),
-              Expanded(child: Text(title, style: AppTypography.display())),
-              if (scanning) _ScanningPulse(label: t.bleScanning),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-          ),
+          // Its own row, right-aligned: with the title gone there is no
+          // baseline left to sit beside, and a scan can start after the page
+          // has already been sitting open a while.
+          if (scanning)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: _ScanningPulse(label: t.bleScanning),
+            ),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 240),
             transitionBuilder: (child, anim) => FadeTransition(
@@ -240,7 +226,7 @@ class _Header extends StatelessWidget {
             child: broadcasting
                 ? Padding(
                     key: const ValueKey('broadcast-on'),
-                    padding: const EdgeInsets.only(top: 10),
+                    padding: EdgeInsets.only(top: scanning ? 10 : 0),
                     child: _BroadcastChip(
                       label: t.bleBroadcasting,
                       detail: t.bleConnectedCount(peripheral.connectedCount),

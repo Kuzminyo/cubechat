@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
-import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/section_switch.dart';
@@ -35,21 +34,9 @@ class AirDropPage extends ConsumerWidget {
     return AppearOnce(
       builder: (context, animate) => ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
+        // No display title here — the Nearby tab's shared section header
+        // above the switch already names this page (nearby_screen.dart).
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.wifi_tethering_rounded,
-                color: AppColors.brandPrimary,
-                size: 30,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(t.airdropTab, style: AppTypography.display()),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           AppearAnimation(
             enabled: animate && !reduced,
             child: const _ReceiveSwitch(),
