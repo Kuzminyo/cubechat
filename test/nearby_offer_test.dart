@@ -235,4 +235,107 @@ void main() {
     expect(nearbyUnhex(nearbyHex(_id(5))), _id(5));
     expect(() => nearbyUnhex('zz'), throwsFormatException);
   });
+
+  group('answer v2 (Wi-Fi endpoint)', () {
+    Uint8List key() => Uint8List.fromList(List.generate(32, (i) => i + 1));
+    Uint8List tid() => Uint8List.fromList(List.generate(16, (i) => 200 - i));
+
+    test('an answer without an endpoint is still nineteen bytes, version 1',
+        () {
+      final bytes = NearbyAnswer(
+        transferId: tid(),
+        kind: NearbyAnswerKind.accepted,
+      ).encode();
+      expect(bytes.length, NearbyAnswer.length);
+      expect(bytes[0], nearbyVersion);
+    });
+
+    test('an endpoint round-trips', () {
+      final a = NearbyAnswer(
+        transferId: tid(),
+        kind: NearbyAnswerKind.accepted,
+        wifi: NearbyWifiEndpoint(
+          address: '192.168.1.23',
+          port: 40123,
+          key: key(),
+        ),
+      );
+      final bytes = a.encode();
+      expect(bytes[0], nearbyAnswerVersionWifi);
+      final back = NearbyAnswer.decode(bytes);
+      expect(back.kind, NearbyAnswerKind.accepted);
+      expect(back.wifi!.address, '192.168.1.23');
+      expect(back.wifi!.port, 40123);
+      expect(back.wifi!.key, key());
+    });
+
+    test('IPv6 round-trips', () {
+      final back = NearbyAnswer.decode(
+        NearbyAnswer(
+          transferId: tid(),
+          kind: NearbyAnswerKind.accepted,
+          wifi: NearbyWifiEndpoint(address: 'fe80::1', port: 1, key: key()),
+        ).encode(),
+      );
+      expect(back.wifi!.address, 'fe80::1');
+    });
+
+    test('only an acceptance may carry an endpoint', () {
+      expect(
+        () => NearbyAnswer(
+          transferId: tid(),
+          kind: NearbyAnswerKind.declined,
+          wifi: NearbyWifiEndpoint(address: '10.0.0.2', port: 5, key: key()),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('bad endpoints are refused on construction', () {
+      expect(
+        () => NearbyWifiEndpoint(address: 'not-an-ip', port: 5, key: key()),
+        throwsArgumentError,
+      );
+      expect(
+        () => NearbyWifiEndpoint(address: '10.0.0.2', port: 0, key: key()),
+        throwsArgumentError,
+      );
+      expect(
+        () => NearbyWifiEndpoint(
+          address: '10.0.0.2',
+          port: 5,
+          key: Uint8List(31),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('tampered v2 bytes throw FormatException', () {
+      final good = NearbyAnswer(
+        transferId: tid(),
+        kind: NearbyAnswerKind.accepted,
+        wifi: NearbyWifiEndpoint(address: '10.0.0.2', port: 5, key: key()),
+      ).encode();
+      // truncated
+      expect(
+        () => NearbyAnswer.decode(Uint8List.sublistView(good, 0, 30)),
+        throwsFormatException,
+      );
+      // trailing byte
+      expect(
+        () => NearbyAnswer.decode(Uint8List.fromList([...good, 0])),
+        throwsFormatException,
+      );
+      // address length pointing past the end
+      final longAddr = Uint8List.fromList(good)..[19] = 200;
+      expect(() => NearbyAnswer.decode(longAddr), throwsFormatException);
+      // a v2 answer that is not an acceptance
+      final notAccepted = Uint8List.fromList(good)
+        ..[17] = NearbyAnswerKind.declined.tag;
+      expect(() => NearbyAnswer.decode(notAccepted), throwsFormatException);
+      // v1 with the wrong length is still refused
+      final v1 = Uint8List.fromList(good)..[0] = nearbyVersion;
+      expect(() => NearbyAnswer.decode(v1), throwsFormatException);
+    });
+  });
 }

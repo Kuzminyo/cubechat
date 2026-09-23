@@ -9,6 +9,14 @@ const int nearbyIdLen = 16;
 /// Version byte at the head of both bodies.
 const int nearbyVersion = 0x01;
 
+/// Offer flag: "I can send these over the local network" (part 2).
+const int nearbyFlagWifi = 0x01;
+
+/// Answer version that carries a [NearbyWifiEndpoint]. Only ever sent in
+/// reply to an offer with [nearbyFlagWifi], which a part-1 build never sets —
+/// so no phone that cannot read it is ever sent one.
+const int nearbyAnswerVersionWifi = 0x02;
+
 /// Most files one offer may carry.
 const int nearbyMaxFiles = 50;
 
@@ -18,6 +26,9 @@ const int nearbyMaxFieldBytes = 255;
 /// Largest size a Dart int holds exactly on every platform the app builds for
 /// (web included), so a size read here means the same number everywhere.
 const int _maxSize = 0x1FFFFFFFFFFFFF;
+
+/// Longest textual IP address: a full IPv6 with an embedded IPv4.
+const int _maxAddressBytes = 45;
 
 String nearbyHex(Uint8List bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
@@ -31,6 +42,28 @@ Uint8List nearbyUnhex(String hex) {
     out[i] = byte;
   }
   return out;
+}
+
+/// Where the receiver is listening, and the key the stream is sealed with.
+class NearbyWifiEndpoint {
+  NearbyWifiEndpoint({
+    required this.address,
+    required this.port,
+    required this.key,
+  }) {
+    if (address.length > _maxAddressBytes ||
+        InternetAddress.tryParse(address) == null) {
+      throw ArgumentError.value(address, 'address');
+    }
+    if (port < 1 || port > 0xFFFF) throw ArgumentError.value(port, 'port');
+    if (key.length != keyLen) throw ArgumentError.value(key.length, 'key');
+  }
+
+  static const int keyLen = 32;
+
+  final String address;
+  final int port;
+  final Uint8List key;
 }
 
 /// One file named in an offer. The sender picks [mediaId] before sending the
@@ -61,8 +94,8 @@ class NearbyOfferFile {
 ///   count × [mediaId:16][size:8 BE][nameLen:1][name:utf8][mimeLen:1][mime:ascii]
 /// ```
 ///
-/// [flags] bit 0 is reserved for the Wi-Fi lane (part 2 of the design) and is
-/// 0 today. Every length is checked on the way in: a decoder that trusts its
+/// [flags] bit 0 ([nearbyFlagWifi]) says the sender can take the files over the local network; an older build leaves it 0 and never reads it.
+/// Every length is checked on the way in: a decoder that trusts its
 /// input is a crash anybody in Bluetooth range can cause.
 class NearbyOffer {
   NearbyOffer({required this.transferId, required this.files, this.flags = 0}) {
@@ -169,15 +202,22 @@ enum NearbyDeclineReason {
   }
 }
 
-/// `[version:1][transferId:16][kind:1][reason:1]` — nineteen bytes, always.
+/// Version 1: `[version:1][transferId:16][kind:1][reason:1]` — nineteen bytes.
+///
+/// Version 2, an acceptance with a Wi-Fi endpoint:
+/// `… [addrLen:1][addr:ascii][port:2 BE][key:32]`.
 class NearbyAnswer {
   NearbyAnswer({
     required this.transferId,
     required this.kind,
     this.reason = NearbyDeclineReason.user,
+    this.wifi,
   }) {
     if (transferId.length != nearbyIdLen) {
       throw ArgumentError.value(transferId.length, 'transferId');
+    }
+    if (wifi != null && kind != NearbyAnswerKind.accepted) {
+      throw ArgumentError.value(kind, 'kind', 'only an acceptance has wifi');
     }
   }
 
@@ -186,27 +226,66 @@ class NearbyAnswer {
   final Uint8List transferId;
   final NearbyAnswerKind kind;
   final NearbyDeclineReason reason;
+  final NearbyWifiEndpoint? wifi;
 
-  Uint8List encode() => (BytesBuilder(copy: false)
-        ..addByte(nearbyVersion)
-        ..add(transferId)
-        ..addByte(kind.tag)
-        ..addByte(reason.tag))
-      .toBytes();
+  Uint8List encode() {
+    final w = wifi;
+    final out = BytesBuilder(copy: false)
+      ..addByte(w == null ? nearbyVersion : nearbyAnswerVersionWifi)
+      ..add(transferId)
+      ..addByte(kind.tag)
+      ..addByte(reason.tag);
+    if (w != null) {
+      final addr = ascii.encode(w.address);
+      out
+        ..addByte(addr.length)
+        ..add(addr)
+        ..addByte(w.port >> 8)
+        ..addByte(w.port & 0xFF)
+        ..add(w.key);
+    }
+    return out.toBytes();
+  }
 
   static NearbyAnswer decode(Uint8List body) {
-    if (body.length != length) {
-      throw FormatException('nearby answer: ${body.length} bytes');
-    }
-    if (body[0] != nearbyVersion) {
+    if (body.isEmpty) throw const FormatException('nearby answer: empty');
+    final version = body[0];
+    if (version == nearbyVersion) {
+      if (body.length != length) {
+        throw FormatException('nearby answer: ${body.length} bytes');
+      }
+    } else if (version != nearbyAnswerVersionWifi) {
       throw const FormatException('nearby answer: unknown version');
     }
-    final kind = NearbyAnswerKind.fromByte(body[1 + nearbyIdLen]);
+    final r = _Reader(body)..byte();
+    final transferId = r.bytes(nearbyIdLen);
+    final kind = NearbyAnswerKind.fromByte(r.byte());
     if (kind == null) throw const FormatException('nearby answer: kind');
+    final reason = NearbyDeclineReason.fromByte(r.byte());
+    NearbyWifiEndpoint? wifi;
+    if (version == nearbyAnswerVersionWifi) {
+      if (kind != NearbyAnswerKind.accepted) {
+        throw const FormatException('nearby answer: wifi on a non-acceptance');
+      }
+      final addrLen = r.byte();
+      if (addrLen == 0 || addrLen > _maxAddressBytes) {
+        throw FormatException('nearby answer: address of $addrLen bytes');
+      }
+      final address = ascii.decode(r.bytes(addrLen), allowInvalid: false);
+      final port = (r.byte() << 8) | r.byte();
+      final key = r.bytes(NearbyWifiEndpoint.keyLen);
+      if (!r.done) throw const FormatException('nearby answer: trailing bytes');
+      try {
+        wifi = NearbyWifiEndpoint(address: address, port: port, key: key);
+      } on ArgumentError catch (e) {
+        throw FormatException('nearby answer: $e');
+      }
+    }
     return NearbyAnswer(
-      transferId: Uint8List.fromList(body.sublist(1, 1 + nearbyIdLen)),
+      transferId: transferId,
       kind: kind,
-      reason: NearbyDeclineReason.fromByte(body[2 + nearbyIdLen]),
+      reason: reason,
+      wifi: wifi,
     );
   }
 }
