@@ -25,11 +25,13 @@ import '../presentation/airdrop_navigation.dart'
 import '../presentation/airdrop_text.dart';
 import 'airdrop_clock.dart';
 import 'airdrop_history_controller.dart';
+import 'airdrop_lane_controller.dart';
 import 'airdrop_port.dart';
 import 'airdrop_receive_controller.dart';
 import 'airdrop_source.dart';
 import 'airdrop_spam_store.dart';
 import 'airdrop_storage.dart';
+import 'wifi_lane.dart';
 
 /// Who counts as a contact for "Contacts only": the people on the Contacts
 /// tab, by the same rule that tab uses.
@@ -105,11 +107,32 @@ class AirDropController extends Notifier<AirDropState>
   /// Senders whose offer is being looked at right now — see [_onOffer].
   final Set<String> _evaluating = {};
 
+  /// Incoming transfer id → the port its files come to, while it is open.
+  final Map<String, WifiLaneReceiver> _receivers = {};
+
+  /// Incoming transfer ids whose sender can take Wi-Fi (offer flag bit 0).
+  final Set<String> _senderCanWifi = {};
+
+  /// Outgoing transfer id → where the receiver said to connect.
+  final Map<String, NearbyWifiEndpoint> _endpoints = {};
+
+  /// Outgoing transfer id → the open connection.
+  final Map<String, WifiLaneSender> _senders = {};
+
+  /// Incoming transfer ids whose receiver is inside its `onFile` right now.
+  /// A transfer that ends there must not close that receiver: `close()`
+  /// waits for the batch that is waiting on `onFile` (a deadlock if awaited),
+  /// and even unawaited it destroys the socket before the receiver has told
+  /// the sender "kept" — the sender then counts the last file as failed and
+  /// sends it again over Bluetooth, into a transfer that has already ended.
+  final Set<String> _keeping = {};
+
   StreamSubscription<NearbyInbound>? _inbound;
   Timer? _ticker;
   final _random = Random.secure();
 
   AirDropPort get _port => ref.read(airdropPortProvider);
+  AirDropWifi get _wifi => ref.read(airdropWifiProvider);
   DateTime get _now => ref.read(airdropClockProvider)();
 
   @override
@@ -125,6 +148,7 @@ class AirDropController extends Notifier<AirDropState>
       unawaited(_inbound?.cancel());
       port.sink = null;
       _cancelAllTimers();
+      _closeAllWifi();
     });
     return const AirDropState();
   }
@@ -142,6 +166,10 @@ class AirDropController extends Notifier<AirDropState>
       throw ArgumentError.value(files.length, 'files', '1..$nearbyMaxFiles');
     }
     if (!_port.hasDirectLinkTo(peerHex)) return null;
+    // The setting loads from its box on first read; a send right after the
+    // app starts would otherwise go out as "Auto" whatever was chosen.
+    await ref.read(airdropLaneProvider.notifier).loaded;
+    final lane = ref.read(airdropLaneProvider);
     final transferId = _newId();
     final metas = <AirDropFile>[];
     for (final f in files) {
@@ -171,6 +199,7 @@ class AirDropController extends Notifier<AirDropState>
       peerHex,
       offer: NearbyOffer(
         transferId: transferId,
+        flags: lane == AirDropLane.bluetooth ? 0 : nearbyFlagWifi,
         files: [
           for (final m in metas)
             NearbyOfferFile(
@@ -231,8 +260,44 @@ class AirDropController extends Notifier<AirDropState>
     }
   }
 
-  /// Sends the files of an accepted offer one after another.
+  /// Sends the files of an accepted offer one after another — over the local
+  /// network when the receiver gave an endpoint and the setting allows it,
+  /// over Bluetooth otherwise.
   Future<void> _pump(String id) async {
+    final endpoint = _endpoints.remove(id);
+    final lane = ref.read(airdropLaneProvider);
+    if (endpoint != null &&
+        lane != AirDropLane.bluetooth &&
+        !_senders.containsKey(id)) {
+      final tx = await _wifi.connect(
+        endpoint: endpoint,
+        transferId: nearbyUnhex(id),
+      );
+      final now = state.byId(id);
+      if (now == null || now.phase != AirDropPhase.transferring) {
+        await tx?.close();
+        return;
+      }
+      if (tx != null) {
+        _senders[id] = tx;
+        _update(id, (x) => x.copyWith(wifi: true));
+      } else if (lane != AirDropLane.wifi) {
+        DebugLog.instance.log(
+          'AIRDROP',
+          'wifi: no route to ${_short(now.peerHex)} — Bluetooth',
+        );
+      }
+    }
+    // "Wi-Fi" means fail rather than crawl: no connection — including a
+    // receiver that gave no endpoint at all (an older build, or a phone on no
+    // network) — ends the send here instead of quietly using Bluetooth.
+    if (lane == AirDropLane.wifi && !_senders.containsKey(id)) {
+      final now = state.byId(id);
+      if (now != null && now.phase == AirDropPhase.transferring) {
+        _failNoWifi(now);
+      }
+      return;
+    }
     while (true) {
       final t = state.byId(id);
       if (t == null || t.phase != AirDropPhase.transferring) return;
@@ -253,12 +318,58 @@ class AirDropController extends Notifier<AirDropState>
         _put(AirDropTransitions.interrupt(t));
         return;
       }
-      final ok = await _port.sendFile(
-        t.peerHex,
-        file: source,
-        meta: current,
-        peerName: t.peerName,
-      );
+      final tx = _senders[id];
+      final bool ok;
+      if (tx != null) {
+        _trackOutgoing(t, current, source);
+        final files = ref.read(fileTransferControllerProvider.notifier);
+        bool canceled() =>
+            ref.read(fileTransferControllerProvider)[current.mediaIdHex]
+                ?.status ==
+            FileTransferStatus.canceled;
+        final sent = await tx.sendFile(
+          mediaIdHex: current.mediaIdHex,
+          file: source,
+          size: current.size,
+          onProgress: files.setProgress,
+          cancelled: canceled,
+        );
+        if (sent) {
+          files.complete(current.mediaIdHex);
+        } else {
+          final latest = state.byId(id);
+          if (latest == null || latest.phase != AirDropPhase.transferring) {
+            return;
+          }
+          // The cross in the Files centre is a stop of the whole transfer,
+          // as it would be on the AirDrop page — not a cue to go on by
+          // Bluetooth.
+          if (canceled()) {
+            _stop(latest, tell: true);
+            return;
+          }
+          await _senders.remove(id)?.close();
+          files.setStatus(current.mediaIdHex, FileTransferStatus.failed);
+          if (ref.read(airdropLaneProvider) == AirDropLane.wifi) {
+            _failNoWifi(latest);
+            return;
+          }
+          DebugLog.instance.log(
+            'AIRDROP',
+            'wifi: "${current.name}" failed — the rest over Bluetooth',
+          );
+          _update(id, (x) => x.copyWith(wifi: false));
+          continue; // the same file again, now over Bluetooth
+        }
+        ok = sent;
+      } else {
+        ok = await _port.sendFile(
+          t.peerHex,
+          file: source,
+          meta: current,
+          peerName: t.peerName,
+        );
+      }
       final after = state.byId(id);
       if (after == null || after.phase != AirDropPhase.transferring) return;
       if (!ok) {
@@ -275,6 +386,53 @@ class AirDropController extends Notifier<AirDropState>
         ),
       );
     }
+  }
+
+  /// A "Wi-Fi only" send that cannot go that way. What already went stays
+  /// (partial), and the receiver is told, so its port closes and its card
+  /// goes rather than waiting out the stall timer.
+  void _failNoWifi(AirDropTransfer t) {
+    _finish(
+      t.copyWith(
+        phase: t.doneCount > 0 ? AirDropPhase.partial : AirDropPhase.failed,
+        wifiUnreachable: true,
+      ),
+    );
+    unawaited(
+      _port.send(
+        t.peerHex,
+        answer: NearbyAnswer(
+          transferId: nearbyUnhex(t.id),
+          kind: NearbyAnswerKind.cancelled,
+        ),
+      ),
+    );
+  }
+
+  /// The Files centre row for a file going over Wi-Fi — the Bluetooth path
+  /// gets its row from the messaging service. Made afresh for every attempt:
+  /// a row left "cancelled" or "failed" by an earlier one would stop this one
+  /// at its first chunk.
+  void _trackOutgoing(AirDropTransfer t, AirDropFile f, File source) {
+    final now = _now;
+    ref.read(fileTransferControllerProvider.notifier).register(
+          FileTransferTask(
+            id: f.mediaIdHex,
+            chatId: t.peerHex,
+            fileName: f.name,
+            filePath: source.path,
+            mime: f.mime,
+            bytesTotal: f.size,
+            completedUnits: 0,
+            totalUnits: f.size,
+            direction: FileTransferDirection.outgoing,
+            status: FileTransferStatus.transferring,
+            createdAt: now,
+            updatedAt: now,
+            source: FileTransferSource.airdrop,
+            peerName: t.peerName,
+          ),
+        );
   }
 
   // -------------------------------------------------------------- receiving
@@ -371,6 +529,7 @@ class AirDropController extends Notifier<AirDropState>
         );
         return;
       }
+      if (offer.flags & nearbyFlagWifi != 0) _senderCanWifi.add(id);
       _put(request);
       ref.read(airdropNotifyProvider)(request);
       _after(id, AirDropRules.answerWithin, () => unawaited(_expire(id)));
@@ -386,6 +545,9 @@ class AirDropController extends Notifier<AirDropState>
       // All a sender can say to a transfer coming our way is "take it back".
       if (a.kind == NearbyAnswerKind.cancelled) _stop(t, tell: false);
       return;
+    }
+    if (a.kind == NearbyAnswerKind.accepted && a.wifi != null) {
+      _endpoints[t.id] = a.wifi!;
     }
     final next = AirDropTransitions.onAnswer(t, a, _now);
     if (identical(next, t)) return;
@@ -415,13 +577,150 @@ class AirDropController extends Notifier<AirDropState>
     // In the state before the answer leaves: the manifests race right behind
     // it, and each one is judged against this.
     _put(AirDropTransitions.accept(t, _now));
+    final wifi = _senderCanWifi.remove(id) ? await _openReceiver(t) : null;
     await _port.send(
       t.peerHex,
       answer: NearbyAnswer(
         transferId: nearbyUnhex(id),
         kind: NearbyAnswerKind.accepted,
+        wifi: wifi,
       ),
     );
+  }
+
+  /// A port for the files of [t], or null when this phone is on no local
+  /// network (then they come over Bluetooth, as in part 1). The receiver
+  /// agrees to Wi-Fi whatever its own setting: it costs it nothing.
+  Future<NearbyWifiEndpoint?> _openReceiver(AirDropTransfer t) async {
+    final address = await _wifi.localAddress();
+    if (address == null) return null;
+    final key = Uint8List.fromList(
+      List<int>.generate(
+        NearbyWifiEndpoint.keyLen,
+        (_) => _random.nextInt(256),
+      ),
+    );
+    final WifiLaneReceiver rx;
+    try {
+      rx = await _wifi.startReceiver(
+        address: address,
+        key: key,
+        transferId: nearbyUnhex(t.id),
+        expected: {for (final f in t.files) f.mediaIdHex: f.size},
+        tempDir: await _wifiTempDir(),
+        onConnected: () {
+          if (_receivers.containsKey(t.id)) {
+            _update(t.id, (x) => x.copyWith(wifi: true));
+          }
+        },
+        onProgress: (id, done, total) => _trackIncoming(t, id, done, total),
+        onFile: (id, file) => _keepFromWifi(t, id, file),
+      );
+    } on SocketException catch (e) {
+      DebugLog.instance.log('AIRDROP', 'wifi: could not listen: $e');
+      return null;
+    } on FileSystemException catch (e) {
+      DebugLog.instance.log('AIRDROP', 'wifi: no folder for the files: $e');
+      return null;
+    }
+    // Taken back (or wiped) while the port was opening: nobody would ever
+    // close it but its own two-minute idle timer.
+    final now = state.byId(t.id);
+    if (now == null || now.phase.isFinal) {
+      await rx.close();
+      return null;
+    }
+    _receivers[t.id] = rx;
+    // The port closes when the sender hangs up — it went on by Bluetooth, or
+    // left. The card should stop saying Wi-Fi then.
+    unawaited(
+      rx.done.then((_) {
+        if (!identical(_receivers[t.id], rx)) return;
+        _update(t.id, (x) => x.wifi ? x.copyWith(wifi: false) : x);
+      }),
+    );
+    return NearbyWifiEndpoint(
+      address: address.address,
+      port: rx.port,
+      key: key,
+    );
+  }
+
+  /// Where half-received Wi-Fi files are written: a folder of their own
+  /// inside the AirDrop one, so a `.part` never sits among kept files.
+  /// Synchronous on purpose — one mkdir per accepted transfer, and it keeps
+  /// the controller drivable under a fake clock, where real async file I/O
+  /// never completes.
+  Future<Directory> _wifiTempDir() async {
+    final base = await ref.read(airdropDirectoryProvider)();
+    final dir = Directory('${base.path}${Platform.pathSeparator}wifi-in');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir;
+  }
+
+  /// The receiver's `onFile`. Never awaits a receiver's close — see
+  /// [_keeping].
+  Future<bool> _keepFromWifi(
+    AirDropTransfer t,
+    String mediaIdHex,
+    File file,
+  ) async {
+    // Ended, wiped or disposed while the file was still arriving.
+    if (!_receivers.containsKey(t.id)) return false;
+    _keeping.add(t.id);
+    try {
+      final path = await keep(
+        mediaIdHex: mediaIdHex,
+        senderHex: t.peerHex,
+        file: file,
+        name: mediaIdHex,
+      );
+      if (path == null) return false;
+      final size = t.files.firstWhere((f) => f.mediaIdHex == mediaIdHex).size;
+      ref
+          .read(fileTransferControllerProvider.notifier)
+          .complete(mediaIdHex, filePath: path, bytesTotal: size);
+      return true;
+    } finally {
+      _keeping.remove(t.id);
+    }
+  }
+
+  /// The Files centre row for a file coming over Wi-Fi, and its progress —
+  /// which [_noteProgress] also reads, so the stall timer works as it does
+  /// for Bluetooth.
+  void _trackIncoming(
+    AirDropTransfer t,
+    String mediaIdHex,
+    int done,
+    int total,
+  ) {
+    // A last chunk racing the end of the transfer must not leave a row behind.
+    if (!_receivers.containsKey(t.id)) return;
+    final files = ref.read(fileTransferControllerProvider.notifier);
+    if (ref.read(fileTransferControllerProvider)[mediaIdHex] == null) {
+      final offered = t.files.firstWhere((f) => f.mediaIdHex == mediaIdHex);
+      final now = _now;
+      files.register(
+        FileTransferTask(
+          id: mediaIdHex,
+          chatId: t.peerHex,
+          fileName: offered.name,
+          filePath: '',
+          mime: offered.mime,
+          bytesTotal: total,
+          completedUnits: 0,
+          totalUnits: total,
+          direction: FileTransferDirection.incoming,
+          status: FileTransferStatus.transferring,
+          createdAt: now,
+          updatedAt: now,
+          source: FileTransferSource.airdrop,
+          peerName: t.peerName,
+        ),
+      );
+    }
+    files.setProgress(mediaIdHex, done, total);
   }
 
   Future<void> decline(String id) async {
@@ -599,6 +898,7 @@ class AirDropController extends Notifier<AirDropState>
     _unitsSeen.clear();
     _lastProgress.clear();
     _evaluating.clear();
+    _closeAllWifi();
     state = const AirDropState();
   }
 
@@ -632,6 +932,18 @@ class AirDropController extends Notifier<AirDropState>
   void _finish(AirDropTransfer t) {
     _cancelTimers(t.id);
     _lastProgress.remove(t.id);
+    final rx = _receivers.remove(t.id);
+    if (rx != null) {
+      // Ended by the last file kept inside the receiver's own callback: it
+      // closes itself once the sender has heard "kept" (see [_keeping]).
+      // `done` also completes on its idle close, so this cannot leak.
+      unawaited(
+        _keeping.contains(t.id) ? rx.done.then((_) => rx.close()) : rx.close(),
+      );
+    }
+    unawaited(_senders.remove(t.id)?.close());
+    _endpoints.remove(t.id);
+    _senderCanWifi.remove(t.id);
     state = AirDropState(
       transfers: [for (final x in state.transfers) if (x.id != t.id) x],
     );
@@ -652,7 +964,8 @@ class AirDropController extends Notifier<AirDropState>
     DebugLog.instance.log(
       'AIRDROP',
       '${t.direction.name} ${_short(t.id)} ended: ${t.phase.name}'
-          '${t.reason == null ? '' : ' (${t.reason!.name})'}',
+          '${t.reason == null ? '' : ' (${t.reason!.name})'}'
+          '${t.wifiUnreachable ? ' (no Wi-Fi route)' : ''}',
     );
   }
 
@@ -661,6 +974,23 @@ class AirDropController extends Notifier<AirDropState>
     for (final f in t.files) {
       if (!f.done) _port.cancelFile(f.mediaIdHex);
     }
+    unawaited(_senders.remove(t.id)?.close());
+  }
+
+  /// Every port and connection, for the wipe and for disposal. Unawaited: a
+  /// receiver's close waits for the batch it is running, and neither caller
+  /// may hang on a file still being written.
+  void _closeAllWifi() {
+    for (final rx in _receivers.values) {
+      unawaited(rx.close());
+    }
+    for (final tx in _senders.values) {
+      unawaited(tx.close());
+    }
+    _receivers.clear();
+    _senders.clear();
+    _endpoints.clear();
+    _senderCanWifi.clear();
   }
 
   void _after(String id, Duration wait, void Function() then) {

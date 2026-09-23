@@ -84,6 +84,8 @@ class AirDropTransfer {
     this.reason,
     this.acceptedAt,
     this.lastProgressAt,
+    this.wifi = false,
+    this.wifiUnreachable = false,
   });
 
   /// The transfer id, hex.
@@ -97,6 +99,13 @@ class AirDropTransfer {
   final NearbyDeclineReason? reason;
   final DateTime? acceptedAt;
   final DateTime? lastProgressAt;
+
+  /// Files are moving over the local network right now, not Bluetooth.
+  final bool wifi;
+
+  /// A Wi-Fi-only send that could not reach the other phone that way — the
+  /// "not on the same network" failure, which never falls back.
+  final bool wifiUnreachable;
 
   int get totalBytes => files.fold(0, (sum, f) => sum + f.size);
   int get doneCount => files.where((f) => f.done).length;
@@ -115,6 +124,8 @@ class AirDropTransfer {
     NearbyDeclineReason? reason,
     DateTime? acceptedAt,
     DateTime? lastProgressAt,
+    bool? wifi,
+    bool? wifiUnreachable,
   }) =>
       AirDropTransfer(
         id: id,
@@ -127,6 +138,8 @@ class AirDropTransfer {
         reason: reason ?? this.reason,
         acceptedAt: acceptedAt ?? this.acceptedAt,
         lastProgressAt: lastProgressAt ?? this.lastProgressAt,
+        wifi: wifi ?? this.wifi,
+        wifiUnreachable: wifiUnreachable ?? this.wifiUnreachable,
       );
 }
 
