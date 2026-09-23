@@ -97,6 +97,34 @@ void main() {
       });
     });
 
+    test('results landing while dispose() awaits leave no emit behind', () {
+      fakeAsync((async) {
+        final scanner = BleScanner(isIOS: false);
+        final snapshots = <List<DiscoveredPeer>>[];
+        scanner.peers.listen(snapshots.add);
+        unawaited(scanner.setProximity(true));
+        async.flushMicrotasks();
+
+        // dispose() runs stop(), which yields at its first await; two
+        // results arrive in that gap and arm the throttle with a trailing
+        // emit pending.
+        unawaited(scanner.dispose());
+        scanner
+          ..debugOnResults([_adv(a, -35, t0)])
+          ..debugOnResults([
+            _adv(a, -36, t0.add(const Duration(milliseconds: 10))),
+          ]);
+        async.flushMicrotasks();
+        // And one after the stream has closed.
+        scanner.debugOnResults([
+          _adv(a, -37, t0.add(const Duration(milliseconds: 20))),
+        ]);
+        // A trailing emit into the closed stream would throw right here.
+        async.elapse(const Duration(milliseconds: 300));
+        expect(async.pendingTimers, isEmpty);
+      });
+    });
+
     test('outside proximity an unmoved RSSI is still not news', () {
       fakeAsync((async) {
         final scanner = BleScanner(isIOS: false);

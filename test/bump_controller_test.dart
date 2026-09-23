@@ -720,8 +720,8 @@ void main() {
       // for somebody else: one sample, never "close".
       for (var i = 0; i < 10; i++) {
         c.read(_readings.notifier).state = [
-          (hex: _bob, rssi: -35, seen: start),
-          (hex: _eve, rssi: -90, seen: start.add(tick * i)),
+          (hex: _bob, device: 'AA', rssi: -35, seen: start),
+          (hex: _eve, device: 'EE', rssi: -90, seen: start.add(tick * i)),
         ];
         async.elapse(tick);
       }
@@ -729,7 +729,45 @@ void main() {
 
       for (var i = 0; i < 10; i++) {
         c.read(_readings.notifier).state = [
-          (hex: _bob, rssi: -35, seen: start.add(tick * (20 + i))),
+          (
+            hex: _bob,
+            device: 'AA',
+            rssi: -35,
+            seen: start.add(tick * (20 + i)),
+          ),
+        ];
+        async.elapse(tick);
+      }
+      expect(port.bumpsTo(_bob), hasLength(1));
+      c.dispose();
+    });
+  });
+
+  test('a phone that resolves is not its own runner-up', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      final start = DateTime(2026, 9, 23, 12);
+      // Bob's phone, not yet named: read as anon, touching.
+      for (var i = 0; i < 5; i++) {
+        c.read(_readings.notifier).state = [
+          (
+            hex: '${bumpAnonPrefix}AA',
+            device: 'AA',
+            rssi: -35,
+            seen: start.add(tick * i),
+          ),
+        ];
+        async.elapse(tick);
+      }
+      expect(port.sent, isEmpty, reason: 'nobody to bump yet');
+
+      // The same device, now resolved, at the same RSSI: well inside the
+      // three seconds its anon readings would otherwise be held for.
+      for (var i = 5; i < 11; i++) {
+        c.read(_readings.notifier).state = [
+          (hex: _bob, device: 'AA', rssi: -35, seen: start.add(tick * i)),
         ];
         async.elapse(tick);
       }
@@ -848,8 +886,8 @@ void main() {
     );
     addTearDown(c.dispose);
     expect(c.read(bumpReadingsProvider), [
-      (hex: _bob, rssi: -40, seen: seen),
-      (hex: '${bumpAnonPrefix}BB', rssi: -30, seen: seen),
+      (hex: _bob, device: 'AA', rssi: -40, seen: seen),
+      (hex: '${bumpAnonPrefix}BB', device: 'BB', rssi: -30, seen: seen),
     ]);
   });
 

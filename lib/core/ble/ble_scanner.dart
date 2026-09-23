@@ -195,12 +195,15 @@ class BleScanner {
     // start() skip arming the sweep entirely.
     _gcTimer = null;
     _gcTimerPeriod = null;
-    _emitTimer?.cancel();
-    _emitTimer = null;
-    _emitPending = false;
     await _adapterSub?.cancel();
     _adapterSub = null;
     await _stopScanWindow();
+    // Only now: a result that landed during the awaits above could re-arm the
+    // throttle, and its trailing emit would then fire after dispose() closed
+    // the stream.
+    _emitTimer?.cancel();
+    _emitTimer = null;
+    _emitPending = false;
     _peers.clear();
     _emit();
   }
@@ -462,6 +465,8 @@ class BleScanner {
   /// carries each phone's every advertisement to the gesture, whose own tick is
   /// 200 ms.
   void _emitThrottled() {
+    // Nothing to throttle for once disposed — and no timer to leave behind.
+    if (_controller.isClosed) return;
     if (_emitTimer != null) {
       _emitPending = true;
       return;
@@ -469,7 +474,7 @@ class BleScanner {
     _emit();
     _emitTimer = Timer(_proximityEmitEvery, () {
       _emitTimer = null;
-      if (_emitPending) {
+      if (_emitPending && !_controller.isClosed) {
         _emitPending = false;
         _emitThrottled();
       }
@@ -568,6 +573,10 @@ class BleScanner {
   }
 
   void _emit() {
+    // A late callback (a scan result's trailing emit, a sweep) after dispose()
+    // has nobody to tell, and add() on a closed stream throws — inside a timer,
+    // where nothing catches it.
+    if (_controller.isClosed) return;
     // Nearest first, and "no idea" last. The platform reports 127 when it has
     // no RSSI for an advertisement — a sentinel, not a reading — and sorting
     // on it put the one device we knew least about at the top of the list,

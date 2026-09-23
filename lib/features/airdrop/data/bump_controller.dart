@@ -73,8 +73,9 @@ class BumpState {
 /// One signal reading the scan handed over. [seen] is when the advertisement
 /// behind it arrived — the discovery list is re-emitted whenever *anyone* in
 /// it moves, and without it an unchanged -35 would be counted again each time
-/// somebody else's signal wobbled.
-typedef BumpReading = ({String hex, int rssi, DateTime seen});
+/// somebody else's signal wobbled. [device] is the platform device id the
+/// reading came from, whatever [hex] it is filed under.
+typedef BumpReading = ({String hex, String device, int rssi, DateTime seen});
 
 /// Own signed card, injectable for tests.
 final bumpOwnCardProvider = Provider<Future<Uint8List> Function()>(
@@ -122,6 +123,7 @@ final bumpReadingsProvider = Provider.autoDispose<List<BumpReading>>(
       if (p.hasSignalReading)
         (
           hex: p.resolvedPubkeyHex ?? '$bumpAnonPrefix${p.id}',
+          device: p.id,
           rssi: p.rssi,
           seen: p.lastSeen,
         ),
@@ -160,6 +162,10 @@ class BumpController extends Notifier<BumpState> {
 
   /// Newest advertisement already fed, per person — see [BumpReading].
   final Map<String, DateTime> _fed = {};
+
+  /// Device id → the key its readings were last filed under — see
+  /// [_onReadings].
+  final Map<String, String> _keyOfDevice = {};
 
   /// Our bump to each person as it is being handed to the port. A bumped
   /// offer waits on it: the receiver opens its door for the offer when our
@@ -225,6 +231,7 @@ class BumpController extends Notifier<BumpState> {
     _readings = null;
     _tracker.clear();
     _fed.clear();
+    _keyOfDevice.clear();
     _sentAt.clear();
     _heard.clear();
     _sending.clear();
@@ -252,6 +259,19 @@ class BumpController extends Notifier<BumpState> {
 
   void _onReadings(List<BumpReading> readings) {
     for (final r in readings) {
+      // A phone read as `anon:` a moment ago and named now is one phone, not
+      // two. Its anonymous readings would otherwise be held for the tracker's
+      // three seconds at the very same RSSI — a runner-up zero dB behind that
+      // fails the margin, so the phone blocked its own bump right after it
+      // resolved (and again after every rotating-id epoch change).
+      final before = _keyOfDevice[r.device];
+      if (before != null &&
+          before != r.hex &&
+          before.startsWith(bumpAnonPrefix)) {
+        _tracker.forget(before);
+        _fed.remove(before);
+      }
+      _keyOfDevice[r.device] = r.hex;
       final last = _fed[r.hex];
       if (last != null && !r.seen.isAfter(last)) continue;
       _fed[r.hex] = r.seen;
