@@ -54,4 +54,41 @@ void main() {
     final p = ProximityTracker()..add('a', 127, at(0));
     expect(p.read(at(10)).closest, isNull);
   });
+
+  test('a single loud sample does not make a bump', () {
+    final p = ProximityTracker()..add('a', -30, at(0));
+    expect(p.read(at(10)).isClose, isFalse);
+    expect(p.read(at(2000)).isClose, isFalse);
+  });
+
+  test('three samples in the window make a bump', () {
+    final p = ProximityTracker();
+    p
+      ..add('a', -35, at(0))
+      ..add('a', -35, at(300))
+      ..add('a', -35, at(600));
+    final r = p.read(at(900));
+    expect(r.isClose, isTrue);
+    expect(r.closest, 'a');
+  });
+
+  test('held reading gives closest but not isClose', () {
+    final p = ProximityTracker();
+    for (var i = 0; i < 6; i++) {
+      p.add('a', -35, at(i * 150));
+    }
+    final r = p.read(at(3000));
+    expect(r.closest, 'a');
+    expect(r.closestRssi, isNotNull);
+    expect(r.isClose, isFalse);
+  });
+
+  test('stale peers are evicted', () {
+    final p = ProximityTracker()..add('a', -35, at(0));
+    expect(p.trackedPeers, 1);
+    expect(p.read(at(2500)).closest, 'a');
+    expect(p.trackedPeers, 1); // Still held
+    expect(p.read(at(3500)).closest, isNull);
+    expect(p.trackedPeers, 0); // Evicted
+  });
 }
