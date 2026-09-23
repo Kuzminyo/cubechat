@@ -202,6 +202,43 @@ void main() {
     await rx.close();
   });
 
+  test('closed mid-file: stops reading at once and reports false', () async {
+    const size = 8 * 1024 * 1024;
+    final rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'aa' * 16: size},
+      tempDir: tmp,
+      onProgress: (_, __, ___) {},
+      onFile: (_, __) async => true,
+    );
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: rx.port, key: key),
+      transferId: tid,
+    );
+    final f = await source('huge.bin', size, 6);
+    final reported = <int>[];
+    // What the controller's watchdog does: close from outside while the
+    // loop is running. A destroyed socket still takes add() and flush()
+    // without complaint, so only the loop's own check can stop it.
+    final ok = await tx!.sendFile(
+      mediaIdHex: 'aa' * 16,
+      file: f,
+      size: size,
+      onProgress: (_, done, __) {
+        reported.add(done);
+        if (reported.length == 1) unawaited(tx.close());
+      },
+      cancelled: () => false,
+    );
+    expect(ok, isFalse);
+    expect(reported, hasLength(1));
+    expect(reported.last, lessThan(size));
+    await rx.close();
+  });
+
   test('the receiver closes itself after the idle time', () async {
     final rx = await WifiLaneReceiver.start(
       address: loop,

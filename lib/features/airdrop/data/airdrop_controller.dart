@@ -778,6 +778,9 @@ class AirDropController extends Notifier<AirDropState>
       row = null;
     }
     if (row == null) {
+      // A fresh row is nobody's cancel yet: a mark left from before must not
+      // excuse the person's cross on it later.
+      _selfCancelled.remove(mediaIdHex);
       final offered = t.files.firstWhere((f) => f.mediaIdHex == mediaIdHex);
       final now = _now;
       files.register(
@@ -1054,9 +1057,17 @@ class AirDropController extends Notifier<AirDropState>
 
   /// Stop whatever file of [t] is still moving.
   void _cancelRunning(AirDropTransfer t) {
+    final rows = ref.read(fileTransferControllerProvider);
     for (final f in t.files) {
       if (!f.done) {
-        _selfCancelled.add(f.mediaIdHex);
+        // Only a row this call really flips to "cancelled" is ours. One with
+        // no row yet is untouched by cancelFile, and one already cancelled
+        // was the person — marking either would later read their cross as
+        // this controller's own and ignore it.
+        final status = rows[f.mediaIdHex]?.status;
+        if (status != null && status != FileTransferStatus.canceled) {
+          _selfCancelled.add(f.mediaIdHex);
+        }
         _port.cancelFile(f.mediaIdHex);
       }
     }

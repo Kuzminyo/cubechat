@@ -704,6 +704,16 @@ class WifiLaneSender {
       raf = await file.open();
       var sent = 0;
       while (sent < size) {
+        // Closed from outside (the controller's stall watchdog) or found
+        // dead: stop here. A destroyed socket still takes add() and flush()
+        // without complaint — measured at 1 ms a flush — so without this
+        // the rest of the file was read, sealed and thrown away, a big video
+        // heating the phone for nothing, each slice reporting progress that
+        // pushed the Files-centre row to 100%.
+        if (_closed || _dead) {
+          _pending.remove(mediaIdHex);
+          return false;
+        }
         if (cancelled()) {
           _pending.remove(mediaIdHex);
           await close();

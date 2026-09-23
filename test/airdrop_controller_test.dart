@@ -1220,6 +1220,59 @@ void main() {
       });
     });
 
+    test('a stall does not excuse a later cancel of a file not yet started',
+        () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, request) = receiving(async, wifi, 71);
+        final [a, b] = [for (final f in request.files) f.mediaIdHex];
+        final rows = c.read(fileTransferControllerProvider.notifier);
+        wifi.progress!(a, 5, 10);
+        expect(c.read(fileTransferControllerProvider)[b], isNull);
+        async.elapse(const Duration(seconds: 65));
+        expect(
+          c.read(airdropControllerProvider).transfers.single.phase,
+          AirDropPhase.interrupted,
+        );
+
+        // The bytes come back, B starts, and then the person cancels B.
+        wifi.progress!(a, 6, 10);
+        wifi.progress!(b, 1, 10);
+        rows.cancel(b);
+        wifi.progress!(b, 2, 10);
+        bool? kept;
+        unawaited(
+          wifi.keep!(b, File('${dir.path}${sep()}b')).then((v) => kept = v),
+        );
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.cancelled);
+        expect(kept, isFalse);
+        expect(
+          c.read(fileTransferControllerProvider)[b]!.status,
+          FileTransferStatus.canceled,
+        );
+        c.dispose();
+      });
+    });
+
+    test('a cancel pressed before a stall still counts after it', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, request) = receiving(async, wifi, 72);
+        final a = request.files.first.mediaIdHex;
+        wifi.progress!(a, 5, 10);
+        // Pressed while nothing moved, so nothing has read it yet.
+        c.read(fileTransferControllerProvider.notifier).cancel(a);
+        async.elapse(const Duration(seconds: 65));
+        wifi.progress!(a, 6, 10);
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.cancelled);
+        c.dispose();
+      });
+    });
+
     test('a wipe while the port opens: no acceptance, the port closed', () {
       fakeAsync((async) {
         final port = _Port()..direct.add(_bob);
