@@ -95,6 +95,7 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   StreamSubscription<List<DiscoveredPeer>>? _peerSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
   bool _nicknameWatched = false;
+  bool _proximityWatched = false;
 
   /// Tail of the serialized advertise transitions — see [_serializeAdvertise].
   Future<void>? _advertiseChain;
@@ -155,13 +156,21 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // proximity cadence gives — and only while someone is actually on the
     // AirDrop page trying to bump, so it doesn't run the rest of the time.
     // See BleConstants' proximity-cadence comment for why this is affordable.
-    ref.listen<bool>(airdropPageOnScreenProvider, (_, on) {
-      unawaited(scanner.setProximity(on));
-    });
-    // Leaving with proximity still on would pin the radio to its heaviest
-    // cadence for good — the page can't turn it back off once this controller
-    // is gone.
-    ref.onDispose(() => unawaited(scanner.setProximity(false)));
+    //
+    // Guarded like _watchNickname below: start() is idempotent and runs on
+    // every launch, PeersScreen init, manual refresh and mesh-toggle-on, so
+    // without the flag each call stacked another ref.listen + onDispose pair
+    // on the same provider.
+    if (!_proximityWatched) {
+      _proximityWatched = true;
+      ref.listen<bool>(airdropPageOnScreenProvider, (_, on) {
+        unawaited(scanner.setProximity(on));
+      });
+      // Leaving with proximity still on would pin the radio to its heaviest
+      // cadence for good — the page can't turn it back off once this
+      // controller is gone.
+      ref.onDispose(() => unawaited(scanner.setProximity(false)));
+    }
 
     // Before every bail-out below, because a rename is not a Bluetooth event.
     // This used to be wired inside _bootPeripheral, which is reached only after

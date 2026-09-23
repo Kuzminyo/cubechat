@@ -69,4 +69,30 @@ void main() {
     expect(find.text('page 1').hitTestable(), findsOneWidget);
     expect(c.read(nearbyPageRequestProvider), isNull);
   });
+
+  testWidgets(
+      'backgrounding the AirDrop page turns it off, and resuming turns it '
+      'back on', (tester) async {
+    final c = await pump(tester);
+    addTearDown(
+      () => tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+    );
+
+    await tester.tap(find.text('AirDrop'));
+    await tester.pumpAndSettle();
+    expect(c.read(airdropPageOnScreenProvider), isTrue);
+
+    // A glance at the notification shade is not leaving — only paused/hidden
+    // and resumed are meant to move the flag.
+    tester.binding
+        .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    expect(c.read(airdropPageOnScreenProvider), isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(c.read(airdropPageOnScreenProvider), isFalse);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(c.read(airdropPageOnScreenProvider), isTrue);
+  });
 }

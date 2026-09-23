@@ -1,4 +1,5 @@
 import 'package:cubechat/core/ble/ble_constants.dart';
+import 'package:cubechat/core/ble/ble_scanner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -14,5 +15,17 @@ void main() {
       BleConstants.proximityWindow,
       greaterThan(BleConstants.proximityGap),
     );
+  });
+
+  test(
+      'setProximity on a scanner that was never started just records the '
+      'flag — it does not start a scan', () async {
+    // No platform channel is ever mocked here, so if setProximity() reached
+    // FlutterBluePlus.startScan on an unstarted scanner this test would throw
+    // MissingPluginException instead of passing quietly.
+    final scanner = BleScanner(isIOS: false);
+    await scanner.setProximity(true);
+    expect(scanner.proximity, isTrue);
+    expect(scanner.isRunning, isFalse);
   });
 }

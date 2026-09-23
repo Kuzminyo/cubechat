@@ -33,7 +33,7 @@ class NearbyScreen extends ConsumerStatefulWidget {
 }
 
 class _NearbyScreenState extends ConsumerState<NearbyScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _page = 0;
   double _from = 1;
   late final AnimationController _slide = AnimationController(
@@ -47,9 +47,28 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   /// another. Read in build, where depending on [TickerMode] is allowed.
   bool _visible = true;
 
+  /// Whether the app itself is resumed, not merely on screen. The AirDrop
+  /// page being the visible tab is not enough on its own: Home or the lock
+  /// screen while it's showing must not leave the proximity scan and the
+  /// stranger-visibility window (`MessagingService._discoverableNow`)
+  /// running in a pocket indefinitely.
+  ///
+  /// Deliberately paused/hidden → false and resumed → true only, never
+  /// `inactive`. Android fires `inactive` for anything that merely covers the
+  /// app for a moment — the notification shade, a permission dialog, the
+  /// recents switcher — and lib/app.dart's own lifecycle handler already
+  /// learned the cost of treating that as "left": every glance at the shade
+  /// restarted the radio (see the comment above `_applyBackgroundRadioPolicy`
+  /// there). Starts true: this screen never builds before the app's first
+  /// resume, and [WidgetsBinding.lifecycleState] can read null that early.
+  bool _resumed = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final asked = ref.read(nearbyPageRequestProvider);
@@ -70,7 +89,24 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // See [_resumed] for why only these two outcomes react, and `inactive`
+    // never does.
+    if (state == AppLifecycleState.resumed) {
+      if (_resumed) return;
+      _resumed = true;
+      _publish();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      if (!_resumed) return;
+      _resumed = false;
+      _publish();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _slide.dispose();
     super.dispose();
   }
@@ -87,7 +123,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       ),
     );
     ref.read(airdropPageOnScreenProvider.notifier).state =
-        _page == kAirDropPage && _visible;
+        _page == kAirDropPage && _visible && _resumed;
   }
 
   void _take(int page) {

@@ -130,6 +130,12 @@ class BleScanner {
   /// No-op unless the scanner is running and the cadence actually changed.
   Future<void> retune() async {
     if (!_running) return;
+    // Proximity always forces _active true (see _startScanWindow), so
+    // `wanted` — driven by shouldScanActively, which knows nothing about the
+    // AirDrop page — can never equal it while proximity is on. Without this,
+    // every retune() call (app resume, a queued delivery) restarted the scan
+    // for no cadence change at all.
+    if (_proximity) return;
     final wanted = shouldScanActively?.call() ?? true;
     if (wanted == _active) return;
     await _stopScanWindow();
@@ -147,10 +153,18 @@ class BleScanner {
   /// a stopped scanner deliberately — the next [_startScanWindow] reads
   /// [_proximity] itself, so a `setProximity(true)` that arrives just before
   /// the adapter comes back on still takes effect.
+  ///
+  /// Turning ON restarts the current window at once — the whole point is
+  /// fresh RSSI right away. Turning OFF does not: it only clears the flag and
+  /// lets the in-flight proximity window run to its own end, picked up by the
+  /// normal cadence on the *next* window. Android silently stops returning
+  /// scan results after 5 `startScan` calls in a rolling 30 s window, and
+  /// stopping/restarting on every AirDrop-page exit — on top of every entry —
+  /// made that limit reachable by ordinary tab-switching.
   Future<void> setProximity(bool on) async {
     if (on == _proximity) return;
     _proximity = on;
-    if (!_running) return;
+    if (!_running || !on) return;
     await _stopScanWindow();
     if (_running) await _startScanWindow();
   }
@@ -229,11 +243,11 @@ class BleScanner {
     // Re-decided per window, so a resume (or a message queued for an offline
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
-    // Proximity implies active — the AirDrop page being on screen is at least
-    // as strong a reason to scan hard as the Nearby list being watched, and
-    // the branches below only know two speeds.
-    if (_proximity) _active = true;
     if (_proximity) {
+      // Proximity implies active — the AirDrop page being on screen is at
+      // least as strong a reason to scan hard as the Nearby list being
+      // watched, and the branches below only know two speeds.
+      _active = true;
       // The proximity cadence doesn't back off — it only ever runs for the
       // seconds someone is on the AirDrop page trying to bump, so there is no
       // "nobody's around, stretch the gap" case to protect against.
