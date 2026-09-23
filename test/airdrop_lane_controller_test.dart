@@ -74,4 +74,35 @@ void main() {
         await hiveCipherProvider.openEncryptedBox<dynamic>(HiveBoxes.settings);
     expect(box.get(AirDropLaneController.storageKey), isNull);
   });
+
+  group('a call before _load() finishes', () {
+    // set()/reset() are meant to work on a provider nobody has read yet -
+    // that is exactly how the wipe calls reset(). Deliberately do not await
+    // `lane.loaded` before calling them, so the in-flight _load() (still
+    // reading whatever the box already had) races the caller's write.
+
+    test('set(wifi) is not overwritten by the persisted value', () async {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      await box.put(AirDropLaneController.storageKey, AirDropLane.bluetooth.name);
+
+      final lane = container.read(airdropLaneProvider.notifier);
+      await lane.set(AirDropLane.wifi);
+
+      expect(container.read(airdropLaneProvider), AirDropLane.wifi);
+      expect(box.get(AirDropLaneController.storageKey), AirDropLane.wifi.name);
+    });
+
+    test('reset() is not overwritten by the persisted value', () async {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      await box.put(AirDropLaneController.storageKey, AirDropLane.wifi.name);
+
+      final lane = container.read(airdropLaneProvider.notifier);
+      await lane.reset();
+
+      expect(container.read(airdropLaneProvider), AirDropLane.auto);
+      expect(box.get(AirDropLaneController.storageKey), isNull);
+    });
+  });
 }
