@@ -7,6 +7,7 @@ import '../../features/chat/data/drafts_controller.dart';
 import '../../features/chat/data/transcription_language.dart';
 import '../../features/airdrop/data/airdrop_controller.dart';
 import '../../features/airdrop/data/airdrop_history_controller.dart';
+import '../../features/airdrop/data/airdrop_lane_controller.dart';
 import '../../features/airdrop/data/airdrop_receive_controller.dart';
 import '../../features/airdrop/data/airdrop_spam_store.dart';
 import '../../features/airdrop/data/airdrop_storage.dart';
@@ -114,6 +115,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(airdropHistoryProvider.notifier).clear();
   await ref.read(airdropSpamProvider.notifier).clear();
   await ref.read(airdropReceiveProvider.notifier).reset();
+  await ref.read(airdropLaneProvider.notifier).reset();
   await deleteAirdropDirectory();
   ref.read(presenceControllerProvider.notifier).clear();
   ref.read(typingControllerProvider.notifier).clearAll();
