@@ -43,6 +43,7 @@ import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/airdrop/data/airdrop_receive_controller.dart';
+import '../../features/airdrop/presentation/airdrop_navigation.dart';
 import '../../features/profile/data/media_download_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -368,10 +369,14 @@ class MessagingService {
 
   /// Whether a stranger's XX handshake is answered and the announcement is
   /// public: the profile's "Discoverable nearby", or AirDrop's "Everyone"
-  /// window — which exists to be found by people not yet in your contacts.
+  /// window — which exist to be found by people not yet in your contacts —
+  /// or the AirDrop page itself being on screen: while the page is open this
+  /// phone is meant to be found, so a bump with someone not yet a contact can
+  /// still start a session.
   bool get _discoverableNow =>
       _ref.read(discoverySettingsProvider).discoverable ||
-      _ref.read(airdropReceiveProvider).everyoneAt(DateTime.now());
+      _ref.read(airdropReceiveProvider).everyoneAt(DateTime.now()) ||
+      _ref.read(airdropPageOnScreenProvider);
 
   /// Watches an incoming file that has stopped arriving, and asks again.
   ///

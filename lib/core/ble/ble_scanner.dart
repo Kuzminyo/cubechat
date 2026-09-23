@@ -40,6 +40,15 @@ class BleScanner {
   /// Cadence chosen for the window currently running.
   bool _active = true;
 
+  /// Whether the AirDrop page is on screen and wants proximity-grade RSSI —
+  /// see [BleConstants]'s proximity-cadence comment. Off by default; only
+  /// [setProximity] ever flips it, and only [PeerDiscoveryController] calls
+  /// that, wired to `airdropPageOnScreenProvider`.
+  bool _proximity = false;
+
+  /// Whether the scanner is currently running the proximity cadence.
+  bool get proximity => _proximity;
+
   /// Consecutive idle windows that ended with an empty peer map — the input to
   /// [BleConstants.idleGapWithBackoff]. Reset the moment anything is seen or
   /// the cadence goes active, so the back-off can never outlive the conditions
@@ -127,6 +136,25 @@ class BleScanner {
     if (_running) await _startScanWindow();
   }
 
+  /// Turn the proximity cadence on or off — called only while the AirDrop
+  /// page is on screen (on) or once it leaves (off), never from anywhere
+  /// else.
+  ///
+  /// No-op if the mode isn't actually changing, and if the scanner isn't
+  /// running: [_active] would otherwise be recorded but nothing would start a
+  /// scan to apply it, and the pending flag would then survive into whatever
+  /// cadence the next [start] picks. The flag it sets *is* remembered across
+  /// a stopped scanner deliberately — the next [_startScanWindow] reads
+  /// [_proximity] itself, so a `setProximity(true)` that arrives just before
+  /// the adapter comes back on still takes effect.
+  Future<void> setProximity(bool on) async {
+    if (on == _proximity) return;
+    _proximity = on;
+    if (!_running) return;
+    await _stopScanWindow();
+    if (_running) await _startScanWindow();
+  }
+
   Future<void> stop() async {
     _running = false;
     // A later start() is a fresh set of circumstances — it must not inherit a
@@ -201,19 +229,32 @@ class BleScanner {
     // Re-decided per window, so a resume (or a message queued for an offline
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
-    _window = BleConstants.scanWindowFor(active: _active, isIOS: _isIOS);
-    final baseGap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);
-    // Only the idle cadence backs off. While active someone is watching the
-    // Nearby list (or we owe a delivery), and a stretched gap there is exactly
-    // the sluggish discovery the active cadence exists to prevent.
-    if (_active) {
+    // Proximity implies active — the AirDrop page being on screen is at least
+    // as strong a reason to scan hard as the Nearby list being watched, and
+    // the branches below only know two speeds.
+    if (_proximity) _active = true;
+    if (_proximity) {
+      // The proximity cadence doesn't back off — it only ever runs for the
+      // seconds someone is on the AirDrop page trying to bump, so there is no
+      // "nobody's around, stretch the gap" case to protect against.
+      _window = BleConstants.proximityWindow;
+      _gap = BleConstants.proximityGap;
       _emptyIdleWindows = 0;
-      _gap = baseGap;
     } else {
-      _gap = BleConstants.idleGapWithBackoff(
-        base: baseGap,
-        emptyWindows: _emptyIdleWindows,
-      );
+      _window = BleConstants.scanWindowFor(active: _active, isIOS: _isIOS);
+      final baseGap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);
+      // Only the idle cadence backs off. While active someone is watching the
+      // Nearby list (or we owe a delivery), and a stretched gap there is
+      // exactly the sluggish discovery the active cadence exists to prevent.
+      if (_active) {
+        _emptyIdleWindows = 0;
+        _gap = baseGap;
+      } else {
+        _gap = BleConstants.idleGapWithBackoff(
+          base: baseGap,
+          emptyWindows: _emptyIdleWindows,
+        );
+      }
     }
     // The sweep is paced off the cycle, so it has to be re-armed whenever the
     // cadence changes underneath it.
@@ -225,9 +266,17 @@ class BleScanner {
         withServices: [Guid(BleConstants.serviceUuid)],
         timeout: window,
         // lowPower lengthens the radio's own duty cycle *within* the window,
-        // on top of the longer gap between windows.
-        androidScanMode:
-            _active ? AndroidScanMode.balanced : AndroidScanMode.lowPower,
+        // on top of the longer gap between windows. lowLatency is the same
+        // knob turned the other way, for the few seconds proximity mode
+        // needs the freshest reading the radio can give.
+        androidScanMode: _proximity
+            ? AndroidScanMode.lowLatency
+            : (_active ? AndroidScanMode.balanced : AndroidScanMode.lowPower),
+        // Only proximity wants a result re-reported as its RSSI drifts within
+        // one window rather than once per advertisement — that's the whole
+        // point of the mode, and elsewhere it would just be extra callbacks
+        // for a list nobody is staring at expecting real-time movement.
+        continuousUpdates: _proximity,
       );
     } catch (e, st) {
       debugPrint('BleScanner.startScan failed: $e\n$st');
@@ -326,7 +375,8 @@ class BleScanner {
         changed = true;
         continue;
       }
-      final rssiMoved = (existing.rssi - r.rssi).abs() >= 4;
+      final rssiMoved = (existing.rssi - r.rssi).abs() >=
+          BleConstants.rssiMoveThreshold(proximity: _proximity);
       final macChanged = existing.id != mac;
       // Rebuild rather than copyWith so we can adopt the freshest MAC into
       // `id` (copyWith keeps id fixed).

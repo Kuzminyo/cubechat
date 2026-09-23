@@ -9,6 +9,7 @@ import '../../../core/ble/ble_scanner.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/avatar_controller.dart';
+import '../../airdrop/presentation/airdrop_navigation.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -149,6 +150,18 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // — so a scan tick arriving after disposal read from a torn-down container
     // and threw. Hand the callback back when we go.
     ref.onDispose(() => scanner.shouldScanActively = null);
+
+    // The bump gesture needs RSSI that tracks the last second, which only the
+    // proximity cadence gives — and only while someone is actually on the
+    // AirDrop page trying to bump, so it doesn't run the rest of the time.
+    // See BleConstants' proximity-cadence comment for why this is affordable.
+    ref.listen<bool>(airdropPageOnScreenProvider, (_, on) {
+      unawaited(scanner.setProximity(on));
+    });
+    // Leaving with proximity still on would pin the radio to its heaviest
+    // cadence for good — the page can't turn it back off once this controller
+    // is gone.
+    ref.onDispose(() => unawaited(scanner.setProximity(false)));
 
     // Before every bail-out below, because a rename is not a Bluetooth event.
     // This used to be wired inside _bootPeripheral, which is reached only after

@@ -214,6 +214,37 @@ abstract final class BleConstants {
     return gap;
   }
 
+  // ---- proximity cadence (AirDrop page on screen) ----
+  //
+  // The bump gesture needs RSSI that tracks the last second, not the last
+  // half-minute — two phones brought together have to see the signal spike
+  // *while it is happening*. That is a duty cycle far above what the idle and
+  // active cadences above allow, and it is only affordable because it runs for
+  // as long as someone is looking at the AirDrop page and no longer:
+  // `PeerDiscoveryController` turns it on and off with
+  // `airdropPageOnScreenProvider`, so the cost that would overheat a phone
+  // sitting in a pocket all day is paid only for the seconds someone is
+  // actually trying to bump. The idle and active cadences above are untouched
+  // by this — proximity is a third mode, not a replacement.
+
+  /// Scan window while the AirDrop page is on screen.
+  static const Duration proximityWindow = Duration(seconds: 10);
+
+  /// Quiet period between proximity scan windows — kept short enough that the
+  /// gap itself cannot hide the moment of a bump.
+  static const Duration proximityGap = Duration(milliseconds: 300);
+
+  /// How many dB of RSSI movement counts as "moved" before re-emitting a
+  /// peer, i.e. how twitchy the Nearby list is allowed to be.
+  ///
+  /// Normal mode (4 dB) exists to keep the list still — a peer standing put
+  /// wobbles by a couple of dB every reading, and re-sorting the list on that
+  /// noise reads as jitter. Proximity mode wants exactly that noise: the bump
+  /// gesture is watching for the signal spike of two phones closing distance,
+  /// so every decibel has to come through.
+  static int rssiMoveThreshold({required bool proximity}) =>
+      proximity ? 1 : 4;
+
   /// Scan window for the running cadence on this platform.
   static Duration scanWindowFor({required bool active, required bool isIOS}) {
     if (isIOS) return active ? scanWindowIos : scanWindowIdleIos;
