@@ -338,4 +338,92 @@ void main() {
       expect(() => NearbyAnswer.decode(v1), throwsFormatException);
     });
   });
+
+  group('NearbyBump', () {
+    Uint8List card(int len, {int seed = 0}) =>
+        Uint8List.fromList(List.generate(len, (i) => (seed + i) & 0xFF));
+
+    // [0]=ver [1..16]=bumpId [17]=flags [18..19]=cardLen [20..]=card
+    const cardLenAt = 1 + nearbyIdLen + 1;
+
+    test('the tag byte is 0xEA and nothing else claims it', () {
+      expect(InnerPayloadType.nearbyBump.tag, 0xEA);
+      expect(InnerPayloadType.fromByte(0xEA), InnerPayloadType.nearbyBump);
+      final sameTag = InnerPayloadType.values
+          .where((v) => v.tag == 0xEA)
+          .toList(growable: false);
+      expect(sameTag, hasLength(1));
+    });
+
+    test('round-trips a 300-byte card, with and without files pending', () {
+      for (final hasFiles in [true, false]) {
+        final bump = NearbyBump(
+          bumpId: _id(50),
+          hasFiles: hasFiles,
+          card: card(300, seed: 3),
+        );
+        final back = NearbyBump.decode(bump.encode());
+        expect(back.bumpId, _id(50));
+        expect(back.hasFiles, hasFiles);
+        expect(back.card, card(300, seed: 3));
+      }
+    });
+
+    test('refuses to encode a card past the 2048-byte limit', () {
+      expect(
+        () => NearbyBump(
+          bumpId: _id(1),
+          hasFiles: false,
+          card: card(NearbyBump.maxCard + 1),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    group('decode rejects', () {
+      Uint8List good() => NearbyBump(
+            bumpId: _id(4),
+            hasFiles: true,
+            card: card(20, seed: 1),
+          ).encode();
+
+      test('an unknown version', () {
+        final bad = Uint8List.fromList(good())..[0] = 0x02;
+        expect(() => NearbyBump.decode(bad), throwsFormatException);
+      });
+
+      test('a truncated body', () {
+        final bytes = good();
+        expect(
+          () => NearbyBump.decode(bytes.sublist(0, bytes.length - 1)),
+          throwsFormatException,
+        );
+      });
+
+      test('a trailing byte', () {
+        expect(
+          () => NearbyBump.decode(Uint8List.fromList([...good(), 0])),
+          throwsFormatException,
+        );
+      });
+
+      test('a cardLen running past the end', () {
+        final bad = Uint8List.fromList(good())
+          ..[cardLenAt] = 0xFF
+          ..[cardLenAt + 1] = 0xFF;
+        expect(() => NearbyBump.decode(bad), throwsFormatException);
+      });
+
+      test('an empty card', () {
+        final withOneByteCard =
+            NearbyBump(bumpId: _id(4), hasFiles: false, card: card(1)).encode();
+        final bad = Uint8List.fromList(
+          withOneByteCard.sublist(0, withOneByteCard.length - 1),
+        )
+          ..[cardLenAt] = 0
+          ..[cardLenAt + 1] = 0;
+        expect(() => NearbyBump.decode(bad), throwsFormatException);
+      });
+    });
+  });
 }

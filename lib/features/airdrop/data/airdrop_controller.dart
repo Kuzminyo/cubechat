@@ -489,7 +489,13 @@ class AirDropController extends Notifier<AirDropState>
     final offer = m.offer;
     if (offer != null) return _onOffer(m.peerHex, offer);
     final answer = m.answer;
-    if (answer != null) _onAnswer(m.peerHex, answer);
+    if (answer != null) {
+      _onAnswer(m.peerHex, answer);
+      return;
+    }
+    // The bump gesture itself: a later task's BumpController matches it
+    // against the device's own recent bump. Nothing for AirDrop to do here.
+    if (m.bump != null) return;
   }
 
   Future<void> _onOffer(String peerHex, NearbyOffer offer) async {

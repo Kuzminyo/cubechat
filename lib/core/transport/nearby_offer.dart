@@ -290,6 +290,69 @@ class NearbyAnswer {
   }
 }
 
+/// "I felt your phone against mine" — the bump gesture, sent over the direct
+/// link only.
+///
+/// ```
+///   [version:1][bumpId:16][flags:1][cardLen:2 BE][card:cardLen]
+/// ```
+///
+/// [flags] bit 0 says the sender has files queued to send once the bump is
+/// matched, so the receiving side can offer to jump straight into AirDrop.
+/// [card] is opaque to the wire — whatever the bump feature puts in it (a
+/// name, an avatar digest, ...) is its business; this class only bounds it
+/// and moves it. An old build drops the whole frame, so the gesture simply
+/// does not fire against it.
+class NearbyBump {
+  NearbyBump({
+    required this.bumpId,
+    required this.hasFiles,
+    required this.card,
+  }) {
+    if (bumpId.length != nearbyIdLen) {
+      throw ArgumentError.value(bumpId.length, 'bumpId', 'not $nearbyIdLen');
+    }
+    if (card.length > maxCard) {
+      throw ArgumentError.value(card.length, 'card', 'longer than $maxCard');
+    }
+  }
+
+  /// A bump card is metadata, not a file transfer — this bounds it well short
+  /// of anything that needs chunking.
+  static const int maxCard = 2048;
+
+  final Uint8List bumpId;
+  final bool hasFiles;
+  final Uint8List card;
+
+  Uint8List encode() {
+    final out = BytesBuilder(copy: false)
+      ..addByte(nearbyVersion)
+      ..add(bumpId)
+      ..addByte(hasFiles ? 0x01 : 0x00)
+      ..addByte(card.length >> 8)
+      ..addByte(card.length & 0xFF)
+      ..add(card);
+    return out.toBytes();
+  }
+
+  static NearbyBump decode(Uint8List body) {
+    final r = _Reader(body);
+    if (r.byte() != nearbyVersion) {
+      throw const FormatException('nearby bump: unknown version');
+    }
+    final bumpId = r.bytes(nearbyIdLen);
+    final flags = r.byte();
+    final cardLen = (r.byte() << 8) | r.byte();
+    if (cardLen == 0 || cardLen > maxCard) {
+      throw FormatException('nearby bump: card of $cardLen bytes');
+    }
+    final card = r.bytes(cardLen);
+    if (!r.done) throw const FormatException('nearby bump: trailing bytes');
+    return NearbyBump(bumpId: bumpId, hasFiles: flags & 0x01 != 0, card: card);
+  }
+}
+
 /// One AirDrop frame as the transport hands it on: who sent it, whether it
 /// came straight from their phone, and what it said.
 class NearbyInbound {
@@ -298,12 +361,14 @@ class NearbyInbound {
     required this.direct,
     this.offer,
     this.answer,
+    this.bump,
   });
 
   final String peerHex;
   final bool direct;
   final NearbyOffer? offer;
   final NearbyAnswer? answer;
+  final NearbyBump? bump;
 }
 
 /// What the transport should do with a file manifest — asked of AirDrop,

@@ -305,12 +305,17 @@ enum InnerPayloadType {
   /// `nearby_offer.dart` and docs/superpowers/specs/2026-09-22-airdrop-design.md.
   ///
   /// 0xE8 and 0xE9 were verified free against this enum on 2026-09-22;
-  /// 0xEA-0xEF are still empty. An old build drops both silently, which the
+  /// 0xEB-0xEF are still empty. An old build drops both silently, which the
   /// sender reads as "no automatic 'seen' within ten seconds" and says so.
   nearbyOffer(0xE8),
 
   /// AirDrop: seen, accepted, declined (with a reason) or cancelled.
-  nearbyAnswer(0xE9);
+  nearbyAnswer(0xE9),
+
+  /// 0xEA verified free against this enum on 2026-09-23. "I felt your phone
+  /// against mine": the bump gesture on the AirDrop page. Direct links only.
+  /// An old build drops it silently, and the gesture simply does not fire.
+  nearbyBump(0xEA);
 
   const InnerPayloadType(this.tag);
   final int tag;

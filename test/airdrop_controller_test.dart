@@ -102,6 +102,7 @@ class _Port implements AirDropPort {
     String peerHex, {
     NearbyOffer? offer,
     NearbyAnswer? answer,
+    NearbyBump? bump,
   }) async {
     if (!direct.contains(peerHex)) return false;
     sent.add((to: peerHex, offer: offer, answer: answer));

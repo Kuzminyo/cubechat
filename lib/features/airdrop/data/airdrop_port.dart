@@ -15,7 +15,12 @@ abstract interface class AirDropPort {
 
   bool hasDirectLinkTo(String peerHex);
 
-  Future<bool> send(String peerHex, {NearbyOffer? offer, NearbyAnswer? answer});
+  Future<bool> send(
+    String peerHex, {
+    NearbyOffer? offer,
+    NearbyAnswer? answer,
+    NearbyBump? bump,
+  });
 
   /// One file of an accepted offer, under its offered id. True when every
   /// chunk went.
@@ -49,8 +54,14 @@ class MessagingAirDropPort implements AirDropPort {
     String peerHex, {
     NearbyOffer? offer,
     NearbyAnswer? answer,
+    NearbyBump? bump,
   }) =>
-      _messaging.sendNearbyFrame(peerHex, offer: offer, answer: answer);
+      _messaging.sendNearbyFrame(
+        peerHex,
+        offer: offer,
+        answer: answer,
+        bump: bump,
+      );
 
   @override
   Future<bool> sendFile(

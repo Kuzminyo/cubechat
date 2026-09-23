@@ -6579,6 +6579,7 @@ class MessagingService {
         case InnerPayloadType.callSignal:
         case InnerPayloadType.nearbyOffer:
         case InnerPayloadType.nearbyAnswer:
+        case InnerPayloadType.nearbyBump:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -7645,18 +7646,26 @@ class MessagingService {
 
         case InnerPayloadType.nearbyOffer:
         case InnerPayloadType.nearbyAnswer:
+        case InnerPayloadType.nearbyBump:
           // AirDrop. Handed on with whether it came straight from the phone
           // that wrote it: the controller refuses anything that crossed a
           // third phone or the internet. This layer only knows the route.
           if (senderPub == null) break;
           try {
-            final isOffer = unpacked.type == InnerPayloadType.nearbyOffer;
+            final type = unpacked.type;
             _nearbyInbound.add(
               NearbyInbound(
                 peerHex: _hexOf(senderPub),
                 direct: incomingRoute == MessageRoute.bluetooth,
-                offer: isOffer ? NearbyOffer.decode(unpacked.body) : null,
-                answer: isOffer ? null : NearbyAnswer.decode(unpacked.body),
+                offer: type == InnerPayloadType.nearbyOffer
+                    ? NearbyOffer.decode(unpacked.body)
+                    : null,
+                answer: type == InnerPayloadType.nearbyAnswer
+                    ? NearbyAnswer.decode(unpacked.body)
+                    : null,
+                bump: type == InnerPayloadType.nearbyBump
+                    ? NearbyBump.decode(unpacked.body)
+                    : null,
               ),
             );
           } on FormatException catch (e) {
@@ -12321,13 +12330,20 @@ class MessagingService {
   }
 
   /// One AirDrop frame to [peerHex], over the direct link only. Exactly one of
-  /// [offer] and [answer].
+  /// [offer], [answer] and [bump].
   Future<bool> sendNearbyFrame(
     String peerHex, {
     NearbyOffer? offer,
     NearbyAnswer? answer,
+    NearbyBump? bump,
   }) async {
-    assert((offer == null) != (answer == null), 'one of offer and answer');
+    assert(
+      (offer != null ? 1 : 0) +
+              (answer != null ? 1 : 0) +
+              (bump != null ? 1 : 0) ==
+          1,
+      'exactly one of offer, answer and bump',
+    );
     if (_disposed || !hasDirectLinkTo(peerHex)) return false;
     final peerPub = _resolvePeerPub(peerHex);
     if (peerPub == null) return false;
@@ -12335,8 +12351,10 @@ class MessagingService {
       peerPub: peerPub,
       type: offer != null
           ? InnerPayloadType.nearbyOffer
-          : InnerPayloadType.nearbyAnswer,
-      innerBody: offer?.encode() ?? answer!.encode(),
+          : answer != null
+              ? InnerPayloadType.nearbyAnswer
+              : InnerPayloadType.nearbyBump,
+      innerBody: offer?.encode() ?? answer?.encode() ?? bump!.encode(),
     );
     return _writeDirectOnly(peerHex, frame);
   }
