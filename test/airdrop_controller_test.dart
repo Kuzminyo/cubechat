@@ -18,7 +18,6 @@ import 'package:cubechat/features/airdrop/domain/airdrop_spam_guard.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
 import 'package:fake_async/fake_async.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,8 +119,14 @@ class _Port implements AirDropPort {
     return !failing.contains(meta.mediaIdHex);
   }
 
+  /// The real port cancels the Files-centre row; set to do the same.
+  void Function(String mediaIdHex)? onCancel;
+
   @override
-  void cancelFile(String mediaIdHex) => cancelled.add(mediaIdHex);
+  void cancelFile(String mediaIdHex) {
+    cancelled.add(mediaIdHex);
+    onCancel?.call(mediaIdHex);
+  }
 
   @override
   set sink(NearbyFileSink? value) => currentSink = value;
@@ -174,15 +179,24 @@ class _Lane extends AirDropLaneController {
 
 class _FakeReceiver implements WifiLaneReceiver {
   bool closed = false;
+  final _done = Completer<void>();
+
+  /// What the real one does after the last expected file, or on idle.
+  void finish() {
+    if (!_done.isCompleted) _done.complete();
+  }
 
   @override
   int get port => 4000;
 
   @override
-  Future<void> get done => Completer<void>().future;
+  Future<void> get done => _done.future;
 
   @override
-  Future<void> close() async => closed = true;
+  Future<void> close() async {
+    closed = true;
+    finish();
+  }
 }
 
 class _FakeSender implements WifiLaneSender {
@@ -190,6 +204,7 @@ class _FakeSender implements WifiLaneSender {
 
   final _Wifi wifi;
   bool closed = false;
+  final _closing = Completer<bool>();
 
   @override
   Future<bool> sendFile({
@@ -202,12 +217,18 @@ class _FakeSender implements WifiLaneSender {
     wifi.sentOverWifi.add(mediaIdHex);
     wifi.onSend?.call(mediaIdHex);
     if (cancelled()) return false;
+    // A socket whose flush never returns: only close() ends it, as the real
+    // sender's _failAll does.
+    if (wifi.hangFiles.contains(mediaIdHex)) return _closing.future;
     onProgress(mediaIdHex, size, size);
     return !wifi.failFiles.contains(mediaIdHex);
   }
 
   @override
-  Future<void> close() async => closed = true;
+  Future<void> close() async {
+    closed = true;
+    if (!_closing.isCompleted) _closing.complete(false);
+  }
 }
 
 class _Wifi implements AirDropWifi {
@@ -221,10 +242,18 @@ class _Wifi implements AirDropWifi {
   bool connectWorks = true;
   final sentOverWifi = <String>[];
   final failFiles = <String>{};
+  final hangFiles = <String>{};
   void Function(String mediaIdHex)? onSend;
 
+  /// Holds localAddress() until completed, to act while a port is opening.
+  Completer<void>? hold;
+  bool startThrows = false;
+
   @override
-  Future<InternetAddress?> localAddress() async => address;
+  Future<InternetAddress?> localAddress() async {
+    await hold?.future;
+    return address;
+  }
 
   @override
   Future<WifiLaneReceiver> startReceiver({
@@ -238,6 +267,7 @@ class _Wifi implements AirDropWifi {
     void Function()? onConnected,
     Duration idle = const Duration(minutes: 2),
   }) async {
+    if (startThrows) throw StateError('no port today');
     started.add(expected);
     tempDirs.add(tempDir);
     keep = onFile;
@@ -941,10 +971,6 @@ void main() {
     });
 
     test('Wi-Fi-only fails instead', () {
-      final lines = <String>[];
-      final print = debugPrint;
-      debugPrint = (m, {wrapWidth}) => lines.add(m ?? '');
-      addTearDown(() => debugPrint = print);
       fakeAsync((async) {
         final wifi = _Wifi()..connectWorks = false;
         final (c, port, offer) =
@@ -963,13 +989,9 @@ void main() {
           c.read(airdropHistoryProvider).single.outcome,
           AirDropOutcome.failed,
         );
-        // The transfer leaves the state in the same step it fails, so what it
-        // carried is read back from the line it ended with.
-        final id = nearbyHex(offer.transferId).substring(0, 8);
-        expect(
-          lines.any((l) => l.contains('$id ended: failed (no Wi-Fi route)')),
-          isTrue,
-        );
+        // The transfer leaves the state in the same step it fails; the
+        // history line is where the reason is shown from.
+        expect(c.read(airdropHistoryProvider).single.noWifiRoute, isTrue);
         c.dispose();
       });
     });
@@ -996,6 +1018,9 @@ void main() {
           c.read(airdropHistoryProvider).single.outcome,
           AirDropOutcome.partial,
         );
+        // They were connected: a refused or dropped file is not "not on the
+        // same network".
+        expect(c.read(airdropHistoryProvider).single.noWifiRoute, isFalse);
         expect(
           c.read(fileTransferControllerProvider)[second]?.status,
           FileTransferStatus.failed,
@@ -1017,6 +1042,215 @@ void main() {
           c.read(airdropHistoryProvider).single.outcome,
           AirDropOutcome.failed,
         );
+        expect(c.read(airdropHistoryProvider).single.noWifiRoute, isTrue);
+        c.dispose();
+      });
+    });
+
+    test('the lane is the one the offer went out with', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, offer) =
+            offered(async, wifi, lane: AirDropLane.bluetooth);
+        expect(offer.flags & nearbyFlagWifi, 0);
+        unawaited(c.read(airdropLaneProvider.notifier).set(AirDropLane.wifi));
+        async.flushMicrotasks();
+        port.answer(_bob, offer.transferId, NearbyAnswerKind.accepted);
+        async.flushMicrotasks();
+        expect(port.filesSent, ids(offer));
+        final entry = c.read(airdropHistoryProvider).single;
+        expect(entry.outcome, AirDropOutcome.sent);
+        expect(entry.noWifiRoute, isFalse);
+        c.dispose();
+      });
+    });
+
+    test('a connection silent for twenty seconds is given up on', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, offer) = offered(async, wifi);
+        final [first, second] = ids(offer);
+        wifi.hangFiles.add(first);
+        port.answer(
+          _bob,
+          offer.transferId,
+          NearbyAnswerKind.accepted,
+          NearbyDeclineReason.user,
+          _endpoint(),
+        );
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 19));
+        expect(wifi.senders.single.closed, isFalse);
+        expect(port.filesSent, isEmpty);
+
+        async.elapse(const Duration(seconds: 2));
+        expect(wifi.senders.single.closed, isTrue);
+        // Auto: the stuck file and the rest go over Bluetooth.
+        expect(port.filesSent, [first, second]);
+        expect(
+          c.read(airdropHistoryProvider).single.outcome,
+          AirDropOutcome.sent,
+        );
+        c.dispose();
+      });
+    });
+
+    test('a Wi-Fi-only connection that goes silent fails', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, offer) =
+            offered(async, wifi, lane: AirDropLane.wifi);
+        wifi.hangFiles.add(ids(offer).first);
+        port.answer(
+          _bob,
+          offer.transferId,
+          NearbyAnswerKind.accepted,
+          NearbyDeclineReason.user,
+          _endpoint(),
+        );
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 21));
+        expect(port.filesSent, isEmpty);
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.cancelled);
+        expect(
+          c.read(airdropHistoryProvider).single.outcome,
+          AirDropOutcome.failed,
+        );
+        c.dispose();
+      });
+    });
+
+    /// A flagged request from Bob, accepted, its port open.
+    (ProviderContainer, _Port, AirDropTransfer) receiving(
+      FakeAsync async,
+      _Wifi wifi,
+      int seed,
+    ) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(port, async: async, wifi: wifi);
+      port.onCancel =
+          (id) => c.read(fileTransferControllerProvider.notifier).cancel(id);
+      c.read(airdropControllerProvider);
+      port.deliver(_bob, offer: _offer(seed, flags: nearbyFlagWifi));
+      async.flushMicrotasks();
+      final request = c.read(airdropControllerProvider).requests.single;
+      unawaited(c.read(airdropControllerProvider.notifier).accept(request.id));
+      async.flushMicrotasks();
+      return (c, port, request);
+    }
+
+    test('an incoming cancel in the Files centre stops the transfer', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, request) = receiving(async, wifi, 66);
+        final first = request.files.first.mediaIdHex;
+        wifi.progress!(first, 5, 10);
+        c.read(fileTransferControllerProvider.notifier).cancel(first);
+        wifi.progress!(first, 8, 10);
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).transfers, isEmpty);
+        expect(
+          c.read(airdropHistoryProvider).single.outcome,
+          AirDropOutcome.cancelled,
+        );
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.cancelled);
+        expect(
+          c.read(fileTransferControllerProvider)[first]!.status,
+          FileTransferStatus.canceled,
+        );
+        expect(wifi.receivers.single.closed, isTrue);
+        c.dispose();
+      });
+    });
+
+    test('a file whose row was cancelled is not kept', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, request) = receiving(async, wifi, 67);
+        final first = request.files.first.mediaIdHex;
+        // The last chunk's progress, then the cross, then the whole file.
+        wifi.progress!(first, 10, 10);
+        c.read(fileTransferControllerProvider.notifier).cancel(first);
+        bool? kept;
+        unawaited(
+          wifi.keep!(first, File('${dir.path}${sep()}x')).then((v) => kept = v),
+        );
+        async.flushMicrotasks();
+        expect(kept, isFalse);
+        expect(
+          c.read(airdropHistoryProvider).single.outcome,
+          AirDropOutcome.cancelled,
+        );
+        expect(port.answersTo(_bob).last.kind, NearbyAnswerKind.cancelled);
+        expect(
+          c.read(fileTransferControllerProvider)[first]!.status,
+          FileTransferStatus.canceled,
+        );
+        c.dispose();
+      });
+    });
+
+    test('bytes after a stall bring the row back instead of stopping', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, request) = receiving(async, wifi, 68);
+        final first = request.files.first.mediaIdHex;
+        wifi.progress!(first, 5, 10);
+        async.elapse(const Duration(seconds: 65));
+        expect(
+          c.read(airdropControllerProvider).transfers.single.phase,
+          AirDropPhase.interrupted,
+        );
+        expect(
+          c.read(fileTransferControllerProvider)[first]!.status,
+          FileTransferStatus.canceled,
+        );
+        wifi.progress!(first, 6, 10);
+        async.flushMicrotasks();
+        expect(c.read(airdropControllerProvider).transfers, hasLength(1));
+        expect(
+          c.read(fileTransferControllerProvider)[first]!.status,
+          FileTransferStatus.transferring,
+        );
+        expect(
+          port.answersTo(_bob).where((a) => a.kind == NearbyAnswerKind.cancelled),
+          isEmpty,
+        );
+        c.dispose();
+      });
+    });
+
+    test('a wipe while the port opens: no acceptance, the port closed', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final wifi = _Wifi()..hold = Completer<void>();
+        final c = make(port, async: async, wifi: wifi);
+        final ctl = c.read(airdropControllerProvider.notifier);
+        port.deliver(_bob, offer: _offer(69, flags: nearbyFlagWifi));
+        async.flushMicrotasks();
+        unawaited(
+          ctl.accept(c.read(airdropControllerProvider).requests.single.id),
+        );
+        async.flushMicrotasks();
+        ctl.clearAll();
+        wifi.hold!.complete();
+        async.flushMicrotasks();
+        expect(
+          port.answersTo(_bob).map((a) => a.kind),
+          [NearbyAnswerKind.seen],
+        );
+        expect(wifi.receivers.single.closed, isTrue);
+        c.dispose();
+      });
+    });
+
+    test('a port that will not open still accepts, over Bluetooth', () {
+      fakeAsync((async) {
+        final wifi = _Wifi()..startThrows = true;
+        final (c, port, _) = receiving(async, wifi, 70);
+        final answer = port.answersTo(_bob).last;
+        expect(answer.kind, NearbyAnswerKind.accepted);
+        expect(answer.wifi, isNull);
         c.dispose();
       });
     });
@@ -1160,6 +1394,12 @@ void main() {
         AirDropOutcome.received,
       );
       expect(wifi.receivers.single.closed, isFalse);
+
+      // ...and when it does (or its idle timer fires), the deferred close
+      // follows.
+      wifi.receivers.single.finish();
+      await Future<void>.delayed(Duration.zero);
+      expect(wifi.receivers.single.closed, isTrue);
     });
 
     test('a Wi-Fi file after the transfer ended is not kept', () async {

@@ -11,6 +11,14 @@ abstract final class AirDropRules {
   /// An accepted transfer that receives nothing for this long is interrupted.
   static const Duration stallAfter = Duration(seconds: 60);
 
+  /// An outgoing Wi-Fi file that reports no progress for this long has lost
+  /// its connection. Without it a phone that walked out of range leaves the
+  /// socket's flush waiting until TCP gives up, which is minutes. A local
+  /// network moves a 1 MiB read in well under a second, so twenty is only
+  /// ever a dead link. It also covers the wait for "kept" after the last
+  /// chunk, where the receiver only has to rename the file.
+  static const Duration wifiStallAfter = Duration(seconds: 20);
+
   /// How long an accepted offer stays accepted, so a retry after a dropped
   /// link goes through without asking again.
   static const Duration acceptedFor = Duration(minutes: 10);

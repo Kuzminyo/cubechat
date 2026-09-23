@@ -72,6 +72,7 @@ class AirDropHistoryEntry {
     required this.outcome,
     required this.files,
     this.reason,
+    this.noWifiRoute = false,
   });
 
   /// A finished transfer as a history line. Sent files keep no path.
@@ -84,6 +85,7 @@ class AirDropHistoryEntry {
       direction: t.direction,
       at: at,
       reason: t.phase == AirDropPhase.declined ? t.reason : null,
+      noWifiRoute: t.wifiUnreachable,
       outcome: switch (t.phase) {
         AirDropPhase.done =>
           incoming ? AirDropOutcome.received : AirDropOutcome.sent,
@@ -113,6 +115,11 @@ class AirDropHistoryEntry {
   final NearbyDeclineReason? reason;
   final List<AirDropHistoryFile> files;
 
+  /// A "Wi-Fi only" send that could not reach the other phone that way. The
+  /// transfer leaves the live list the moment it fails, so this line is the
+  /// only place the "not on the same network" reason can be shown from.
+  final bool noWifiRoute;
+
   AirDropHistoryEntry withFiles(List<AirDropHistoryFile> files) =>
       AirDropHistoryEntry(
         id: id,
@@ -122,6 +129,7 @@ class AirDropHistoryEntry {
         at: at,
         outcome: outcome,
         reason: reason,
+        noWifiRoute: noWifiRoute,
         files: files,
       );
 
@@ -133,6 +141,7 @@ class AirDropHistoryEntry {
         'at': at.millisecondsSinceEpoch,
         'outcome': outcome.name,
         if (reason != null) 'reason': reason!.name,
+        if (noWifiRoute) 'noWifi': true,
         'files': [for (final f in files) f.toJson()],
       };
 
@@ -161,6 +170,8 @@ class AirDropHistoryEntry {
       at: DateTime.fromMillisecondsSinceEpoch(at),
       outcome: outcome,
       reason: NearbyDeclineReason.values.asNameMap()[json['reason']],
+      // Absent in every line written before Wi-Fi existed: those read false.
+      noWifiRoute: json['noWifi'] == true,
       files: [
         for (final f in rawFiles)
           if (f is Map) AirDropHistoryFile.fromJson(f),

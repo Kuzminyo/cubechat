@@ -128,6 +128,32 @@ void main() {
       await history.clear();
       expect(container.read(airdropHistoryProvider), isEmpty);
     });
+
+    test('"no Wi-Fi route" is kept, and a line from before it reads false',
+        () {
+      final failed = AirDropHistoryEntry.of(
+        AirDropTransfer(
+          id: 'id9',
+          peerHex: 'bb' * 32,
+          peerName: 'Жека',
+          direction: AirDropDirection.outgoing,
+          files: const [
+            AirDropFile(mediaIdHex: 'aa', name: 'a', size: 1, mime: 'x/y'),
+          ],
+          phase: AirDropPhase.failed,
+          createdAt: DateTime(2026, 9, 23),
+          wifiUnreachable: true,
+        ),
+        DateTime(2026, 9, 23),
+      );
+      expect(failed.noWifiRoute, isTrue);
+      expect(AirDropHistoryEntry.fromJson(failed.toJson())!.noWifiRoute, isTrue);
+      expect(failed.withFiles(const []).noWifiRoute, isTrue);
+
+      final old = _entry(1).toJson();
+      expect(old.containsKey('noWifi'), isFalse);
+      expect(AirDropHistoryEntry.fromJson(old)!.noWifiRoute, isFalse);
+    });
   });
 
   test('spam records survive a restart', () async {
