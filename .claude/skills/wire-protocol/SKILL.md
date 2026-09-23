@@ -37,7 +37,7 @@ one before assigning a byte.
 | `FrameType` | `lib/core/transport/frame.dart` | `noiseHandshake1..3` 0x01–0x03, `noiseIk1` 0x04, `noiseIk2` 0x05, `transport` 0x10, `peerAnnouncement` 0x20, `proBadge` 0x21, `fragment` 0x40, `reset` 0xFE |
 | envelope cipher tag | `messaging_service.dart`, the `_cipher*` constants | SealedBox 0x01, X3DH 0x02, channel 0x03, forward-secret media 0x04 |
 | `InnerPayloadType` | `lib/core/transport/inner_payload.dart` | 37 types on 2026-09-23. The round values 0x10–0xD0 are the originals; everything since has been packed into 0xE0–0xEA and 0xF0–0xFC, newest `nearbyBump` 0xEA (AirDrop bump gesture, after `nearbyOffer` 0xE8 and `nearbyAnswer` 0xE9). **Print what is free — never pick from this row** |
-| per-payload version byte | e.g. `MediaManifest.versionV1 .. versionV8ViewOnceCaptionFs` | one per field combination; `viewOnceVersionOffset` adds 0x04 |
+| per-payload version byte | e.g. `MediaManifest.versionV1 .. versionV8ViewOnceCaptionFs` | one per field combination; `viewOnceVersionOffset` adds 0x04; `NearbyAnswer` has its own: version 1 is the plain 19-byte accept/decline, `nearbyAnswerVersionWifi` (0x02) appends a `NearbyWifiEndpoint` (address, port, per-transfer key) and is only ever sent in reply to an offer that set `nearbyFlagWifi` — a part-1 build never sets that flag, so it never sees version 2 |
 
 `proBadge` 0x21 is **reserved, not free**: nothing in this build sends or reads
 it, and it is held so the branch that sells a subscription cannot collide with
