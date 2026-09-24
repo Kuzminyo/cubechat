@@ -1042,7 +1042,28 @@ void main() {
         final answer = port.answersTo(_bob).last;
         expect(answer.kind, NearbyAnswerKind.accepted);
         expect(answer.wifi, isNull);
+        // Says why, so a Wi-Fi-only sender can tell "no network here" from
+        // an app too old to take Wi-Fi at all.
+        expect(answer.reason, NearbyDeclineReason.noLocalNetwork);
         expect(wifi.started, isEmpty);
+        c.dispose();
+      });
+    });
+
+    test('an unflagged offer is accepted with no reason at all', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final wifi = _Wifi()..address = null;
+        final c = make(port, async: async, wifi: wifi);
+        c.read(airdropControllerProvider);
+        port.deliver(_bob, offer: _offer(66));
+        async.flushMicrotasks();
+        final request = c.read(airdropControllerProvider).requests.single;
+        unawaited(
+          c.read(airdropControllerProvider.notifier).accept(request.id),
+        );
+        async.flushMicrotasks();
+        expect(port.answersTo(_bob).last.reason, NearbyDeclineReason.user);
         c.dispose();
       });
     });
@@ -1278,20 +1299,67 @@ void main() {
       });
     });
 
-    test('Wi-Fi-only with a receiver that gave no endpoint fails', () {
+    test('Wi-Fi-only with a receiver on no network fails as "not on the '
+        'same network"', () {
       fakeAsync((async) {
         final wifi = _Wifi();
         final (c, port, offer) =
             offered(async, wifi, lane: AirDropLane.wifi);
-        port.answer(_bob, offer.transferId, NearbyAnswerKind.accepted);
+        port.answer(
+          _bob,
+          offer.transferId,
+          NearbyAnswerKind.accepted,
+          NearbyDeclineReason.noLocalNetwork,
+        );
         async.flushMicrotasks();
         expect(port.filesSent, isEmpty);
         expect(wifi.sentOverWifi, isEmpty);
-        expect(
-          c.read(airdropHistoryProvider).single.outcome,
-          AirDropOutcome.failed,
+        final entry = c.read(airdropHistoryProvider).single;
+        expect(entry.outcome, AirDropOutcome.failed);
+        expect(entry.noWifiRoute, isTrue);
+        expect(entry.wifiOldVersion, isFalse);
+        c.dispose();
+      });
+    });
+
+    test('Wi-Fi-only against a build that cannot take Wi-Fi says so', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, offer) =
+            offered(async, wifi, lane: AirDropLane.wifi);
+        // What 1107/1108 answer to any offer: version 1, reason 0.
+        port.answer(_bob, offer.transferId, NearbyAnswerKind.accepted);
+        async.flushMicrotasks();
+        expect(port.filesSent, isEmpty);
+        final entry = c.read(airdropHistoryProvider).single;
+        expect(entry.outcome, AirDropOutcome.failed);
+        expect(entry.wifiOldVersion, isTrue);
+        expect(entry.noWifiRoute, isFalse);
+        // It survives the history being written and read back.
+        final back = AirDropHistoryEntry.fromJson(entry.toJson());
+        expect(back!.wifiOldVersion, isTrue);
+        c.dispose();
+      });
+    });
+
+    test('an endpoint on a public address is never dialled', () {
+      fakeAsync((async) {
+        final wifi = _Wifi();
+        final (c, port, offer) = offered(async, wifi);
+        port.answer(
+          _bob,
+          offer.transferId,
+          NearbyAnswerKind.accepted,
+          NearbyDeclineReason.user,
+          NearbyWifiEndpoint(
+            address: '8.8.8.8',
+            port: 4001,
+            key: Uint8List(NearbyWifiEndpoint.keyLen),
+          ),
         );
-        expect(c.read(airdropHistoryProvider).single.noWifiRoute, isTrue);
+        async.flushMicrotasks();
+        expect(wifi.senders, isEmpty);
+        expect(port.filesSent, ids(offer), reason: 'Auto goes by Bluetooth');
         c.dispose();
       });
     });

@@ -469,4 +469,60 @@ void main() {
       );
     });
   });
+
+  group('lanEndpointAllowed', () {
+    test('private IPv4 ranges are dialled', () {
+      for (final a in [
+        '10.0.0.7',
+        '172.16.4.2',
+        '172.31.255.1',
+        '192.168.1.7',
+      ]) {
+        expect(lanEndpointAllowed(a), isTrue, reason: a);
+      }
+    });
+
+    test('public, loopback, multicast, broadcast, unspecified and link-local '
+        'are not', () {
+      for (final a in [
+        '8.8.8.8',
+        '172.32.0.1',
+        '127.0.0.1',
+        '0.0.0.0',
+        '224.0.0.251',
+        '255.255.255.255',
+        '169.254.1.1',
+        '::1',
+        '::',
+        'ff02::1',
+        'fe80::1',
+        '2001:db8::1',
+        '::ffff:192.168.1.7',
+        'not an address',
+        'localhost',
+      ]) {
+        expect(lanEndpointAllowed(a), isFalse, reason: a);
+      }
+    });
+
+    test('an IPv6 unique-local address is dialled', () {
+      expect(lanEndpointAllowed('fd12:3456:789a::1'), isTrue);
+    });
+
+    test('carrier NAT space only on our own subnet', () {
+      expect(lanEndpointAllowed('100.64.3.9'), isFalse);
+      expect(
+        lanEndpointAllowed('100.64.3.9', own: InternetAddress('100.64.3.1')),
+        isTrue,
+      );
+      expect(
+        lanEndpointAllowed('100.64.3.9', own: InternetAddress('100.64.7.1')),
+        isFalse,
+      );
+      expect(
+        lanEndpointAllowed('100.64.3.9', own: InternetAddress('192.168.1.2')),
+        isFalse,
+      );
+    });
+  });
 }

@@ -2087,7 +2087,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stickersMine => 'My stickers';
 
   @override
-  String get stickersStarterPack => 'Starter pack';
+  String get stickersStarterPack => 'Cubi';
 
   @override
   String get emojiTab => 'Emoji';
@@ -3380,6 +3380,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get airdropWifiUnreachable => 'Not on the same network';
+
+  @override
+  String get airdropWifiOldVersion => 'Their app can\'t receive over Wi‑Fi yet';
 
   @override
   String get airdropBumpAdd => 'Add';

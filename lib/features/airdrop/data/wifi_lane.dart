@@ -58,6 +58,41 @@ InternetAddress? pickLanAddress(
   return ok.isEmpty ? null : ok.first.address;
 }
 
+/// Whether a sender may dial [address], the one an acceptance handed over.
+///
+/// The address comes from the other phone and is otherwise taken on trust:
+/// 1109 connected to whatever it said, so a hostile receiver could point a
+/// sender at a public host, or at the sender's own loopback services. Only a
+/// local network is dialled: IPv4 10/8, 172.16/12 and 192.168/16, IPv6
+/// unique-local fc00::/7. Carrier-grade NAT space (100.64/10) is not private
+/// — it is shared by everyone behind the carrier — so it is dialled only
+/// when [own] is in the same /24 of it (a phone's hotspot can hand those
+/// out). IPv6 link-local is refused too: it needs a scope id the answer does
+/// not carry, and [pickLanAddress] never offers one.
+bool lanEndpointAllowed(String address, {InternetAddress? own}) {
+  final a = InternetAddress.tryParse(address);
+  if (a == null) return false;
+  final b = a.rawAddress;
+  if (a.type == InternetAddressType.IPv4) {
+    if (b[0] == 10) return true;
+    if (b[0] == 172 && b[1] >= 16 && b[1] < 32) return true;
+    if (b[0] == 192 && b[1] == 168) return true;
+    if (b[0] == 100 && b[1] >= 64 && b[1] < 128) {
+      final o = own?.rawAddress;
+      return own != null &&
+          own.type == InternetAddressType.IPv4 &&
+          o![0] == b[0] &&
+          o[1] == b[1] &&
+          o[2] == b[2];
+    }
+    return false;
+  }
+  if (a.type == InternetAddressType.IPv6) {
+    return (b[0] & 0xFE) == 0xFC;
+  }
+  return false;
+}
+
 /// Closes a [RandomAccessFile], swallowing the "already closed" case — the
 /// one shape this ever needs, shared by both directions of the lane so a
 /// violation and a close racing each other don't each need their own copy.

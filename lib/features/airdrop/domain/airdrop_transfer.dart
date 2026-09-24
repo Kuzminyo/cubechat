@@ -86,6 +86,7 @@ class AirDropTransfer {
     this.lastProgressAt,
     this.wifi = false,
     this.wifiUnreachable = false,
+    this.wifiOldVersion = false,
   });
 
   /// The transfer id, hex.
@@ -107,6 +108,12 @@ class AirDropTransfer {
   /// "not on the same network" failure, which never falls back.
   final bool wifiUnreachable;
 
+  /// A Wi-Fi-only send the other phone's app is too old to take that way —
+  /// it accepted without an endpoint and without saying it is on no network
+  /// (see `NearbyDeclineReason.noLocalNetwork`). Labelled "not on the same
+  /// network" until 1110, which sent people to check a Wi-Fi that was fine.
+  final bool wifiOldVersion;
+
   int get totalBytes => files.fold(0, (sum, f) => sum + f.size);
   int get doneCount => files.where((f) => f.done).length;
   bool get allDone => files.every((f) => f.done);
@@ -126,6 +133,7 @@ class AirDropTransfer {
     DateTime? lastProgressAt,
     bool? wifi,
     bool? wifiUnreachable,
+    bool? wifiOldVersion,
   }) =>
       AirDropTransfer(
         id: id,
@@ -140,6 +148,7 @@ class AirDropTransfer {
         lastProgressAt: lastProgressAt ?? this.lastProgressAt,
         wifi: wifi ?? this.wifi,
         wifiUnreachable: wifiUnreachable ?? this.wifiUnreachable,
+        wifiOldVersion: wifiOldVersion ?? this.wifiOldVersion,
       );
 }
 

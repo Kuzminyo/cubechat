@@ -18,7 +18,11 @@ import 'airdrop_text.dart';
 
 String? airdropReasonLabel(AppLocalizations t, NearbyDeclineReason? reason) =>
     switch (reason) {
-      null || NearbyDeclineReason.user => null,
+      // noLocalNetwork only ever rides on an acceptance, never a decline.
+      null ||
+      NearbyDeclineReason.user ||
+      NearbyDeclineReason.noLocalNetwork =>
+        null,
       NearbyDeclineReason.noSpace => t.airdropReasonNoSpace,
       NearbyDeclineReason.contactsOnly => t.airdropReasonContactsOnly,
       NearbyDeclineReason.busy => t.airdropReasonBusy,
@@ -37,8 +41,11 @@ String airdropOutcomeLabel(AppLocalizations t, AirDropHistoryEntry e) {
   // noWifiRoute is set on the history entry, not on e.reason (a
   // NearbyDeclineReason) — a Wi-Fi-only send that never found a route never
   // reached the decline handshake, so it has no NearbyDeclineReason at all.
-  final why =
-      e.noWifiRoute ? t.airdropWifiUnreachable : airdropReasonLabel(t, e.reason);
+  final why = e.wifiOldVersion
+      ? t.airdropWifiOldVersion
+      : e.noWifiRoute
+          ? t.airdropWifiUnreachable
+          : airdropReasonLabel(t, e.reason);
   return why == null ? base : '$base · $why';
 }
 
@@ -56,6 +63,7 @@ String airdropPhaseLabel(AppLocalizations t, AirDropTransfer x) =>
       // way leaves the live list at once (AirDropTransitions.interrupt /
       // .expire), so nobody sees this phase/flag combination on screen. Kept
       // because it is free and keeps the label honest if that ever changes.
+      AirDropPhase.failed when x.wifiOldVersion => t.airdropWifiOldVersion,
       AirDropPhase.failed when x.wifiUnreachable => t.airdropWifiUnreachable,
       _ => '',
     };

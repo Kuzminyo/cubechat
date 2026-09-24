@@ -117,6 +117,10 @@ class AirDropController extends Notifier<AirDropState>
   /// Outgoing transfer id → where the receiver said to connect.
   final Map<String, NearbyWifiEndpoint> _endpoints = {};
 
+  /// Outgoing transfer ids accepted by an app too old for Wi-Fi — see
+  /// [NearbyDeclineReason.noLocalNetwork].
+  final Set<String> _noWifiApp = {};
+
   /// Outgoing transfer id → the open connection.
   final Map<String, WifiLaneSender> _senders = {};
 
@@ -278,8 +282,23 @@ class AirDropController extends Notifier<AirDropState>
   /// network when the receiver gave an endpoint and the setting allows it,
   /// over Bluetooth otherwise.
   Future<void> _pump(String id) async {
-    final endpoint = _endpoints.remove(id);
+    var endpoint = _endpoints.remove(id);
     final lane = _lanes[id] ?? AirDropLane.auto;
+    final oldApp = _noWifiApp.remove(id);
+    if (endpoint != null &&
+        lane != AirDropLane.bluetooth &&
+        !_senders.containsKey(id) &&
+        !lanEndpointAllowed(
+          endpoint.address,
+          own: await _wifi.localAddress().catchError((Object _) => null),
+        )) {
+      // Treated as no endpoint at all — see [lanEndpointAllowed].
+      DebugLog.instance.log(
+        'AIRDROP',
+        'wifi: not dialling ${endpoint.address} — not a local address',
+      );
+      endpoint = null;
+    }
     if (endpoint != null &&
         lane != AirDropLane.bluetooth &&
         !_senders.containsKey(id)) {
@@ -308,7 +327,7 @@ class AirDropController extends Notifier<AirDropState>
     if (lane == AirDropLane.wifi && !_senders.containsKey(id)) {
       final now = state.byId(id);
       if (now != null && now.phase == AirDropPhase.transferring) {
-        _failWifiOnly(now, noRoute: true);
+        _failWifiOnly(now, noRoute: !oldApp, oldApp: oldApp);
       }
       return;
     }
@@ -432,11 +451,16 @@ class AirDropController extends Notifier<AirDropState>
   /// (partial), and the receiver is told, so its port closes and its card
   /// goes rather than waiting out the stall timer. [noRoute] only when the
   /// phones never connected — a failed connect or no endpoint at all.
-  void _failWifiOnly(AirDropTransfer t, {required bool noRoute}) {
+  void _failWifiOnly(
+    AirDropTransfer t, {
+    required bool noRoute,
+    bool oldApp = false,
+  }) {
     _finish(
       t.copyWith(
         phase: t.doneCount > 0 ? AirDropPhase.partial : AirDropPhase.failed,
         wifiUnreachable: noRoute,
+        wifiOldVersion: oldApp,
       ),
     );
     unawaited(
@@ -614,6 +638,12 @@ class AirDropController extends Notifier<AirDropState>
     }
     if (a.kind == NearbyAnswerKind.accepted && a.wifi != null) {
       _endpoints[t.id] = a.wifi!;
+    } else if (a.kind == NearbyAnswerKind.accepted &&
+        a.reason != NearbyDeclineReason.noLocalNetwork) {
+      // An acceptance with no endpoint and no word of a missing network:
+      // 1107/1108 answer every offer this way. Only read when the send is
+      // Wi-Fi-only and has nothing else to go on.
+      _noWifiApp.add(t.id);
     }
     final next = AirDropTransitions.onAnswer(t, a, _now);
     if (identical(next, t)) return;
@@ -643,7 +673,8 @@ class AirDropController extends Notifier<AirDropState>
     // In the state before the answer leaves: the manifests race right behind
     // it, and each one is judged against this.
     _put(AirDropTransitions.accept(t, _now));
-    final wifi = _senderCanWifi.remove(id) ? await _openReceiver(t) : null;
+    final senderCanWifi = _senderCanWifi.remove(id);
+    final wifi = senderCanWifi ? await _openReceiver(t) : null;
     // Taken back or wiped while the port was opening: _openReceiver has
     // already closed it, and a "yes" now would answer nothing.
     final now = state.byId(id);
@@ -654,6 +685,11 @@ class AirDropController extends Notifier<AirDropState>
         transferId: nearbyUnhex(id),
         kind: NearbyAnswerKind.accepted,
         wifi: wifi,
+        // Lets a Wi-Fi-only sender tell "no network here" from an app too
+        // old for Wi-Fi — see [NearbyDeclineReason.noLocalNetwork].
+        reason: senderCanWifi && wifi == null
+            ? NearbyDeclineReason.noLocalNetwork
+            : NearbyDeclineReason.user,
       ),
     );
   }
@@ -1051,6 +1087,7 @@ class AirDropController extends Notifier<AirDropState>
     }
     unawaited(_senders.remove(t.id)?.close());
     _endpoints.remove(t.id);
+    _noWifiApp.remove(t.id);
     _senderCanWifi.remove(t.id);
     _lanes.remove(t.id);
     for (final f in t.files) {
@@ -1113,6 +1150,7 @@ class AirDropController extends Notifier<AirDropState>
     _receivers.clear();
     _senders.clear();
     _endpoints.clear();
+    _noWifiApp.clear();
     _senderCanWifi.clear();
     _lanes.clear();
     _selfCancelled.clear();

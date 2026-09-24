@@ -3635,7 +3635,7 @@ abstract class AppLocalizations {
   /// No description provided for @stickersStarterPack.
   ///
   /// In en, this message translates to:
-  /// **'Starter pack'**
+  /// **'Cubi'**
   String get stickersStarterPack;
 
   /// No description provided for @emojiTab.
@@ -5857,6 +5857,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not on the same network'**
   String get airdropWifiUnreachable;
+
+  /// No description provided for @airdropWifiOldVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Their app can\'t receive over Wi‑Fi yet'**
+  String get airdropWifiOldVersion;
 
   /// No description provided for @airdropBumpAdd.
   ///

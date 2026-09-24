@@ -2107,7 +2107,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String get stickersMine => 'Мої стікери';
 
   @override
-  String get stickersStarterPack => 'Базовий набір';
+  String get stickersStarterPack => 'Кубі';
 
   @override
   String get emojiTab => 'Емодзі';
@@ -3421,6 +3421,10 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get airdropWifiUnreachable => 'Не в одній мережі';
+
+  @override
+  String get airdropWifiOldVersion =>
+      'Їхній застосунок ще не приймає через Wi‑Fi';
 
   @override
   String get airdropBumpAdd => 'Додати';

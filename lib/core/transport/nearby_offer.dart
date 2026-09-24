@@ -188,7 +188,16 @@ enum NearbyDeclineReason {
   noSpace(0x01),
   contactsOnly(0x02),
   busy(0x03),
-  timeout(0x04);
+  timeout(0x04),
+
+  /// Not a decline: carried on an *acceptance* (version 1, no endpoint) of
+  /// an offer that set [nearbyFlagWifi], to say "this build takes Wi-Fi but
+  /// is on no local network". 1107/1108 never set the flag's answer apart,
+  /// so a version-1 acceptance with reason 0 to a Wi-Fi offer is an app too
+  /// old for Wi-Fi. Safe on the wire: every build reads the reason byte
+  /// only on a decline (`AirDropTransitions.onAnswer`), and an unknown one
+  /// there reads as [user]. Since 1110.
+  noLocalNetwork(0x05);
 
   const NearbyDeclineReason(this.tag);
   final int tag;

@@ -314,6 +314,32 @@ void main() {
     expect(find.textContaining('Не в одній мережі'), findsOneWidget);
   });
 
+  testWidgets('a Wi-Fi-only send to an old app says so, not "network"',
+      (tester) async {
+    final airdrop = _FakeAirDrop(const AirDropState());
+    final entry = AirDropHistoryEntry(
+      id: 'h3',
+      peerHex: 'bb' * 32,
+      peerName: 'Жека',
+      direction: AirDropDirection.outgoing,
+      at: DateTime(2026, 9, 22, 14, 5),
+      outcome: AirDropOutcome.failed,
+      wifiOldVersion: true,
+      files: const [
+        AirDropHistoryFile(name: 'a.jpg', size: 10, mime: 'image/jpeg'),
+      ],
+    );
+    await tester.pumpWidget(
+      _app(const AirDropPage(), overrides(airdrop, [entry])),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Їхній застосунок ще не приймає через Wi‑Fi'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Не в одній мережі'), findsNothing);
+  });
+
   testWidgets('with nothing staged, the page offers to choose files',
       (tester) async {
     final airdrop = _FakeAirDrop(const AirDropState());

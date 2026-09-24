@@ -196,6 +196,19 @@ void main() {
       );
     });
 
+    // What 1109 must still read: a plain version-1 acceptance, nineteen
+    // bytes, the new reason in the byte it only ever reads on a decline.
+    test('"no local network" rides a plain 19-byte acceptance as 0x05', () {
+      final bytes = NearbyAnswer(
+        transferId: _id(1),
+        kind: NearbyAnswerKind.accepted,
+        reason: NearbyDeclineReason.noLocalNetwork,
+      ).encode();
+      expect(bytes.length, 19);
+      expect(bytes[0], nearbyVersion);
+      expect(bytes[18], 0x05);
+    });
+
     // A newer build inventing a reason must still be able to say no to this
     // one; losing the label costs a word, refusing the frame costs the answer.
     test('an unknown reason reads as the person declining', () {
