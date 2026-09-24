@@ -1096,19 +1096,9 @@ export const server = createServer(async (request, response) => {
     return json(response, result.status ?? (result.ok ? 200 : 400), result);
   }
   if (request.method === 'GET' && request.url === '/banned') {
-    // No signing key configured is the same "not usable yet" shape `/turn`
-    // answers for a missing TURN_SECRET: 503, so a deployment mid-setup
-    // reads as unfinished rather than as an empty, trustworthy list.
-    if (!adminBans.configured) {
-      response.setHeader('cache-control', 'no-store');
-      return json(response, 503, { ok: false, reason: 'unconfigured' });
-    }
-    // Public and cacheable — this is the list every phone polls every six
-    // hours (A6 spec), not an admin route. `max-age=300` bounds how stale a
-    // CDN or proxy in front of Caddy could ever serve it without gating the
-    // list behind the same no-store every other write-bearing route uses.
-    response.setHeader('cache-control', 'public, max-age=300');
-    return json(response, 200, adminBans.list());
+    const result = handleBanned({ bans: adminBans });
+    response.setHeader('cache-control', result.cacheControl);
+    return json(response, result.status, result.body);
   }
   if (request.url.startsWith('/admin/')) {
     // Set before any response on this path, including the "body too large"
@@ -1615,7 +1605,14 @@ export function canonicalBanBody({ v, updatedAt, identities, npubs, fingerprints
 export function createBans({
   path = process.env.BANNED_PATH || './banned.json',
   signingKeyPkcs8B64 = process.env.BAN_SIGNING_KEY,
-  nowSeconds = Math.floor(Date.now() / 1000),
+  // A function, not a value evaluated once at construction (review round 1,
+  // critical): the process-lifetime `adminBans` below is built exactly once
+  // at import time, so a bare `Math.floor(Date.now() / 1000)` default would
+  // freeze `updatedAt` at boot time forever — every ban and unban for the
+  // life of the process would stamp the same second, and the app's "reject
+  // an older `updatedAt` than the stored one" check (A6 spec) would then
+  // reject every list after the first as stale-or-equal.
+  nowSeconds = () => Math.floor(Date.now() / 1000),
 } = {}) {
   const identities = new Set();
   const npubs = new Set();
@@ -1687,8 +1684,17 @@ export function createBans({
     return result;
   }
 
-  function currentSeconds() {
-    return typeof nowSeconds === 'function' ? nowSeconds() : nowSeconds;
+  // Strictly increasing, never just "the clock right now" (review round 1):
+  // two bans inside the same wall-clock second must still produce two
+  // different `updatedAt`s, or the second one wouldn't look newer to a phone
+  // that already has the first — and a clock stepped backwards (NTP
+  // correction, a wrong system clock) must not let `updatedAt` go backwards
+  // either, since that's exactly the "older `updatedAt` than stored" case
+  // the app is told to reject. So this is `max(now(), previous + 1)`, not
+  // `now()`.
+  function nextUpdatedAt() {
+    const now = typeof nowSeconds === 'function' ? nowSeconds() : nowSeconds;
+    return Math.max(now, updatedAt + 1);
   }
 
   return {
@@ -1699,25 +1705,34 @@ export function createBans({
     configured: privateKey !== null,
     async ban(report) {
       return enqueue(async () => {
+        // Lower-cased before insertion (review round 1, minor): every hex
+        // key elsewhere in this file — `verifyEvent`'s pubkey/id/sig regexes,
+        // `deviceTokenOf`'s APNs-token check — is matched and stored
+        // lower-case, and `isBannedNpub`/the app's own comparisons assume
+        // the same. A report signed by a client that happened to send mixed
+        // case would otherwise sit in the set forever, matching nothing.
         if (report.context === 'channel') {
-          if (typeof report.target === 'string') fingerprints.add(report.target);
+          if (typeof report.target === 'string') fingerprints.add(report.target.toLowerCase());
         } else if (typeof report.target === 'string') {
-          identities.add(report.target);
+          identities.add(report.target.toLowerCase());
         }
-        if (typeof report.targetNpub === 'string') npubs.add(report.targetNpub);
-        updatedAt = currentSeconds();
+        if (typeof report.targetNpub === 'string') npubs.add(report.targetNpub.toLowerCase());
+        updatedAt = nextUpdatedAt();
         rebuild();
         await persist();
       });
     },
     async unban(key) {
       return enqueue(async () => {
-        const inIdentities = identities.delete(key);
-        const inNpubs = npubs.delete(key);
-        const inFingerprints = fingerprints.delete(key);
+        // Same lower-casing on the way out, so `/admin/unban` matches
+        // regardless of the case the caller typed the key in.
+        const lower = key.toLowerCase();
+        const inIdentities = identities.delete(lower);
+        const inNpubs = npubs.delete(lower);
+        const inFingerprints = fingerprints.delete(lower);
         const removed = inIdentities || inNpubs || inFingerprints;
         if (removed) {
-          updatedAt = currentSeconds();
+          updatedAt = nextUpdatedAt();
           rebuild();
           await persist();
         }
@@ -1726,7 +1741,9 @@ export function createBans({
     },
     // What `/register` and `/turn` check: the Nostr pubkey a request is
     // signed with, which is what a `targetNpub` names. See the block comment
-    // above for why this is deliberately not `identities`.
+    // above for why this is deliberately not `identities`. `verifyEvent`
+    // already requires `event.pubkey` to match `/^[0-9a-f]{64}$/` — lower-case
+    // only — so no lower-casing is needed on this side of the comparison.
     isBannedNpub(hex) {
       return npubs.has(hex);
     },
@@ -1737,6 +1754,26 @@ export function createBans({
       return cached;
     },
   };
+}
+
+/// `GET /banned`, factored out of the route so it can be exercised over a
+/// real HTTP server with an injected `bans` — the same "build a handler
+/// instance without a key" shape `handleTurn`'s `secret`/`urls` tests already
+/// use — rather than only through the module's own singleton `adminBans`
+/// (review round 1: a real HTTP test for the 503 `unconfigured` case, not
+/// just a check of `bans.configured`).
+export function handleBanned({ bans }) {
+  if (!bans.configured) {
+    // Same "not usable yet" shape `/turn` answers for a missing TURN_SECRET:
+    // 503, so a deployment mid-setup reads as unfinished rather than as an
+    // empty, trustworthy list.
+    return { status: 503, cacheControl: 'no-store', body: { ok: false, reason: 'unconfigured' } };
+  }
+  // Public and cacheable — this is the list every phone polls every six
+  // hours (A6 spec), not an admin route. `max-age=300` bounds how stale a
+  // CDN or proxy in front of Caddy could ever serve it without gating the
+  // list behind the same no-store every other write-bearing route uses.
+  return { status: 200, cacheControl: 'public, max-age=300', body: bans.list() };
 }
 
 const adminBans = createBans();

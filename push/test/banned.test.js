@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, verify as edVerify } from 'node:crypto';
+import { createServer as createHttpServer } from 'node:http';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { once } from 'node:events';
@@ -21,7 +22,7 @@ const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const pkcs8B64 = privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
 process.env.BAN_SIGNING_KEY = pkcs8B64;
 
-const { createBans, canonicalBanBody, handleAdmin, server } = await import('../src/index.js');
+const { createBans, canonicalBanBody, handleAdmin, handleBanned, server } = await import('../src/index.js');
 
 // Real wall-clock time, not a fixed constant: the HTTP integration test below
 // exercises /turn, /report and /register through the real server route, none
@@ -60,6 +61,62 @@ function signed({ kind = 24242, tags = [['action', 'turn']], createdAt = now, co
   event.sig = Buffer.from(schnorr.sign(event.id, key)).toString('hex');
   return event;
 }
+
+// Review round 1, item 2: a fixed cross-language vector for the app (Dart,
+// Task A6) to verify its own canonicalisation and Ed25519 verify against —
+// the same numbers, in the same order, as
+// `.superpowers/sdd/2026-09-24-moderation-ugc/ban-canonical-vector.md`. The
+// signing key here is a throwaway, generated once and hard-coded — never the
+// real `BAN_SIGNING_KEY` — so this vector is reproducible by anyone reading
+// this file and is safe to publish alongside its own signature.
+const VECTOR_PRIVATE_KEY_PKCS8_B64 =
+  'MC4CAQAwBQYDK2VwBCIEIH+86rB/X+X0edbydXmaVdEKiuCIVWxGz0EXx6nBEpe7';
+const VECTOR_PUBLIC_KEY_HEX =
+  'f8a3b6fc8195e23ce2a0f0f6c67d7a8ff1827843541c17b0a44f4a3f6c7dbb3a';
+const VECTOR_BODY = {
+  v: 1,
+  updatedAt: 1700000000,
+  identities: ['11'.repeat(32), '22'.repeat(32)],
+  npubs: ['33'.repeat(32)],
+  fingerprints: ['44'.repeat(32)],
+};
+const VECTOR_CANONICAL =
+  '{"v":1,"updatedAt":1700000000,"identities":["1111111111111111111111111111111111111111111111111111111111111111","2222222222222222222222222222222222222222222222222222222222222222"],"npubs":["3333333333333333333333333333333333333333333333333333333333333333"],"fingerprints":["4444444444444444444444444444444444444444444444444444444444444444"]}';
+const VECTOR_SIGNATURE =
+  'e540f985eb8139302691f82086205a2d29b44a990e03da5b0c9d84e596ab091561be8890dfed566231b36845f52be5937355ac06450e2ca9ee17864c4e761e06';
+
+test('the fixed cross-language vector: canonicalBanBody matches exactly, and the signature verifies', async () => {
+  assert.equal(canonicalBanBody(VECTOR_BODY), VECTOR_CANONICAL);
+
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-vector-'));
+  // `nowSeconds` is fixed 2 below the vector's `updatedAt`, not equal to it:
+  // three `ban()` calls are needed to build this list (one report can only
+  // add one identity-or-fingerprint plus one npub), and the monotonic
+  // `max(now, previous + 1)` fix from this same review round means three
+  // calls at a constant `now` land on `now, now+1, now+2` — so `now` has to
+  // be `updatedAt - 2` for the third call to land exactly on `updatedAt`.
+  const bans = createBans({
+    path: path.join(dir, 'banned.json'),
+    signingKeyPkcs8B64: VECTOR_PRIVATE_KEY_PKCS8_B64,
+    nowSeconds: VECTOR_BODY.updatedAt - 2,
+  });
+  // Rebuild the same set of bans one report at a time, through the real
+  // `ban()` path, rather than constructing the signed body by hand — this is
+  // what proves `ban()` itself produces exactly the vector, not just that
+  // `canonicalBanBody` can reproduce a string written by a human.
+  await bans.ban({ context: 'direct', target: VECTOR_BODY.identities[0] });
+  await bans.ban({ context: 'direct', target: VECTOR_BODY.identities[1], targetNpub: VECTOR_BODY.npubs[0] });
+  await bans.ban({ context: 'channel', target: VECTOR_BODY.fingerprints[0] });
+  const body = bans.list();
+  assert.equal(canonicalBanBody(body), VECTOR_CANONICAL);
+  assert.equal(body.sig, VECTOR_SIGNATURE);
+
+  const { publicKey } = generateKeyPairSync('ed25519'); // unrelated key, just to prove verify() needs the right one
+  assert.equal(
+    edVerify(null, Buffer.from(VECTOR_CANONICAL, 'utf8'), publicKey, Buffer.from(VECTOR_SIGNATURE, 'hex')),
+    false,
+  );
+});
 
 test('canonicalBanBody sorts arrays and carries no sig', () => {
   const canonical = canonicalBanBody({
@@ -128,6 +185,55 @@ test('a ban is persisted across a fresh createBans on the same file', async () =
 
   const second = createBans({ path: filePath, signingKeyPkcs8B64: pkcs8B64, nowSeconds: now + 1 });
   assert.ok(second.list().identities.includes(target));
+});
+
+// Review round 1, critical: `nowSeconds`'s default used to be evaluated once
+// at `createBans()` call time (`Math.floor(Date.now() / 1000)` as a bare
+// value), so the process-lifetime `adminBans` singleton stamped every ban and
+// unban with whatever second the server happened to boot in, forever. Fixed
+// to a function default plus a strictly-increasing `updatedAt`; these two
+// tests cover both halves of that fix.
+test('with the real (function) default, updatedAt grows as real time passes', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-clock-'));
+  // No `nowSeconds` override at all — this is the actual default a fresh
+  // `createBans()` gets, the same one `adminBans` uses in production.
+  const bans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: pkcs8B64 });
+  await bans.ban(reportFixture({ target: 'a1'.repeat(32) }));
+  const first = bans.list().updatedAt;
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await bans.ban(reportFixture({ id: 'r2', target: 'a2'.repeat(32) }));
+  const second = bans.list().updatedAt;
+  assert.ok(second > first, `expected updatedAt to grow (${first} -> ${second})`);
+});
+
+test('two changes within the same injected second still produce strictly increasing updatedAt', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-clock-'));
+  // A fixed number, not a function: every call to `nowSeconds()` inside
+  // `createBans` would return exactly the same second, so this isolates the
+  // "previous + 1" half of the fix from real wall-clock time entirely.
+  const bans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: pkcs8B64, nowSeconds: now });
+  await bans.ban(reportFixture({ target: 'b1'.repeat(32) }));
+  const first = bans.list().updatedAt;
+  await bans.ban(reportFixture({ id: 'r2', target: 'b2'.repeat(32) }));
+  const second = bans.list().updatedAt;
+  assert.equal(second, first + 1);
+  await bans.ban(reportFixture({ id: 'r3', target: 'b3'.repeat(32) }));
+  assert.equal(bans.list().updatedAt, first + 2);
+});
+
+test('a clock stepped backwards still can not move updatedAt backwards', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-clock-'));
+  const bans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: pkcs8B64, nowSeconds: now + 100 });
+  await bans.ban(reportFixture({ target: 'c1'.repeat(32) }));
+  const ahead = bans.list().updatedAt;
+  assert.equal(ahead, now + 100);
+
+  let stepped = now; // the clock corrected itself backwards by 100 seconds
+  const bansAfterStep = createBans({
+    path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: pkcs8B64, nowSeconds: () => stepped,
+  });
+  await bansAfterStep.ban(reportFixture({ id: 'r2', target: 'c2'.repeat(32) }));
+  assert.equal(bansAfterStep.list().updatedAt, ahead + 1);
 });
 
 test('two concurrent bans on one file do not lose either write', async () => {
@@ -253,8 +359,69 @@ test('a banned npub is refused 403 on /register and /turn, but only after its si
   }
 });
 
-test('with no signing key configured, /banned is 503 unconfigured', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-unconfigured-'));
-  const bans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: '', nowSeconds: now });
-  assert.equal(bans.configured, false);
+test('target, targetNpub and fingerprint hex are lower-cased before insertion', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-case-'));
+  const bans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: pkcs8B64, nowSeconds: now });
+  const mixedTarget = 'AA'.repeat(32);
+  const mixedNpub = 'BB'.repeat(32);
+  await bans.ban(reportFixture({ target: mixedTarget, targetNpub: mixedNpub, context: 'direct' }));
+  const body = bans.list();
+  assert.ok(body.identities.includes(mixedTarget.toLowerCase()));
+  assert.equal(body.identities.includes(mixedTarget), false);
+  assert.ok(body.npubs.includes(mixedNpub.toLowerCase()));
+  assert.equal(bans.isBannedNpub(mixedNpub.toLowerCase()), true);
+
+  const dir2 = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-case-'));
+  const bans2 = createBans({ path: path.join(dir2, 'banned.json'), signingKeyPkcs8B64: pkcs8B64, nowSeconds: now });
+  const mixedFingerprint = 'CC'.repeat(32);
+  await bans2.ban(reportFixture({ context: 'channel', target: mixedFingerprint }));
+  assert.ok(bans2.list().fingerprints.includes(mixedFingerprint.toLowerCase()));
+
+  // unban matches regardless of the case it's asked for in.
+  assert.equal(await bans.unban(mixedTarget), true);
+  assert.equal(bans.list().identities.includes(mixedTarget.toLowerCase()), false);
+});
+
+test('with no signing key configured, list() carries no signature', () => {
+  const dir = mkdtemp(path.join(tmpdir(), 'cubechat-bans-unconfigured-'));
+  return dir.then((d) => {
+    const bans = createBans({ path: path.join(d, 'banned.json'), signingKeyPkcs8B64: '', nowSeconds: now });
+    assert.equal(bans.configured, false);
+    assert.equal(bans.list().sig, '');
+  });
+});
+
+// Review round 1, item 3: a *real* HTTP test for the 503 `unconfigured`
+// case, not just a check of `bans.configured` — a plain node:http server
+// wired to `handleBanned` with a `bans` instance built without a signing
+// key, the same "inject the dependency" shape `handleAdmin`/`handleTurn`'s
+// own tests already use (`fakeBans`, `bans` as an option), rather than the
+// module's own singleton `adminBans`, which this test file's `BAN_SIGNING_KEY`
+// env var always configures.
+test('GET /banned is a real 503 unconfigured over HTTP when the injected bans has no signing key', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-bans-unconfigured-http-'));
+  const unconfiguredBans = createBans({ path: path.join(dir, 'banned.json'), signingKeyPkcs8B64: '', nowSeconds: now });
+  assert.equal(unconfiguredBans.configured, false);
+
+  const testServer = createHttpServer((request, response) => {
+    const result = handleBanned({ bans: unconfiguredBans });
+    const text = JSON.stringify(result.body);
+    response.writeHead(result.status, {
+      'content-type': 'application/json',
+      'cache-control': result.cacheControl,
+    });
+    response.end(text);
+  });
+  testServer.listen(0, '127.0.0.1');
+  await once(testServer, 'listening');
+  try {
+    const endpoint = `http://127.0.0.1:${testServer.address().port}`;
+    const response = await fetch(`${endpoint}/banned`);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.json();
+    assert.equal(body.reason, 'unconfigured');
+  } finally {
+    await new Promise((resolve) => testServer.close(resolve));
+  }
 });
