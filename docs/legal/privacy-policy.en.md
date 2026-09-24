@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 14 September 2026**
+**Last updated: 24 September 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -109,6 +109,17 @@ Files you send someone nearby through AirDrop travel directly between the two
 phones, by default over Bluetooth like any other message. They may also
 travel over the local Wi-Fi network when both phones are on one, encrypted
 with a key that exists only for that transfer; no server is involved.
+
+**While the AirDrop page is open, or "Everyone" is switched on for receiving,
+your phone can be found by people nearby** even if "Discoverable nearby" is
+off in your profile. For that time it answers Bluetooth handshakes from phones
+it does not know, and sends its signed announcement unencrypted — your public
+key, nickname and profile picture — to the phones it is linked to, which pass
+it on through the mesh. Holding two phones together on the AirDrop page also
+makes your phone connect to the other one by itself, so the two can exchange
+files or contact cards. When you leave the page (or "Everyone" switches itself
+off after ten minutes), your phone goes back to answering only people who
+already know it.
 
 ---
 
