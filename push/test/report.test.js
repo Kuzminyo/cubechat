@@ -21,10 +21,10 @@ const { handleReport, createRateLimiter, createReportStore, server } =
 const now = 1789000000;
 const REPORT_KEY = '03'.repeat(32);
 
-function signed({ tags = [['action', 'report']], createdAt = now, content, key = REPORT_KEY } = {}) {
+function signed({ tags = [['action', 'report']], createdAt = now, content, key = REPORT_KEY, kind = 24242 } = {}) {
   const body = content !== undefined ? content : JSON.stringify(validPayload());
   const event = { pubkey: Buffer.from(schnorr.getPublicKey(key)).toString('hex'),
-    created_at: createdAt, kind: 24242, tags, content: body };
+    created_at: createdAt, kind, tags, content: body };
   event.id = createHash('sha256').update(JSON.stringify([
     0, event.pubkey, event.created_at, event.kind, event.tags, event.content,
   ])).digest('hex');
@@ -86,6 +86,7 @@ test('a bad signature, wrong kind, missing tag or a /turn-tagged event are all r
     signed({ tags: [] }),
     signed({ tags: [['action', 'turn']] }),
     { ...signed(), content: 'tampered but still json {}' },
+    signed({ kind: 1 }), // a correctly signed event of the wrong kind
   ];
   for (const event of cases) {
     const result = await handleReport(event, { nowSeconds: now, limiter: fakeLimiter(), store });
@@ -134,6 +135,26 @@ test('malformed or out-of-range report content is refused as a bad payload', asy
   assert.equal(store.calls.length, 0);
 });
 
+test('message.sentAt must be a non-negative safe integer', async () => {
+  const store = fakeStore();
+  for (const sentAt of [-1, 1.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const content = JSON.stringify(validPayload({ message: { text: 'hi', sentAt } }));
+    const result = await handleReport(signed({ content }), {
+      nowSeconds: now, limiter: fakeLimiter(), store,
+    });
+    assert.equal(result.status, 400, `sentAt ${sentAt} should be refused`);
+    assert.equal(result.body.reason, 'payload');
+  }
+  // 0 and an ordinary timestamp are both fine.
+  for (const sentAt of [0, now]) {
+    const content = JSON.stringify(validPayload({ message: { text: 'hi', sentAt } }));
+    const result = await handleReport(signed({ content }), {
+      nowSeconds: now, limiter: fakeLimiter(), store,
+    });
+    assert.equal(result.status, 200, `sentAt ${sentAt} should be accepted`);
+  }
+});
+
 test('a general report needs no target', async () => {
   const store = fakeStore();
   const content = JSON.stringify({ reason: 'other', context: 'general' });
@@ -169,6 +190,44 @@ test('the rate limiter caps one key at 10 an hour and the whole service at 200, 
   for (let i = 0; i < 200; i++) assert.equal(totalLimiter.allow(`key-${i}`, now + i), true);
   assert.equal(totalLimiter.allow('key-200', now + 200), false, '201st overall is refused');
   assert.equal(totalLimiter.allow('key-200', now + 3600 + 100), true, 'the total quota frees after an hour');
+});
+
+test('the rate limiter does not grow without bound as keys rotate', () => {
+  // /report has no identity beyond the signing key on the event, so a caller
+  // that signs with a fresh key every time must not be able to grow the
+  // limiter's memory forever just by rotating keys.
+  const limiter = createRateLimiter({ perKey: 10, total: 1_000_000, windowSeconds: 3600, sweepEvery: 1 });
+  for (let i = 0; i < 5000; i++) {
+    limiter.allow(`key-${i}`, now + i);
+  }
+  assert.ok(limiter.size > 1, 'entries still inside the window are legitimately kept');
+
+  // Advance well past every entry's window and make one more call: a sweep
+  // (sweepEvery: 1, so every call sweeps) must have dropped everything whose
+  // window has fully expired, leaving only the just-added key.
+  limiter.allow('final-key', now + 5000 + 3600 + 10);
+  assert.equal(limiter.size, 1, `expected only the newest key to remain, size=${limiter.size}`);
+});
+
+test('a notify that throws, or returns a rejected promise, still gives 200 and the report is stored', async () => {
+  const throwingStore = fakeStore();
+  const throwingResult = await handleReport(signed(), {
+    nowSeconds: now, limiter: fakeLimiter(), store: throwingStore,
+    notify: () => { throw new Error('telegram is down'); },
+  });
+  assert.equal(throwingResult.status, 200);
+  assert.equal(throwingStore.calls.length, 1);
+
+  const rejectingStore = fakeStore();
+  const rejectingResult = await handleReport(signed(), {
+    nowSeconds: now, limiter: fakeLimiter(), store: rejectingStore,
+    notify: () => Promise.reject(new Error('telegram timed out')),
+  });
+  assert.equal(rejectingResult.status, 200);
+  assert.equal(rejectingStore.calls.length, 1);
+  // Let the rejected promise's .catch() run before the test process exits,
+  // so it can't surface as an unhandled rejection in a later test.
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test('handleReport refuses the 11th report from one key within the hour with 429', async () => {

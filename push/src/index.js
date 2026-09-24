@@ -1222,7 +1222,9 @@ export function parseReportPayload(content) {
     const { text, kind, sentAt } = message;
     if (text !== undefined && (typeof text !== 'string' || text.length > 4000)) return null;
     if (kind !== undefined && !REPORT_MESSAGE_KINDS.has(kind)) return null;
-    if (sentAt !== undefined && typeof sentAt !== 'number') return null;
+    // A safe, non-negative integer: `Number.isSafeInteger` already refuses
+    // NaN, Infinity and fractions, so only the sign needs its own check.
+    if (sentAt !== undefined && (!Number.isSafeInteger(sentAt) || sentAt < 0)) return null;
     parsedMessage = {
       ...(text !== undefined ? { text } : {}),
       ...(kind !== undefined ? { kind } : {}),
@@ -1245,18 +1247,45 @@ export function parseReportPayload(content) {
 /// for the whole service. Trimmed to the window on every call, so a key's or
 /// the service's quota is always exactly "how many in the last hour", not a
 /// count that resets on a clock boundary and can be burst around.
-export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 3600 } = {}) {
+///
+/// `/report` takes no identity beyond the signing key on the event, so a
+/// caller that signs with a fresh key per request pays nothing for it —
+/// every key is "new" here and, without this, would sit in `perKeyHits`
+/// forever with an empty (fully expired) array. Two things bound that: an
+/// empty array is deleted the moment the key that owns it is looked at
+/// again, and — since a key that's never looked at again would otherwise
+/// never trigger that — a full sweep runs every `sweepEvery` calls that
+/// drops every key whose whole window has expired, seen or not.
+export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 3600, sweepEvery = 1000 } = {}) {
   const perKeyHits = new Map();
   let totalHits = [];
+  let calls = 0;
+
+  function sweep(cutoff) {
+    for (const [key, hits] of perKeyHits) {
+      const kept = hits.filter((t) => t > cutoff);
+      if (kept.length === 0) perKeyHits.delete(key);
+      else perKeyHits.set(key, kept);
+    }
+  }
 
   return {
+    // Exposed for tests, so "the map does not grow without bound" can be
+    // checked directly instead of inferred from timing.
+    get size() {
+      return perKeyHits.size;
+    },
     allow(pubkey, nowSeconds) {
       const cutoff = nowSeconds - windowSeconds;
       totalHits = totalHits.filter((t) => t > cutoff);
       const keyHits = (perKeyHits.get(pubkey) ?? []).filter((t) => t > cutoff);
+      if (keyHits.length === 0) perKeyHits.delete(pubkey);
+      else perKeyHits.set(pubkey, keyHits);
+
+      calls += 1;
+      if (calls % sweepEvery === 0) sweep(cutoff);
 
       if (keyHits.length >= perKey || totalHits.length >= total) {
-        perKeyHits.set(pubkey, keyHits);
         return false;
       }
 
@@ -1410,6 +1439,16 @@ export async function handleReport(event, {
     ...payload,
   };
   const stored = await store.append(report);
-  notify(stored ?? report);
+  // The report is already durable at this point; a notifier that throws or
+  // rejects (a dead Telegram bot, a network blip) is not the caller's
+  // problem and must not turn an accepted, stored report into a 500.
+  try {
+    const outcome = notify(stored ?? report);
+    if (outcome && typeof outcome.catch === 'function') {
+      outcome.catch((error) => log('report', `notify failed: ${error?.message ?? error}`));
+    }
+  } catch (error) {
+    log('report', `notify failed: ${error?.message ?? error}`);
+  }
   return { status: 200, body: { ok: true, id: report.id } };
 }
