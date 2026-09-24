@@ -182,6 +182,9 @@ class _Lane extends AirDropLaneController {
 }
 
 class _FakeReceiver implements WifiLaneReceiver {
+  @override
+  int debugOpenBatches = 0;
+
   bool closed = false;
   final _done = Completer<void>();
 
@@ -752,6 +755,40 @@ void main() {
           c.read(airdropControllerProvider).transfers.single.phase,
           AirDropPhase.transferring,
         );
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer over 200 MB asks first, and is not refused as a '
+        'stranger\'s', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        // Two files of 101 MiB: 202 MiB, just over the line.
+        port.deliver(_eve, offer: _offer(84, size: 101 * 1024 * 1024));
+        async.flushMicrotasks();
+        final answers = port.answersTo(_eve);
+        expect(answers.single.kind, NearbyAnswerKind.seen);
+        expect(c.read(airdropControllerProvider).requests, hasLength(1));
+        c.dispose();
+      });
+    });
+
+    test('a bumped offer of exactly 200 MB is still taken without asking', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_eve);
+        final c = make(port, async: async);
+        c.read(airdropControllerProvider);
+        c.read(bumpLedgerProvider).note(_eve, c.read(airdropClockProvider)());
+        port.deliver(
+          _eve,
+          offer: _offer(85, files: 2, size: 100 * 1024 * 1024),
+        );
+        async.flushMicrotasks();
+        expect(port.answersTo(_eve).last.kind, NearbyAnswerKind.accepted);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
         c.dispose();
       });
     });

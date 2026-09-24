@@ -87,9 +87,16 @@ class AirDropPage extends ConsumerWidget {
                 ? _ChooseFilesRow(
                     onTap: () async {
                       final picked = await pickAirDropFiles(context, ref);
-                      if (picked != null && picked.isNotEmpty) {
-                        ref.read(airdropStagedProvider.notifier).state =
-                            picked;
+                      if (picked == null ||
+                          picked.isEmpty ||
+                          !context.mounted) {
+                        return;
+                      }
+                      // The checks the send flow makes, made now: a bump
+                      // sends the staging with nothing in between.
+                      final ok = vetAirDropFilesOrSay(context, picked);
+                      if (ok != null) {
+                        ref.read(airdropStagedProvider.notifier).state = ok;
                       }
                     },
                   )

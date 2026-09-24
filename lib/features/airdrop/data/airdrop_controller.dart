@@ -590,9 +590,10 @@ class AirDropController extends Notifier<AirDropState>
       }
       if (offer.flags & nearbyFlagWifi != 0) _senderCanWifi.add(id);
       _put(request);
-      if (bumped) {
+      if (bumped && request.totalBytes <= AirDropRules.bumpAutoAcceptBytes) {
         // The bump already was the "yes" — no card to notify about and no
-        // sixty-second clock on an answer nobody needs to give.
+        // sixty-second clock on an answer nobody needs to give. Past
+        // [AirDropRules.bumpAutoAcceptBytes] it is an ordinary card.
         await accept(id);
       } else {
         ref.read(airdropNotifyProvider)(request);

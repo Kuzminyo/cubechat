@@ -35,6 +35,12 @@ abstract final class AirDropRules {
   /// A stranger's record is forgotten after a day without requests.
   static const Duration forgetAfter = Duration(hours: 24);
 
+  /// A bumped offer is taken without a tap only up to this size. Holding two
+  /// phones together is consent to a photo or a clip, not to whatever fills
+  /// the free space: a bigger one still shows the request card, without the
+  /// contacts-only refusal (the person is standing right there).
+  static const int bumpAutoAcceptBytes = 200 * 1024 * 1024;
+
   /// Past this much in one go the sender is warned Bluetooth will be slow:
   /// at the ~40 KB/s a phone link really carries, twenty megabytes is minutes.
   static const int longOverBluetoothBytes = 20 * 1024 * 1024;

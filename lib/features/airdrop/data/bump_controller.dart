@@ -460,7 +460,8 @@ class BumpController extends Notifier<BumpState> {
   /// Never throws: a bumped offer awaits it.
   Future<void> _sendBump(String hex) async {
     final port = ref.read(airdropPortProvider);
-    final hasFiles = ref.read(airdropStagedProvider).isNotEmpty;
+    final hasFiles =
+        vetAirDropFiles(ref.read(airdropStagedProvider)).files.isNotEmpty;
     final card = _ownCard ??= _loadCard();
     try {
       final ok = await port.send(
@@ -510,9 +511,21 @@ class BumpController extends Notifier<BumpState> {
     DebugLog.instance.log('BUMP', 'fired with ${_short(hex)}');
     final name = ref.read(airdropPeerNameProvider)(hex);
     final staged = ref.read(airdropStagedProvider);
-    if (staged.isNotEmpty) {
-      _show(BumpSentFiles(hex, name, now, staged.length));
-      unawaited(_offer(hex, name, staged, after: ours));
+    // Staging is vetted when it is set; this is for anything that sets it
+    // some other way. A file over the cap sends nothing at all, and the bump
+    // goes on as if nothing were staged.
+    final vetted = vetAirDropFiles(staged);
+    if (vetted.tooLarge != null) {
+      DebugLog.instance.log(
+        'BUMP',
+        'not sending to ${_short(hex)}: "${vetted.tooLarge!.name}" too large',
+      );
+    }
+    if (vetted.files.isNotEmpty) {
+      _show(BumpSentFiles(hex, name, now, vetted.files.length));
+      unawaited(
+        _offer(hex, name, vetted.files, staged: staged, after: ours),
+      );
     } else if (theirs.hasFiles) {
       _show(BumpReceivingFiles(hex, name, now));
     } else {
@@ -562,14 +575,16 @@ class BumpController extends Notifier<BumpState> {
 
   /// Sends [files] once our bump has been handed to the port — see
   /// [_sending] — and lets go of the staging only once the offer is out.
+  /// [staged] is the staging [files] came from.
   Future<void> _offer(
     String hex,
     String name,
     List<AirDropSource> files, {
+    required List<AirDropSource> staged,
     required Future<void> after,
   }) async {
     final airdrop = ref.read(airdropControllerProvider.notifier);
-    final staged = ref.read(airdropStagedProvider.notifier);
+    final staging = ref.read(airdropStagedProvider.notifier);
     await after;
     try {
       final t = await airdrop.offer(peerHex: hex, peerName: name, files: files);
@@ -578,7 +593,7 @@ class BumpController extends Notifier<BumpState> {
         return;
       }
       // Only if the person has not picked something else meanwhile.
-      if (identical(staged.state, files)) staged.state = const [];
+      if (identical(staging.state, staged)) staging.state = const [];
     } catch (e) {
       DebugLog.instance.log('BUMP', 'offer to ${_short(hex)} failed: $e');
     }

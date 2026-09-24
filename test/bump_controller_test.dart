@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:cubechat/core/transport/announcement.dart';
+import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/nearby_offer.dart';
 import 'package:cubechat/core/util/free_space.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_clock.dart';
@@ -409,6 +410,64 @@ void main() {
       expect(e, isA<BumpSentFiles>());
       expect((e! as BumpSentFiles).count, 1);
       c.dispose();
+    });
+  });
+
+  test('sixty staged files: the offer carries the first fifty, without '
+      'throwing', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      c.read(airdropStagedProvider.notifier).state = [
+        for (var i = 0; i < 60; i++) _src('f$i.jpg'),
+      ];
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(46));
+      async.flushMicrotasks();
+      expect(port.offersTo(_bob).single.files, hasLength(nearbyMaxFiles));
+      expect((event(c)! as BumpSentFiles).count, nearbyMaxFiles);
+      c.dispose();
+    });
+  });
+
+  test('a staged file over the Bluetooth cap is never offered', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      final big = AirDropSource(
+        file: File('${Directory.systemTemp.path}${Platform.pathSeparator}b'),
+        name: 'big.mov',
+        size: MessagingService.maxFileBytesMesh + 1,
+        mime: 'video/quicktime',
+      );
+      c.read(airdropStagedProvider.notifier).state = [big];
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(47));
+      async.flushMicrotasks();
+      expect(port.offersTo(_bob), isEmpty);
+      c.dispose();
+    });
+  });
+
+  group('vetAirDropFiles', () {
+    test('caps the count at the offer limit', () {
+      final v = vetAirDropFiles([for (var i = 0; i < 60; i++) _src('f$i')]);
+      expect(v.files, hasLength(nearbyMaxFiles));
+      expect(v.tooLarge, isNull);
+    });
+
+    test('names the first file over the cap, and passes nothing', () {
+      final big = AirDropSource(
+        file: File('big'),
+        name: 'big.mov',
+        size: MessagingService.maxFileBytesMesh + 1,
+        mime: 'video/quicktime',
+      );
+      final v = vetAirDropFiles([_src(), big]);
+      expect(v.tooLarge, same(big));
+      expect(v.files, isEmpty);
     });
   });
 

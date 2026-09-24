@@ -17,6 +17,7 @@ import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../../profile/data/media_quality_controller.dart';
 import '../data/airdrop_controller.dart';
 import '../data/airdrop_source.dart';
+import '../data/airdrop_staged.dart';
 import '../domain/airdrop_rules.dart';
 import 'airdrop_navigation.dart';
 import 'airdrop_people_sheet.dart';
@@ -41,18 +42,8 @@ Future<bool> startAirDropSend(
   final peer = to ?? await showAirDropPeopleSheet(context);
   if (peer == null || !context.mounted) return false;
 
-  const cap = MessagingService.maxFileBytesMesh;
-  for (final f in chosen) {
-    if (f.size > cap) {
-      showGlassToast(
-        context,
-        t.airdropTooLarge(f.name, cap ~/ (1024 * 1024)),
-        tone: ToastTone.danger,
-      );
-      return false;
-    }
-  }
-  final capped = chosen.take(nearbyMaxFiles).toList();
+  final capped = vetAirDropFilesOrSay(context, chosen);
+  if (capped == null) return false;
   final total = capped.fold<int>(0, (sum, f) => sum + f.size);
   if (total > AirDropRules.longOverBluetoothBytes) {
     showGlassToast(
@@ -74,6 +65,24 @@ Future<bool> startAirDropSend(
   }
   ref.read(nearbyPageRequestProvider.notifier).state = kAirDropPage;
   return true;
+}
+
+/// [vetAirDropFiles] with its refusal shown: null (and a toast) when a file is
+/// over the Bluetooth cap, otherwise the files that can go.
+List<AirDropSource>? vetAirDropFilesOrSay(
+  BuildContext context,
+  List<AirDropSource> chosen,
+) {
+  final v = vetAirDropFiles(chosen);
+  final big = v.tooLarge;
+  if (big == null) return v.files;
+  const cap = MessagingService.maxFileBytesMesh;
+  showGlassToast(
+    context,
+    AppLocalizations.of(context).airdropTooLarge(big.name, cap ~/ (1024 * 1024)),
+    tone: ToastTone.danger,
+  );
+  return null;
 }
 
 /// Photos and videos from the gallery grid, or documents from the system
