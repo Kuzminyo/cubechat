@@ -32,6 +32,12 @@ and read `result[].message.chat.id`. That's `TELEGRAM_OWNER_CHAT_ID` — the
 only chat the bot will ever act on; everything else is ignored (and logged
 once per chat id).
 
+**It must be the owner's private 1:1 chat with the bot, never a group.** The
+bot does not check *who* pressed a button inside the chat it trusts — only
+*which chat* it came from (`_is_owner` compares chat ids) — so pointing
+`TELEGRAM_OWNER_CHAT_ID` at a group would let anyone in that group tap
+Забанити.
+
 ## Configuration
 
 Four environment variables, none of them checked into git:

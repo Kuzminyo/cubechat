@@ -44,6 +44,12 @@ CONTEXT_LABELS = {
 
 REPORT_EXCERPT_MAX_CHARS = 1000
 
+# Telegram refuses a message over 4096 characters outright; both caps stay
+# safely under that so `/reports` never becomes the poison update that wedges
+# the bot on itself (review round 1).
+REPORTS_LIST_MAX_ITEMS = 20
+REPORTS_LIST_MAX_CHARS = 4000
+
 HELP_TEXT = (
     "Команди:\n"
     "/reports — список відкритих скарг\n"
@@ -152,8 +158,11 @@ class Admin:
     def unban(self, key: str) -> bool:
         status, body = self._request("POST", "/admin/unban", {"key": key})
         if status != 200:
-            logging.warning("unban failed with status %s", status)
-            return False
+            # Same treatment as ban/dismiss: a non-200 is a service problem,
+            # not "no such ban" — the caller needs the status to tell those
+            # apart (review round 1: this used to collapse both into False,
+            # so a 503 read to the owner as "no such ban").
+            raise AdminError(status, body)
         return bool(body.get("ok"))
 
 
@@ -327,18 +336,40 @@ class Bot:
 
     def _handle_updates(self) -> None:
         updates = self._telegram.updates(self._state.update_offset, timeout=25)
-        if not updates:
-            return
         for update in updates:
+            # Mark the update seen — and persist that — *before* handling
+            # it. A handler that raises must not make the same update come
+            # back on the next tick: that is exactly how one bad update (a
+            # command whose reply is too long, say) would wedge every later
+            # command and button press behind it forever (review round 1).
             self._state.update_offset = update["update_id"] + 1
+            self._state.save()
             self._dispatch(update)
-        self._state.save()
 
     def _dispatch(self, update: dict) -> None:
-        if "callback_query" in update:
-            self._handle_callback(update["callback_query"])
-        elif "message" in update:
-            self._handle_message(update["message"])
+        try:
+            if "callback_query" in update:
+                self._handle_callback(update["callback_query"])
+            elif "message" in update:
+                self._handle_message(update["message"])
+        except Exception:  # noqa: BLE001 - one bad update must not wedge the rest
+            logging.exception("failed to handle update %s", update.get("update_id"))
+            self._tell_owner_on_best_effort(update, "Помилка обробки команди")
+
+    def _tell_owner_on_best_effort(self, update: dict, text: str) -> None:
+        chat_id = (
+            update.get("message", {}).get("chat", {}).get("id")
+            or update.get("callback_query", {}).get("message", {}).get("chat", {}).get("id")
+        )
+        if not self._is_owner(chat_id):
+            return
+        try:
+            self._telegram.send(chat_id, text)
+        except (TelegramError, TransportError):
+            # The handler already failed once; a second failure here just
+            # means the owner finds out from the next successful message
+            # instead, not that the loop should retry this update.
+            logging.exception("failed to notify owner about a handling error")
 
     def _handle_callback(self, callback: dict) -> None:
         message = callback.get("message") or {}
@@ -400,11 +431,19 @@ class Bot:
         if not reports:
             self._telegram.send(chat_id, "Відкритих скарг немає")
             return
+        # Capped two ways (review round 1): at most 20 lines, and the whole
+        # message cut to 4000 chars regardless — a long note or a big enough
+        # backlog must never build a message Telegram's 4096-char limit
+        # rejects, since that turns `/reports` into a poison update.
+        shown = reports[:REPORTS_LIST_MAX_ITEMS]
         lines = [
             f"{report.get('id')} · {REASON_LABELS.get(report.get('reason'), report.get('reason'))} · {_short(report.get('target'))}"
-            for report in reports
+            for report in shown
         ]
-        self._telegram.send(chat_id, "\n".join(lines))
+        remaining = len(reports) - len(shown)
+        if remaining > 0:
+            lines.append(f"…і ще {remaining}")
+        self._telegram.send(chat_id, "\n".join(lines)[:REPORTS_LIST_MAX_CHARS])
 
     def _cmd_unban(self, chat_id, text: str) -> None:
         parts = text.split(maxsplit=1)
@@ -412,7 +451,14 @@ class Bot:
             self._telegram.send(chat_id, HELP_TEXT)
             return
         key = parts[1].strip()
-        removed = self._admin.unban(key)
+        try:
+            removed = self._admin.unban(key)
+        except AdminError as error:
+            if error.status == 503:
+                self._telegram.send(chat_id, "Сервіс банів недоступний")
+            else:
+                self._telegram.send(chat_id, f"Помилка: {error.status}")
+            return
         self._telegram.send(chat_id, "Розблоковано" if removed else "Такого бану немає")
 
     # -- helpers ------------------------------------------------------------

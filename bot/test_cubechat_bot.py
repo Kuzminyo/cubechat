@@ -29,6 +29,7 @@ class FakeAdmin:
         self._dismiss_result = None
         self._dismiss_error = None
         self._unban_result = True
+        self._unban_error = None
 
     def new_reports(self, since):
         self.new_reports_calls.append(since)
@@ -51,6 +52,8 @@ class FakeAdmin:
 
     def unban(self, key):
         self.unban_calls.append(key)
+        if self._unban_error:
+            raise self._unban_error
         return self._unban_result
 
 
@@ -266,6 +269,25 @@ class CommandTests(unittest.TestCase):
         self.bot._handle_message(self.message("/unban deadbeef"))
         self.assertEqual(self.telegram.sent[0][1], "Такого бану немає")
 
+    def test_unban_service_unavailable(self):
+        self.admin._unban_error = AdminError(503, {"reason": "bans unavailable"})
+        self.bot._handle_message(self.message("/unban deadbeef"))
+        self.assertEqual(self.telegram.sent[0][1], "Сервіс банів недоступний")
+
+    def test_unban_other_error_reports_status(self):
+        self.admin._unban_error = AdminError(500, {})
+        self.bot._handle_message(self.message("/unban deadbeef"))
+        self.assertEqual(self.telegram.sent[0][1], "Помилка: 500")
+
+    def test_reports_command_caps_at_20_and_notes_the_rest(self):
+        self.admin._open_reports_result = [make_report(id=f"r{i}") for i in range(60)]
+        self.bot._handle_message(self.message("/reports"))
+        self.assertEqual(len(self.telegram.sent), 1)
+        text = self.telegram.sent[0][1]
+        self.assertLess(len(text), 4096)
+        self.assertIn("і ще 40", text)
+        self.assertEqual(text.count("·"), 20 * 2)  # 20 lines, two separators each
+
     def test_unknown_command_gets_help(self):
         self.bot._handle_message(self.message("hello"))
         self.assertIn("Команди:", self.telegram.sent[0][1])
@@ -324,6 +346,36 @@ class UpdateOffsetTests(unittest.TestCase):
         reloaded = BotState(self.tmp.name)
         self.assertEqual(reloaded.update_offset, 12)
 
+    def test_handler_exception_does_not_block_the_next_update(self):
+        class ExplodingAdmin(FakeAdmin):
+            def __init__(self):
+                super().__init__()
+                self.open_reports_calls = 0
+
+            def open_reports(self):
+                self.open_reports_calls += 1
+                if self.open_reports_calls == 1:
+                    raise RuntimeError("boom")
+                return []
+
+        admin = ExplodingAdmin()
+        telegram = FakeTelegram()
+        bot = Bot(admin, telegram, OWNER_CHAT_ID, self.state)
+        telegram._updates = [
+            {"update_id": 20, "message": {"chat": {"id": OWNER_CHAT_ID}, "text": "/reports"}},
+            {"update_id": 21, "message": {"chat": {"id": OWNER_CHAT_ID}, "text": "/reports"}},
+        ]
+        bot._handle_updates()
+        # Both updates were consumed: the offset moved past both, not just
+        # the one before the exploding handler.
+        self.assertEqual(self.state.update_offset, 22)
+        reloaded = BotState(self.tmp.name)
+        self.assertEqual(reloaded.update_offset, 22)
+        texts = [text for _, text, _buttons in telegram.sent]
+        self.assertIn("Помилка обробки команди", texts)
+        # Update 21's handler ran normally despite update 20's failure.
+        self.assertIn("Відкритих скарг немає", texts)
+
 
 class FakeOpener:
     """Records requests; returns queued (status, bytes) responses in order."""
@@ -357,10 +409,15 @@ class AdminHttpTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 409)
         self.assertEqual(ctx.exception.body["status"], "dismissed")
 
-    def test_unban_false_on_non_200(self):
+    def test_unban_raises_admin_error_on_non_200(self):
+        # Review round 1: this used to swallow every non-200 into `False`,
+        # so a 503 (bans service down) read to the owner exactly like "no
+        # such ban". It must surface the status instead.
         opener = FakeOpener([(503, b"{}")])
         admin = Admin("http://127.0.0.1:8080", "sekrit", opener=opener)
-        self.assertFalse(admin.unban("key"))
+        with self.assertRaises(AdminError) as ctx:
+            admin.unban("key")
+        self.assertEqual(ctx.exception.status, 503)
 
     def test_unban_returns_removed_flag(self):
         opener = FakeOpener([(200, json.dumps({"ok": False}).encode())])
