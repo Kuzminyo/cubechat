@@ -228,7 +228,14 @@ abstract final class BleConstants {
   // by this — proximity is a third mode, not a replacement.
 
   /// Scan window while the AirDrop page is on screen.
-  static const Duration proximityWindow = Duration(seconds: 10);
+  ///
+  /// Was 10 s until 1109: with the 300 ms gap that is a `startScan` every
+  /// 10.3 s — three per 30 s on its own, and every arrival on the page added
+  /// one more, against Android's silent limit of five. Nothing is gained by
+  /// rotating a low-latency window: `continuousUpdates` already re-reports
+  /// every advertisement inside it. The start budget in `BleScanner` covers
+  /// the arrivals.
+  static const Duration proximityWindow = Duration(seconds: 28);
 
   /// Quiet period between proximity scan windows — kept short enough that the
   /// gap itself cannot hide the moment of a bump.

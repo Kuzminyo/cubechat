@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cubechat/core/ble/ble_constants.dart';
+import 'package:cubechat/core/ble/ble_scan_platform.dart';
 import 'package:cubechat/core/ble/ble_scanner.dart';
 import 'package:cubechat/features/peers/models/discovered_peer.dart';
 import 'package:fake_async/fake_async.dart';
@@ -166,4 +167,150 @@ void main() {
     expect(scanner.proximity, isTrue);
     expect(scanner.isRunning, isFalse);
   });
+
+  group('scan-start budget', () {
+    final t0 = DateTime(2026, 9, 24, 12);
+    DateTime at(int s) => t0.add(Duration(seconds: s));
+
+    test('four starts in 30 s are free; the fifth waits for the oldest', () {
+      final b = ScanStartBudget();
+      for (final s in [0, 5, 10, 15]) {
+        expect(b.waitBefore(at(s)), Duration.zero);
+        b.record(at(s));
+      }
+      // Android goes quiet after the fifth start in 30 s: hold it until the
+      // start at 0 s has aged out.
+      expect(
+        b.waitBefore(at(20)),
+        greaterThanOrEqualTo(const Duration(seconds: 10)),
+      );
+      expect(b.waitBefore(at(20)), lessThan(const Duration(seconds: 11)));
+      expect(b.waitBefore(at(31)), Duration.zero);
+    });
+
+    test('old starts are forgotten', () {
+      final b = ScanStartBudget();
+      for (var s = 0; s < 40; s += 10) {
+        b.record(at(s));
+      }
+      expect(b.waitBefore(at(41)), Duration.zero);
+    });
+  });
+
+  test('the proximity window is long enough not to rotate', () {
+    // 10.3 s windows were three starts in 30 s on their own, before any
+    // arrival on the page added more.
+    expect(
+      BleConstants.proximityWindow,
+      greaterThanOrEqualTo(const Duration(seconds: 25)),
+    );
+  });
+
+  group('starts against a fake radio', () {
+    test('a retune and a proximity switch at once start one scan, one '
+        'listener', () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        var active = true;
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now)
+          ..shouldScanActively = () => active;
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 500));
+        expect(radio.starts, hasLength(1));
+
+        // What a resume on the AirDrop page does: both arrive together.
+        active = false;
+        unawaited(scanner.retune());
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 1));
+        expect(radio.maxInFlight, 1);
+        expect(radio.listeners, 1);
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
+    test('toggling proximity never makes a fifth start in 30 s', () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now);
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 200));
+        for (var i = 0; i < 6; i++) {
+          unawaited(scanner.setProximity(true));
+          async.elapse(const Duration(seconds: 1));
+          unawaited(scanner.setProximity(false));
+          async.elapse(const Duration(seconds: 1));
+        }
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 1));
+        bool within30(DateTime a) =>
+            now().difference(a) < const Duration(seconds: 30);
+        expect(radio.starts.where(within30).length, lessThanOrEqualTo(4));
+
+        // The postponed start still comes, once the oldest ages out.
+        final before = radio.starts.length;
+        async.elapse(const Duration(seconds: 25));
+        expect(radio.starts.length, greaterThan(before));
+        expect(scanner.proximity, isTrue);
+        expect(radio.lastModeLowLatency, isTrue);
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+  });
+}
+
+/// A radio that takes 50 ms to start a scan, counting overlapping starts and
+/// live result listeners.
+class _FakeRadio extends BleScanPlatform {
+  _FakeRadio(this.now);
+
+  final DateTime Function() now;
+  final starts = <DateTime>[];
+  int _inFlight = 0;
+  int maxInFlight = 0;
+  int listeners = 0;
+  bool _scanning = false;
+  bool lastModeLowLatency = false;
+
+  @override
+  Stream<BluetoothAdapterState> get adapterState =>
+      Stream.value(BluetoothAdapterState.on);
+
+  @override
+  bool get isOn => true;
+
+  @override
+  bool get isScanning => _scanning;
+
+  @override
+  Future<void> startScan({
+    required Duration timeout,
+    required AndroidScanMode mode,
+    required bool continuousUpdates,
+  }) async {
+    _inFlight++;
+    if (_inFlight > maxInFlight) maxInFlight = _inFlight;
+    starts.add(now());
+    lastModeLowLatency = mode == AndroidScanMode.lowLatency;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _inFlight--;
+    _scanning = true;
+  }
+
+  @override
+  Future<void> stopScan() async => _scanning = false;
+
+  @override
+  Stream<List<ScanResult>> get scanResults => Stream.multi((c) {
+        listeners++;
+        // A future of this zone: a bare void onCancel makes cancel() hand
+        // back a root-zone future that fakeAsync never completes.
+        c.onCancel = () async {
+          listeners--;
+        };
+      });
 }

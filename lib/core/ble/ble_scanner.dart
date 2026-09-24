@@ -8,6 +8,7 @@ import '../identity/nickname_controller.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'ble_constants.dart';
+import 'ble_scan_platform.dart';
 import '../transport/peer_id.dart';
 
 /// Cubechat central-role scanner.
@@ -23,10 +24,35 @@ import '../transport/peer_id.dart';
 class BleScanner {
   /// [isIOS] is injectable purely so the cadence can be tested off-device;
   /// production always takes the platform's own answer.
-  BleScanner({bool? isIOS}) : _isIOS = isIOS ?? PlatformInfo.isIOS;
+  BleScanner({
+    bool? isIOS,
+    BleScanPlatform platform = const BleScanPlatform(),
+    DateTime Function()? now,
+  })  : _isIOS = isIOS ?? PlatformInfo.isIOS,
+        _radio = platform,
+        _clock = now ?? DateTime.now;
 
   /// Which platform's cycle shape to use — see [BleConstants.scanWindowFor].
   final bool _isIOS;
+
+  /// The radio, injectable so the order of starts can be tested off-device.
+  final BleScanPlatform _radio;
+  final DateTime Function() _clock;
+
+  /// Every scan start, so a proximity restart can wait rather than be the
+  /// fifth in 30 s — see [ScanStartBudget].
+  final ScanStartBudget _budget = ScanStartBudget();
+
+  /// A proximity restart the budget postponed.
+  Timer? _proximityRestart;
+
+  /// Every stop-then-start runs through this chain, one after another.
+  ///
+  /// A `retune()` and a `setProximity(true)` arriving together on resume each
+  /// stopped and then started a window: two `startScan`s in flight at once,
+  /// and the second `scanResults` subscription overwrote the first, which
+  /// then fed [_onResults] a second time for the rest of the app's life.
+  Future<void> _restarts = Future<void>.value();
 
   /// Consulted at the start of every scan window to pick a cadence — active
   /// when the answer is true, idle when it's false. Null means always active.
@@ -104,7 +130,7 @@ class BleScanner {
   bool _running = false;
 
   Stream<List<DiscoveredPeer>> get peers => _controller.stream;
-  Stream<BluetoothAdapterState> get adapterState => FlutterBluePlus.adapterState;
+  Stream<BluetoothAdapterState> get adapterState => _radio.adapterState;
 
   Future<bool> get isSupported async => FlutterBluePlus.isSupported;
 
@@ -114,11 +140,11 @@ class BleScanner {
     if (_running) return;
     _running = true;
 
-    _adapterSub = FlutterBluePlus.adapterState.listen((s) {
+    _adapterSub = _radio.adapterState.listen((s) {
       if (s != BluetoothAdapterState.on && _scanSub != null) {
         _stopScanWindow();
       } else if (s == BluetoothAdapterState.on && _running && _scanSub == null) {
-        unawaited(_startScanWindow());
+        unawaited(_restart(ifIdle: true));
       }
     });
 
@@ -126,10 +152,26 @@ class BleScanner {
     // ever opens; _startScanWindow re-arms it whenever the cadence changes.
     _restartGcTimer();
 
-    final adapter = await FlutterBluePlus.adapterState.first;
+    final adapter = await _radio.adapterState.first;
     if (adapter == BluetoothAdapterState.on) {
-      await _startScanWindow();
+      await _restart(ifIdle: true);
     }
+  }
+
+  /// Stop whatever window is open and start the next, after any restart
+  /// already under way — see [_restarts]. [ifIdle] only opens a window when
+  /// none is: [start] and the adapter listener both ask for one at launch,
+  /// and two starts there were two of Android's five.
+  Future<void> _restart({bool ifIdle = false}) {
+    final next = _restarts.then((_) async {
+      if (ifIdle && _scanSub != null) return;
+      await _stopScanWindow();
+      if (_running) await _startScanWindow();
+    });
+    _restarts = next.catchError((Object e, StackTrace st) {
+      debugPrint('BleScanner restart failed: $e\n$st');
+    });
+    return _restarts;
   }
 
   /// Re-pick the cadence now rather than at the next window boundary.
@@ -152,8 +194,7 @@ class BleScanner {
     if (_proximity) return;
     final wanted = shouldScanActively?.call() ?? true;
     if (wanted == _active) return;
-    await _stopScanWindow();
-    if (_running) await _startScanWindow();
+    await _restart();
   }
 
   /// Turn the proximity cadence on or off — called only while the AirDrop
@@ -175,12 +216,31 @@ class BleScanner {
   /// scan results after 5 `startScan` calls in a rolling 30 s window, and
   /// stopping/restarting on every AirDrop-page exit — on top of every entry —
   /// made that limit reachable by ordinary tab-switching.
+  ///
+  /// Even turning ON waits when the last 30 s already hold four starts (see
+  /// [ScanStartBudget]): the window already open keeps running at its old
+  /// cadence, and the proximity one opens as soon as the oldest start ages
+  /// out. Slower RSSI for a few seconds beats a scan that returns nothing.
   Future<void> setProximity(bool on) async {
     if (on == _proximity) return;
     _proximity = on;
+    _proximityRestart?.cancel();
+    _proximityRestart = null;
     if (!_running || !on) return;
-    await _stopScanWindow();
-    if (_running) await _startScanWindow();
+    final wait = _budget.waitBefore(_clock());
+    if (wait == Duration.zero) {
+      await _restart();
+      return;
+    }
+    DebugLog.instance.log(
+      'BLE-SCAN',
+      'proximity scan held ${wait.inMilliseconds} ms — '
+          'four starts in the last 30 s already',
+    );
+    _proximityRestart = Timer(wait, () {
+      _proximityRestart = null;
+      if (_running && _proximity) unawaited(_restart());
+    });
   }
 
   Future<void> stop() async {
@@ -189,6 +249,8 @@ class BleScanner {
     // back-off earned before the scanner was taken down.
     _emptyIdleWindows = 0;
     _cycleTimer?.cancel();
+    _proximityRestart?.cancel();
+    _proximityRestart = null;
     _gcTimer?.cancel();
     // Cleared, not just cancelled: _restartGcTimer treats a non-null timer as
     // already armed, so leaving the stale handle here would make a later
@@ -227,8 +289,7 @@ class BleScanner {
     // Only a sighting from *after* this moment proves the address is current;
     // the map still holds the previous one until a new result overwrites it.
     final since = DateTime.now();
-    await _stopScanWindow();
-    unawaited(_startScanWindow());
+    unawaited(_restart());
 
     final completer = Completer<String?>();
     final timer = Timer(timeout, () {
@@ -259,7 +320,7 @@ class BleScanner {
     // every ~14 s, seen when the user disables Bluetooth (e.g. to test the
     // internet fallback). Bailing here means no scan and no re-armed cycle; the
     // adapter listener restarts scanning when Bluetooth comes back on.
-    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
+    if (!_radio.isOn) return;
     // Re-decided per window, so a resume (or a message queued for an offline
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
@@ -295,15 +356,15 @@ class BleScanner {
     _restartGcTimer();
     final window = _window;
     final gap = _gap;
+    _budget.record(_clock());
     try {
-      await FlutterBluePlus.startScan(
-        withServices: [Guid(BleConstants.serviceUuid)],
+      await _radio.startScan(
         timeout: window,
         // lowPower lengthens the radio's own duty cycle *within* the window,
         // on top of the longer gap between windows. lowLatency is the same
         // knob turned the other way, for the few seconds proximity mode
         // needs the freshest reading the radio can give.
-        androidScanMode: _proximity
+        mode: _proximity
             ? AndroidScanMode.lowLatency
             : (_active ? AndroidScanMode.balanced : AndroidScanMode.lowPower),
         // Only proximity wants a result re-reported as its RSSI drifts within
@@ -316,7 +377,14 @@ class BleScanner {
       debugPrint('BleScanner.startScan failed: $e\n$st');
     }
 
-    _scanSub = FlutterBluePlus.scanResults.listen(_onResults);
+    // Never two: a subscription left here would feed _onResults twice for
+    // the rest of the app's life. [_restarts] should make this a no-op.
+    final stale = _scanSub;
+    _scanSub = null;
+    await stale?.cancel();
+    _cycleTimer?.cancel();
+    if (!_running) return;
+    _scanSub = _radio.scanResults.listen(_onResults);
 
     // After the window closes, rest then cycle again.
     _cycleTimer = Timer(window + gap, () async {
@@ -329,8 +397,7 @@ class BleScanner {
       } else {
         _emptyIdleWindows++;
       }
-      await _stopScanWindow();
-      if (_running) unawaited(_startScanWindow());
+      await _restart();
     });
   }
 
@@ -341,8 +408,8 @@ class BleScanner {
     _scanSub = null;
     _advertAt.clear();
     try {
-      if (FlutterBluePlus.isScanningNow) {
-        await FlutterBluePlus.stopScan();
+      if (_radio.isScanning) {
+        await _radio.stopScan();
       }
     } catch (_) {
       // ignore — scan may have already been stopped by the platform.
