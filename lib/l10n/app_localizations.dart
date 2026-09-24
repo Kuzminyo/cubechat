@@ -5792,6 +5792,24 @@ abstract class AppLocalizations {
   /// **'No Bluetooth connection with this person'**
   String get airdropNoDirect;
 
+  /// No description provided for @airdropNearbyUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby'**
+  String get airdropNearbyUnknown;
+
+  /// No description provided for @airdropConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get airdropConnecting;
+
+  /// No description provided for @airdropConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t connect'**
+  String get airdropConnectFailed;
+
   /// No description provided for @airdropSlowWarning.
   ///
   /// In en, this message translates to:

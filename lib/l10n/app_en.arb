@@ -1644,6 +1644,9 @@
   "airdropPickPerson": "Send to",
   "airdropNobody": "Nobody is connected nearby. Open Nearby and tap a person first.",
   "airdropNoDirect": "No Bluetooth connection with this person",
+  "airdropNearbyUnknown": "Nearby",
+  "airdropConnecting": "Connecting…",
+  "airdropConnectFailed": "Couldn't connect",
   "airdropSlowWarning": "This can take a long time over Bluetooth",
   "airdropTooLarge": "{name} is larger than {limit} MB",
   "@airdropTooLarge": {

@@ -98,6 +98,9 @@ final bumpDirectPeersProvider = Provider<Set<String>>(
 /// tap in Nearby or "Connect" in a chat dials one — so two strangers on the
 /// AirDrop page glowed, faded and never bumped. Being discoverable only lets
 /// a phone *answer* a handshake; somebody has to ring.
+///
+/// The AirDrop people sheet rings through this too, when somebody without a
+/// session is tapped — one dialler, not a copy per entry point.
 final bumpDialProvider =
     Provider<Future<String?> Function(String device, String? hex)>(
   (ref) => (device, hex) async {

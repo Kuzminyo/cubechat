@@ -3344,6 +3344,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get airdropNoDirect => 'No Bluetooth connection with this person';
 
   @override
+  String get airdropNearbyUnknown => 'Nearby';
+
+  @override
+  String get airdropConnecting => 'Connecting…';
+
+  @override
+  String get airdropConnectFailed => 'Couldn\'t connect';
+
+  @override
   String get airdropSlowWarning => 'This can take a long time over Bluetooth';
 
   @override

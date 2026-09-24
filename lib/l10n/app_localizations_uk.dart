@@ -3385,6 +3385,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get airdropNoDirect => 'Немає зв’язку Bluetooth з цією людиною';
 
   @override
+  String get airdropNearbyUnknown => 'Поруч';
+
+  @override
+  String get airdropConnecting => 'З’єднуюсь…';
+
+  @override
+  String get airdropConnectFailed => 'Не вдалося з’єднатися';
+
+  @override
   String get airdropSlowWarning => 'Через Bluetooth це може тривати довго';
 
   @override
