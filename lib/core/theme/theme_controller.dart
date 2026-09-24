@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import 'colors.dart';
+import 'launcher_icon_service.dart';
 
 /// One named look: the two brand colours and the three background tones.
 ///
@@ -213,10 +214,17 @@ class ThemeController extends Notifier<AppPalette> {
 
   @override
   AppPalette build() {
-    unawaited(_load());
+    ref.onDispose(() => _iconTimer?.cancel());
+    unawaited(_loading = _load());
     _apply(AppPalette.emerald);
     return AppPalette.emerald;
   }
+
+  Future<void> _loading = Future<void>.value();
+
+  /// Completes once the saved palette has been read and applied.
+  @visibleForTesting
+  Future<void> get loaded => _loading;
 
   Future<void> _load() async {
     try {
@@ -241,6 +249,54 @@ class ThemeController extends Notifier<AppPalette> {
     } catch (e) {
       debugPrint('ThemeController persist failed: $e');
     }
+    _scheduleLauncherIcon(palette);
+  }
+
+  /// How long the palette has to stay put before the launcher icon follows.
+  ///
+  /// The hue strip calls [select] on every frame of a drag, and on iOS each
+  /// icon switch raises a system alert: sliding across the wheel would switch
+  /// the icon, and alert, once per icon it passed. So the icon waits for the
+  /// finger to settle, and only the last choice reaches the platform.
+  @visibleForTesting
+  static Duration launcherIconSettle = const Duration(milliseconds: 700);
+
+  Timer? _iconTimer;
+
+  void _scheduleLauncherIcon(AppPalette palette) {
+    if (!LauncherIconService.supported) return;
+    _iconTimer?.cancel();
+    _iconTimer = Timer(launcherIconSettle, () {
+      // Chained so a slow platform answer cannot race the next switch.
+      _iconSync = _iconSync.then((_) => _syncLauncherIcon(palette));
+    });
+  }
+
+  /// Completes when the launcher switch in flight, if any, has been answered.
+  @visibleForTesting
+  Future<void> get launcherIconSettled => _iconSync;
+
+  Future<void> _iconSync = Future<void>.value();
+
+  /// The icon the launcher shows, as the platform last reported or confirmed
+  /// it. Asked of the platform rather than stored in Hive: a phone transfer or
+  /// a restored backup brings the old phone's settings but not its launcher,
+  /// and a stored answer would then be wrong in exactly the case that matters.
+  String? _shownIcon;
+
+  /// Start-up re-selects the saved palette through [select], so this runs on
+  /// every launch with a non-default palette — and only *reads* there. The
+  /// launcher is touched only when the icon it shows differs from the one
+  /// wanted: on Android every switch toggles components, and some launchers
+  /// drop a pinned home-screen shortcut whose component was toggled.
+  Future<void> _syncLauncherIcon(AppPalette palette) async {
+    if (!LauncherIconService.supported) return;
+    final want = LauncherIconService.iconFor(palette.id);
+    final shown = _shownIcon ??= await LauncherIconService.current();
+    // Null: the platform could not say, so do not guess at its launcher.
+    if (shown == null || shown == want) return;
+    // A failed switch may have got halfway; ask again next time.
+    _shownIcon = await LauncherIconService.apply(want) ? want : null;
   }
 
   /// Mark every element in the tree dirty, const subtrees included.

@@ -2,8 +2,10 @@ package com.cubechat.cubechat
 
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -95,6 +97,33 @@ class MainActivity : FlutterActivity() {
                         } catch (_: Exception) {
                             result.success(false)
                         }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            LAUNCHER_ICON_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "currentIcon" -> result.success(
+                    pendingLauncherIcon ?: try {
+                        shownLauncherIcon()
+                    } catch (error: Exception) {
+                        android.util.Log.w(TAG, "launcher icon read failed", error)
+                        null
+                    },
+                )
+                "setIcon" -> {
+                    val icon = call.argument<String>("icon")
+                    if (icon == null || icon !in LAUNCHER_ICONS) {
+                        result.success(false)
+                    } else {
+                        // Queued, not applied: see onStop.
+                        pendingLauncherIcon = icon
+                        result.success(true)
                     }
                 }
                 else -> result.notImplemented()
@@ -456,6 +485,91 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
+     * The icon picked in settings is switched when the user leaves the app,
+     * not while they are looking at it.
+     *
+     * The launcher entry is an activity-alias, and the task a launcher tap
+     * starts is recorded under the alias's name. Disabling that alias makes
+     * the system remove every task recorded under it — even with
+     * DONT_KILL_APP, which spares the process and not the task
+     * (RecentTasks.cleanupDisabledPackageTasksLocked). Switched on the tap,
+     * the app would close under the finger. Switched here the task goes from
+     * recents while it is out of sight; the engine is the Application's, so the
+     * next tap on the new icon attaches to the same running isolate.
+     *
+     * Only when every one of our tasks has MainActivity on top: a photo picker
+     * or document screen stops this Activity too, while running inside our
+     * task, and removing the task then would throw away the picker and the
+     * result it was about to return. The incoming-call screen, likewise.
+     */
+    override fun onStop() {
+        super.onStop()
+        val icon = pendingLauncherIcon ?: return
+        if (isChangingConfigurations || !onlyMainActivityOnTop()) return
+        pendingLauncherIcon = null
+        try {
+            applyLauncherIcon(icon)
+        } catch (error: Exception) {
+            android.util.Log.w(TAG, "launcher icon switch failed", error)
+        }
+    }
+
+    private fun onlyMainActivityOnTop(): Boolean = try {
+        val tasks = getSystemService(android.app.ActivityManager::class.java)
+            ?.appTasks.orEmpty()
+        tasks.all { task ->
+            val top = task.taskInfo.topActivity
+            top == null || top.className == MainActivity::class.java.name
+        }
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun aliasComponent(icon: String): ComponentName = ComponentName(
+        packageName,
+        // Aliases are named against the manifest namespace, which is not
+        // necessarily the installed package name.
+        "${MainActivity::class.java.name.substringBeforeLast('.')}.${LAUNCHER_ICONS.getValue(icon)}",
+    )
+
+    private fun isAliasEnabled(icon: String): Boolean =
+        when (packageManager.getComponentEnabledSetting(aliasComponent(icon))) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            // Untouched: whatever the manifest says, and only Emerald's says so.
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> icon == DEFAULT_LAUNCHER_ICON
+            else -> false
+        }
+
+    /** The icon the launcher shows now, or null if no alias is enabled. */
+    private fun shownLauncherIcon(): String? =
+        LAUNCHER_ICONS.keys.firstOrNull { isAliasEnabled(it) }
+
+    /**
+     * Enables the wanted alias before disabling the old one, so there is never
+     * a moment with no launcher entry at all, and toggles only what differs —
+     * a component re-enabled for nothing is one some launchers treat as a new
+     * app, dropping the home-screen shortcut.
+     */
+    private fun applyLauncherIcon(icon: String) {
+        if (!isAliasEnabled(icon)) {
+            packageManager.setComponentEnabledSetting(
+                aliasComponent(icon),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+        for (other in LAUNCHER_ICONS.keys) {
+            if (other != icon && isAliasEnabled(other)) {
+                packageManager.setComponentEnabledSetting(
+                    aliasComponent(other),
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP,
+                )
+            }
+        }
+    }
+
+    /**
      * The manifest is where the Maps key ends up on Android, so the manifest is
      * what gets asked — this reports what the *installed* app holds rather than
      * what a build file said at compile time.
@@ -498,6 +612,32 @@ class MainActivity : FlutterActivity() {
         const val BUILD_INFO_CHANNEL = "cubechat/build_info"
         const val BLUETOOTH_POWER_CHANNEL = "cubechat/bluetooth_power"
         const val OPEN_IN_CHANNEL = "cubechat/open_in"
+        const val LAUNCHER_ICON_CHANNEL = "cubechat/launcher_icon"
+        private const val TAG = "MainActivity"
+
+        /**
+         * Each icon Dart can ask for, and the manifest alias that carries it.
+         * Emerald is the one enabled in the manifest: a fresh install's icon.
+         */
+        private val LAUNCHER_ICONS = mapOf(
+            "emerald" to "ThemeIconEmerald",
+            "indigo" to "ThemeIconIndigo",
+            "amber" to "ThemeIconAmber",
+            "rose" to "ThemeIconRose",
+            "fuchsia" to "ThemeIconFuchsia",
+            "violet" to "ThemeIconViolet",
+            "ocean" to "ThemeIconOcean",
+            "slate" to "ThemeIconSlate",
+        )
+        private const val DEFAULT_LAUNCHER_ICON = "emerald"
+
+        /**
+         * The icon waiting for the user to leave the app (see onStop). Held
+         * here rather than on the instance for the same reason as
+         * pendingSave below: the Activity can be recreated in between.
+         */
+        @Volatile
+        private var pendingLauncherIcon: String? = null
         const val REQUEST_ENABLE_BLUETOOTH = 4242
         const val REQUEST_SAVE_AS = 4243
 

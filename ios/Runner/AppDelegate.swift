@@ -185,6 +185,65 @@ import UserNotifications
       }
       locationChannel = location
 
+      let launcherIcon = FlutterMethodChannel(
+        name: "cubechat/launcher_icon",
+        binaryMessenger: messenger
+      )
+      // The per-theme home-screen icon (Dart: LauncherIconService). nil is
+      // the primary AppIcon, Emerald; the others are the appiconsets listed in
+      // ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES. Method channel handlers
+      // run on the main thread, which setAlternateIconName requires.
+      let alternateIcons: [String: String?] = [
+        "emerald": nil,
+        "indigo": "AppIconIndigo",
+        "amber": "AppIconAmber",
+        "rose": "AppIconRose",
+        "fuchsia": "AppIconFuchsia",
+        "violet": "AppIconViolet",
+        "ocean": "AppIconOcean",
+        "slate": "AppIconSlate",
+      ]
+      launcherIcon.setMethodCallHandler { call, result in
+        let app = UIApplication.shared
+        switch call.method {
+        case "currentIcon":
+          let shown = app.alternateIconName
+          result(alternateIcons.first { $0.value == shown }?.key)
+        case "setIcon":
+          guard let arguments = call.arguments as? [String: Any],
+                let icon = arguments["icon"] as? String,
+                let alternate = alternateIcons[icon]
+          else {
+            result(false)
+            return
+          }
+          guard app.supportsAlternateIcons else {
+            result(false)
+            return
+          }
+          if app.alternateIconName == alternate {
+            result(true)
+            return
+          }
+          // iOS refuses the switch unless the app is in the foreground; the
+          // Dart side asks again on the next launch.
+          guard app.applicationState == .active else {
+            result(false)
+            return
+          }
+          app.setAlternateIconName(alternate) { error in
+            if let error = error {
+              NSLog("cubechat: launcher icon switch failed: %@", error.localizedDescription)
+            }
+            // The completion queue is not documented; a FlutterResult must be
+            // answered on the main thread.
+            DispatchQueue.main.async { result(error == nil) }
+          }
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+
       FlutterMethodChannel(
         name: AppDelegate.goodbyeChannelName,
         binaryMessenger: messenger
