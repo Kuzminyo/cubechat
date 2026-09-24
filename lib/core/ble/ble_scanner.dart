@@ -46,6 +46,20 @@ class BleScanner {
   /// A proximity restart the budget postponed.
   Timer? _proximityRestart;
 
+  /// Clock reading of the pending hold — the moment [setProximity] decided
+  /// to wait out [_budget] instead of restarting immediately. Compared
+  /// against [_proximityWindowOpenedAt] so the held timer can tell whether a
+  /// window has already opened for this request by the time it fires.
+  DateTime? _proximityRequestedAt;
+
+  /// Clock reading of the most recent scan window opened while [_proximity]
+  /// was true — set by [_startScanWindow], not just by the held timer. The
+  /// window already running when [setProximity] queues a hold keeps going at
+  /// its own cadence (see that method's doc) and restarts itself, on its own
+  /// cycle timer, once it ends; that restart lands on the proximity cadence
+  /// too (since [_proximity] is still true) and makes the hold redundant.
+  DateTime? _proximityWindowOpenedAt;
+
   /// Every stop-then-start runs through this chain, one after another.
   ///
   /// A `retune()` and a `setProximity(true)` arriving together on resume each
@@ -227,6 +241,21 @@ class BleScanner {
     _proximityRestart?.cancel();
     _proximityRestart = null;
     if (!_running || !on) return;
+    // The budget models Android's own behaviour: it silently stops
+    // returning scan results after the 5th startScan in a rolling 30 s
+    // window — undocumented, discovered the hard way (see ScanStartBudget's
+    // doc). iOS has no such limit, and applying the hold there anyway meant
+    // every arrival on the AirDrop page got ~6-12 s of stale RSSI for
+    // nothing: iOS's own active cadence (3 s window + 3 s gap) already fills
+    // four starts in 30 s on its own, so proximity mode was "held" on
+    // essentially every entry. Restart at once, as this did before the
+    // budget started applying to every platform.
+    if (_isIOS) {
+      await _restart();
+      return;
+    }
+    _proximityRequestedAt = _clock();
+    _proximityWindowOpenedAt = null;
     final wait = _budget.waitBefore(_clock());
     if (wait == Duration.zero) {
       await _restart();
@@ -237,10 +266,35 @@ class BleScanner {
       'proximity scan held ${wait.inMilliseconds} ms — '
           'four starts in the last 30 s already',
     );
-    _proximityRestart = Timer(wait, () {
-      _proximityRestart = null;
-      if (_running && _proximity) unawaited(_restart());
-    });
+    _proximityRestart = Timer(wait, _onHeldProximityRestartDue);
+  }
+
+  /// The timer [setProximity] arms when it has to wait out [_budget] fires
+  /// here — on Android only, since iOS never arms it.
+  ///
+  /// Re-checks rather than restarting unconditionally: the window that was
+  /// already open when [setProximity] queued this hold keeps running at its
+  /// own cadence (see that method's doc), and if *its* cycle timer restarts
+  /// first, that restart lands on the proximity cadence too (since
+  /// [_proximity] is still true by then) and sets
+  /// [_proximityWindowOpenedAt] — making this hold's own restart a second,
+  /// wasted start against the same limit for no fresher RSSI.
+  void _onHeldProximityRestartDue() {
+    _proximityRestart = null;
+    if (!_running || !_proximity) return;
+    final requestedAt = _proximityRequestedAt;
+    final openedAt = _proximityWindowOpenedAt;
+    if (requestedAt != null &&
+        openedAt != null &&
+        !openedAt.isBefore(requestedAt)) {
+      return;
+    }
+    final wait = _budget.waitBefore(_clock());
+    if (wait == Duration.zero) {
+      unawaited(_restart());
+      return;
+    }
+    _proximityRestart = Timer(wait, _onHeldProximityRestartDue);
   }
 
   Future<void> stop() async {
@@ -251,6 +305,8 @@ class BleScanner {
     _cycleTimer?.cancel();
     _proximityRestart?.cancel();
     _proximityRestart = null;
+    _proximityRequestedAt = null;
+    _proximityWindowOpenedAt = null;
     _gcTimer?.cancel();
     // Cleared, not just cancelled: _restartGcTimer treats a non-null timer as
     // already armed, so leaving the stale handle here would make a later
@@ -335,6 +391,10 @@ class BleScanner {
       _window = BleConstants.proximityWindow;
       _gap = BleConstants.proximityGap;
       _emptyIdleWindows = 0;
+      // Marks this as a window opened while proximity was on, however it got
+      // here — a held restart, or (see _onHeldProximityRestartDue) the
+      // previous window simply reaching the end of its own cycle.
+      _proximityWindowOpenedAt = _clock();
     } else {
       _window = BleConstants.scanWindowFor(active: _active, isIOS: _isIOS);
       final baseGap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);

@@ -231,6 +231,88 @@ void main() {
       });
     });
 
+    test(
+        'iOS restarts at once even with a full budget — Android would hold',
+        () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        var active = true;
+        final scanner = BleScanner(isIOS: true, platform: radio, now: now)
+          ..shouldScanActively = () => active;
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 200));
+
+        // Fill the budget to four starts via retune, well inside 30 s —
+        // proximity untouched so far.
+        for (final next in [false, true, false, true]) {
+          active = next;
+          unawaited(scanner.retune());
+          async.elapse(const Duration(seconds: 1));
+        }
+        final before = radio.starts.length;
+        expect(before, greaterThanOrEqualTo(4));
+
+        // On Android this would be held (see the test above); iOS applies no
+        // ScanStartBudget at all, so it restarts in this same tick.
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(milliseconds: 10));
+        expect(radio.starts.length, before + 1);
+        expect(scanner.proximity, isTrue);
+
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
+    test(
+        'the held timer skips its restart once the running window already '
+        'reopened on the proximity cadence', () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        var active = true;
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now)
+          ..shouldScanActively = () => active;
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 200));
+
+        // Five starts inside 30 s, ending on the active cadence (10 s window
+        // + 4 s gap = a 14 s cycle) so the window open when setProximity is
+        // called restarts itself well before any held timer would.
+        for (final next in [false, true, false, true]) {
+          active = next;
+          unawaited(scanner.retune());
+          async.elapse(const Duration(seconds: 1));
+        }
+        expect(radio.starts.length, greaterThanOrEqualTo(4));
+
+        // Over budget: held, not restarted immediately.
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(milliseconds: 50));
+        final afterHold = radio.starts.length;
+
+        // The window already running (active cadence, ~14 s cycle) reaches
+        // the end of its own cycle and restarts itself — landing on the
+        // proximity cadence, since setProximity(true) already flipped the
+        // flag — well before the ~26 s the budget is making the held timer
+        // wait out.
+        async.elapse(const Duration(seconds: 15));
+        final afterNaturalRestart = radio.starts.length;
+        expect(afterNaturalRestart, afterHold + 1);
+
+        // The held timer itself now fires (comfortably before it would have,
+        // in real time — elapse well past its scheduled wait) and must find
+        // nothing left to do: no second, redundant start.
+        async.elapse(const Duration(seconds: 20));
+        expect(radio.starts.length, afterNaturalRestart);
+        expect(scanner.proximity, isTrue);
+
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
     test('toggling proximity never makes a fifth start in 30 s', () {
       fakeAsync((async) {
         DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
