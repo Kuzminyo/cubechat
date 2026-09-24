@@ -5,15 +5,12 @@ next person can check it rather than trust it. When the app changes, change
 this file in the same commit; a disclosure that drifts from the code is worse
 than a missing one, because it is a statement made to a regulator.
 
-Two facts do most of the work:
-
-1. **There is no account and no message server.** Nothing about a conversation
-   reaches us, ever.
-2. **One exception, and only one:** the push notification service at
-   `push.cubechat.tech`. It holds a public key and a device token, and that is
-   the whole of what we collect. Since build 986 its switch **starts on** — the
-   operating system's own notification prompt is still the gate, and declining
-   it means nothing is ever registered.
+Cubechat has no account and ordinary conversations are end-to-end encrypted.
+Optional push registration stores a public key and device token. An explicit
+abuse report sends the reporter's public identifier, target, reason, optional
+note, and selected message text (up to 4000 characters), type and time to
+push.cubechat.tech. Reports are signed and stored for moderation. The server
+currently has no automatic report deletion schedule.
 
 ---
 
@@ -23,33 +20,19 @@ App Store Connect → your app → App Privacy.
 
 ### Do you or your third-party partners collect data from this app?
 
-**Answer: Yes** — and then declare exactly one item, below.
+**Answer: Yes.** Declare both categories below and match the live service
+before App Review.
 
-> **Why not "No", which is tempting.** Apple counts a device token tied to a
-> user-specific identifier as *Identifiers → User ID* when it is transmitted
-> off device and stored. `push.cubechat.tech` stores it. `No data collected`
-> would be a false declaration, and it is the kind that gets found.
->
-> Note the deliberate difference from `ios/Runner/PrivacyInfo.xcprivacy`, which
-> declares **zero** `NSPrivacyCollectedDataTypes` and is *also* correct: the
-> privacy manifest describes what the shipped binary and its SDKs do, and the
-> app binary itself collects nothing. The label describes the service behind it.
-> Two questions, two honest answers.
+| Category | Purpose | Linked to identity | Tracking | Source |
+|---|---|---|---|---|
+| **Identifiers → User ID** | App Functionality | Yes | No | Pseudonymous public keys in push registration and signed reports |
+| **User Content → Other User Content** | App Functionality | Yes | No | Notes and selected message text in submitted reports |
 
-### The one item to declare
+Both categories are linked to a stable in-app public key. Cubechat does not
+require a real-world name, email or phone number, but the persistent key makes
+reports identifiable within the app. The iOS manifest declares the same categories.
 
-| Field | Answer |
-|---|---|
-| Category | **Identifiers → User ID** |
-| Used for | **App Functionality** |
-| Linked to the user's identity | **No** |
-| Used for tracking | **No** |
-
-The value is a Nostr public key plus an APNs/FCM device token. It is not linked
-to a name, an email or a phone number, because the app never learns any of
-those.
-
-### Everything else: declare *not* collected
+### Other categories
 
 | Category | Answer | Basis |
 |---|---|---|
@@ -59,7 +42,7 @@ those.
 | **Location** | **Not collected** | Position is end-to-end encrypted to chosen contacts only and never reaches us — `lib/features/map/data/map_presence_controller.dart` |
 | Sensitive Info | Not collected | — |
 | Contacts (address book) | Not collected | No address-book permission is requested; check `Info.plist` for the absence of `NSContactsUsageDescription` |
-| User Content (messages, photos, audio) | Not collected | Encrypted end to end; we operate no server that receives it |
+| Ordinary messages, photos, audio | Not collected unless selected for a report | A report can contain selected message text; ordinary traffic remains end-to-end encrypted |
 | Browsing History | Not collected | — |
 | Search History | Not collected | In-app search runs against the local database only |
 | Usage Data | Not collected | No analytics SDK — verified by grep for `firebase_analytics`, `crashlytics`, `sentry`, `amplitude`, `mixpanel`, `posthog`: no matches in `pubspec.yaml` |
@@ -82,28 +65,28 @@ Play Console → Policy → App content → Data safety.
 
 | Question | Answer |
 |---|---|
-| Does your app collect or share any of the required user data types? | **Yes** (the push token, below) |
+| Does your app collect or share any of the required user data types? | **Yes** (push registration and explicit abuse reports) |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** — registration is signed and sent over HTTPS; messages are sealed before they leave the device |
-| Do you provide a way for users to request that their data is deleted? | **Yes** — switching push off deletes the registration; uninstalling removes everything else. Give the Privacy Policy URL as the deletion instructions |
+| Do you provide a way for users to request that their data is deleted? | **Yes** — switching push off deletes the registration; users can request deletion of a report at cubechatble@gmail.com. Give the Privacy Policy URL as the deletion instructions |
 
 ### Section 2 — Data types
 
-Declare **one** type:
+Declare these types:
 
 | Data type | Collected | Shared | Ephemeral | Required | Purpose |
 |---|---|---|---|---|---|
-| **Device or other IDs** | Yes | **No** | No | Optional | **App functionality** (message notifications) |
+| **Device or other IDs** | Yes | **Yes for shortened report identifiers** | No | Optional | **App functionality** (notifications and moderation) |
+| **Other user-generated content** | Yes | **Yes** | No | Optional | **App functionality** (user-submitted abuse reports) |
 
-> "Shared" is **No** deliberately. The token is transmitted to Google's own FCM
-> to deliver the notification, and Play's definition explicitly excludes
-> transfer to a service provider acting on your behalf for that purpose. It is
-> not passed to any other party.
+A private Telegram bot forwards the report reason, note, up to 1000
+characters of an excerpt, and shortened reporter and target identifiers to
+the developer's Telegram account. Declare this transfer as sharing; do not
+treat Telegram as if it were our own server. Push delivery through FCM is
+separate from that report flow.
 
-Declare **not collected** for everything else, in particular the three that
-reviewers look for in a messenger:
+Ordinary encrypted content is not collected. Distinguish it from explicitly submitted report content:
 
-- **Messages** — not collected. End-to-end encrypted; no server of ours
-  receives them.
+- **Messages** — ordinary traffic is not collected; selected text in a submitted report is collected.
 - **Photos and videos / Audio files / Files and docs** — not collected. They
   travel encrypted between devices and are stored in the app's private
   container.
@@ -176,7 +159,7 @@ there; Apple's questionnaire asks about it directly.
 | Account deletion | **Done, needs stating** | Google Play requires an explanation even when there is no account. Point at Privacy Policy §10 |
 | Data safety / App Privacy | Answers above | — |
 | Content rating questionnaire | **To do** | Answer *yes* to "users can communicate with each other" and to "user-generated content"; this is what sets the rating for a messenger |
-| Age rating | 13+ suggested | Matches Terms §4 |
+| Age rating | 18+ pending store questionnaire | Terms require users to be at least 18 |
 
 ---
 
@@ -188,8 +171,7 @@ A short list, because these are the changes that would make a declaration false:
   Diagnostics on both stores, and adds an entry to `PrivacyInfo.xcprivacy`.
 - **Any new field stored by `push/src/index.js`** belongs in Privacy Policy §5
   and may add a data type. The current set is in `handleRegister`.
-- **Anything that uploads content anywhere** ends the "not collected" answer
-  for User Content, which is the single most consequential line here.
+- **Reports upload selected text**; update this disclosure and both privacy policies whenever the payload or retention changes.
 - **Flipping a privacy default** — the relay and the push switch both changed
   from off to on in 986 — changes what the Privacy Policy says in §4.2 and §5,
   and the README's paragraph on the fallback. All three moved in that commit;

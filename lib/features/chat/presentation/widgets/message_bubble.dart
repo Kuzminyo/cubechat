@@ -24,6 +24,7 @@ import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/widgets/glass_toast.dart';
+import '../../../../core/widgets/undo_toast.dart';
 import '../../../channels/data/channel_controller.dart';
 import '../../../channels/models/channel.dart' show channelForCommunity;
 import '../../../channels/presentation/post_comments_screen.dart';
@@ -31,6 +32,11 @@ import '../../../../core/crypto/identity_service.dart';
 import '../../../../core/identity/avatar_controller.dart';
 import '../../../../core/widgets/identity_avatar.dart';
 import '../../../peers/data/known_peers_controller.dart';
+import '../../../moderation/domain/report.dart';
+import '../../../moderation/presentation/report_sheet.dart';
+import '../../../moderation/domain/profanity.dart';
+import '../../../moderation/data/filter_settings.dart';
+import '../../../peers/data/removed_contacts_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../airdrop/data/airdrop_source.dart';
@@ -268,7 +274,8 @@ Future<void> forwardMessageTo(
           target.id,
           file: File(path),
           fileName: message.fileName ?? 'file',
-          mime: message.text.isEmpty ? 'application/octet-stream' : message.text,
+          mime:
+              message.text.isEmpty ? 'application/octet-stream' : message.text,
         );
     await _attributeForward(ref, target, message, sent, fromChatId);
     return;
@@ -472,6 +479,7 @@ class MessageBubble extends ConsumerStatefulWidget {
 
 class _MessageBubbleState extends ConsumerState<MessageBubble>
     with TickerProviderStateMixin {
+  bool _revealedFiltered = false;
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 360),
@@ -934,6 +942,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               ? t.chatTimerAction
               : t.chatTimerRemove,
         ),
+        if (!widget.message.isMine && !isSavedChat(widget.chatId))
+          SpotlightAction(
+            id: 'report',
+            icon: Icons.flag_outlined,
+            label: t.reportAction,
+          ),
+        if (!widget.message.isMine)
+          SpotlightAction(
+            id: 'hide',
+            icon: Icons.visibility_off_outlined,
+            label: t.messageHide,
+          ),
         SpotlightAction(
           id: 'delete',
           icon: Icons.delete_outline_rounded,
@@ -1012,6 +1032,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await _translateMessage();
     } else if (picked == 'tag') {
       await _tagSavedMessage();
+    } else if (picked == 'report') {
+      await _reportMessage();
+    } else if (picked == 'hide') {
+      _hideMessage();
     } else if (picked == 'delete') {
       await _promptDelete();
     }
@@ -1496,6 +1520,42 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
+  Future<void> _reportMessage() async {
+    final channel = widget.chatId.startsWith('#');
+    final peer =
+        channel ? null : ref.read(knownPeersControllerProvider)[widget.chatId];
+    final npub = peer?.nostrPubkey;
+    await showReportSheet(
+      context,
+      reportContext: channel ? ReportContext.channel : ReportContext.direct,
+      targetHex: channel ? widget.message.authorId : widget.chatId,
+      targetNpub: npub == null
+          ? null
+          : npub.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      channelId: channel ? widget.chatId : null,
+      message: widget.message,
+      chatId: widget.chatId,
+    );
+  }
+
+  void _hideMessage() {
+    final m = widget.message;
+    final messages = ref.read(messagesControllerProvider.notifier);
+    final original = ref.read(messagesControllerProvider)[widget.chatId];
+    final index = original?.indexWhere((entry) => entry.id == m.id) ?? -1;
+    if (index < 0) return;
+    final overlay = Overlay.of(context);
+    final t = AppLocalizations.of(context);
+    messages.deleteLocal(widget.chatId, m.id);
+    showUndoToast(
+      overlay,
+      message: t.messageHidden,
+      undoLabel: t.undo,
+      onUndo: () => messages.restoreLocal(widget.chatId, m, index),
+      onExpire: () {},
+    );
+  }
+
   Future<void> _promptDelete() async {
     final t = AppLocalizations.of(context);
     final m = widget.message;
@@ -1566,10 +1626,59 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       voiceTranscriptionProvider.select((texts) => texts[widget.message.id]),
     );
     final transcriptHidden = ref.watch(
-      hiddenTranscriptsProvider.select((ids) => ids.contains(widget.message.id)),
+      hiddenTranscriptsProvider
+          .select((ids) => ids.contains(widget.message.id)),
     );
     final message = widget.message;
     final mine = message.isMine;
+    final isChannel = widget.chatId.startsWith('#');
+    final fromContact = ref.watch(knownPeersControllerProvider)
+            .containsKey(widget.chatId) &&
+        !ref.watch(removedContactsControllerProvider)
+            .contains(widget.chatId);
+    final filtered = shouldFilter(
+      message: message,
+      isChannel: isChannel,
+      fromContact: fromContact,
+      enabled: ref.watch(filterEnabledProvider),
+    );
+    if (filtered && !_revealedFiltered) {
+      final t = AppLocalizations.of(context);
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onLongPressStart: (details) => _showActions(details.globalPosition),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+            decoration: BoxDecoration(
+              color: AppColors.glass(0.1),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.glass(0.2)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.visibility_off_outlined,
+                    size: 18, color: AppColors.textOnGlassDim),
+                const SizedBox(width: 8),
+                Text(t.filteredMessage,
+                    style: TextStyle(color: AppColors.textOnGlassDim)),
+                TextButton(
+                  onPressed: () => setState(() => _revealedFiltered = true),
+                  child: Text(t.filteredShow),
+                ),
+                IconButton(
+                  tooltip: t.reportAction,
+                  onPressed: () => unawaited(_reportMessage()),
+                  icon: const Icon(Icons.flag_outlined, size: 18),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final copyingRestricted = ref
             .watch(conversationSettingsControllerProvider)[widget.chatId]
             ?.copyingRestricted ??
@@ -1799,461 +1908,464 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             child: _FooterAtEnd(
               footer: footerAtEnd ? footer : null,
               child: Column(
-              // Left inside a bubble, right when there is no bubble and the
-              // message is ours.
-              //
-              // Inside a bubble the box is drawn around its content, so start
-              // is the only sensible answer and always was. A bare message has
-              // no box: the column is as wide as its *widest* row, which for a
-              // sticker or a lone emoji is the reply quote above it — so the
-              // picture and the clock sat at the left of a quote-wide column
-              // and read as having drifted away from the edge every other
-              // outgoing message hugs. Reported off a screenshot, where the
-              // face and its tick float in the middle of the row.
-              //
-              // Only for ours: an incoming bare message is against the left
-              // edge already, and start is what puts it there.
-              crossAxisAlignment: bare && mine
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Passed on from somebody else, said above the message rather
-                // than inside it: the words below are theirs and the bubble
-                // must not look like it is quoting them into a sentence.
-                if (message.forwardedFrom case final from?) ...[
-                  inBubble(
-                    _ForwardHeader(
-                      name: from,
-                      // Present only when the author allows being reached this
-                      // way. Without it the row is the same row and simply
-                      // does not answer a tap — which is the whole of what
-                      // their privacy switch buys them here.
-                      authorId: message.forwardedFromId,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                // Channel messages from others: show the author's name on top,
-                // since a channel mixes many senders in one conversation.
-                if (!mine && message.authorName != null) ...[
-                  inBubble(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Their face, small, beside their name. A room mixes
-                        // senders and a name alone is a line of text to read;
-                        // the picture is recognised before it is read, which
-                        // is the whole job of the line.
-                        if (message.authorId case final id?) ...[
-                          PeerAvatar(
-                            peerId: id,
-                            label: message.authorName!,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        Flexible(
-                          child: Text(
-                            message.authorName!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              // One hue per person rather than the brand for
-                              // everybody — see [AppColors.authorTint].
-                              color: AppColors.authorTint(
-                                message.authorId ?? message.authorName!,
-                              ),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!media) const SizedBox(height: 2),
-                ],
-                if (message.replyToWireId != null)
-                  inBubble(_quotedBox(message.replyToWireId!)),
-                if (message.kind == MessageKind.image) ...[
-                  // The picture, with the clock floating in its bottom corner
-                  // when the bubble has no other line to put it on.
-                  Stack(
-                    children: [
-                      if (widget.album case final album?)
-                        _AlbumPayload(
-                          messages: album,
-                          chatId: widget.chatId,
-                          onDoubleTap: _canReact ? _quickReact : null,
-                        )
-                      else
-                        _ImagePayload(
-                          message: message,
-                          chatId: widget.chatId,
-                          onDoubleTap: _canReact ? _quickReact : null,
-                        ),
-                      if (metaOnMedia)
-                        Positioned(
-                          right: 8,
-                          bottom: 8,
-                          // Inert, so the pill cannot swallow the tap that
-                          // opens the photo underneath it.
-                          child: IgnorePointer(child: _MetaPill(child: meta)),
-                        ),
-                      // How far the upload has got. Only on our own pictures
-                      // and only while they are still going: a photo over
-                      // Bluetooth is a few hundred chunks and minutes of them,
-                      // and "sending" for all of it could not be told apart
-                      // from a transfer that had stalled.
-                      if (message.isMine &&
-                          message.status == MessageStatus.sending)
-                        Positioned.fill(
-                          child: _SendProgressRing(
-                            messageId: message.id,
-                            onCancel: _cancelSend,
-                          ),
-                        ),
-                    ],
-                  ),
-                  // The caption, which used to go missing entirely. It rides in
-                  // `text`, and the chain below renders `text` only for a
-                  // message that matched none of these branches — so a photo
-                  // took the image branch and its caption was never drawn,
-                  // however carefully it had been typed and delivered.
-                  // One caption for the set. It is sent on the first photo of a
-                  // batch, which is where it used to be drawn — reading as a
-                  // remark about that one picture rather than about the lot.
-                  if (_caption case final caption?)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: widget.album == null
-                              ? photoBubbleWidth(context)
-                              : _kAlbumWidth,
-                        ),
-                        child: MentionText(caption, highlight: searchQuery),
+                // Left inside a bubble, right when there is no bubble and the
+                // message is ours.
+                //
+                // Inside a bubble the box is drawn around its content, so start
+                // is the only sensible answer and always was. A bare message has
+                // no box: the column is as wide as its *widest* row, which for a
+                // sticker or a lone emoji is the reply quote above it — so the
+                // picture and the clock sat at the left of a quote-wide column
+                // and read as having drifted away from the edge every other
+                // outgoing message hugs. Reported off a screenshot, where the
+                // face and its tick float in the middle of the row.
+                //
+                // Only for ours: an incoming bare message is against the left
+                // edge already, and start is what puts it there.
+                crossAxisAlignment: bare && mine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Passed on from somebody else, said above the message rather
+                  // than inside it: the words below are theirs and the bubble
+                  // must not look like it is quoting them into a sentence.
+                  if (message.forwardedFrom case final from?) ...[
+                    inBubble(
+                      _ForwardHeader(
+                        name: from,
+                        // Present only when the author allows being reached this
+                        // way. Without it the row is the same row and simply
+                        // does not answer a tap — which is the whole of what
+                        // their privacy switch buys them here.
+                        authorId: message.forwardedFromId,
                       ),
                     ),
-                ] else if (message.kind == MessageKind.audio)
-                  // A voice note over Bluetooth is as long a wait as a photo,
-                  // and said as little about itself. Beside the bubble rather
-                  // than over it: the waveform is the thing being read, and a
-                  // disc in the middle of it would cover exactly that.
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                    const SizedBox(height: 4),
+                  ],
+                  // Channel messages from others: show the author's name on top,
+                  // since a channel mixes many senders in one conversation.
+                  if (!mine && message.authorName != null) ...[
+                    inBubble(
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Their face, small, beside their name. A room mixes
+                          // senders and a name alone is a line of text to read;
+                          // the picture is recognised before it is read, which
+                          // is the whole job of the line.
+                          if (message.authorId case final id?) ...[
+                            PeerAvatar(
+                              peerId: id,
+                              label: message.authorName!,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                          ],
                           Flexible(
-                            child: VoiceBubble(
-                              message: message,
-                              chatId: widget.chatId,
-                              transcriptionButton: _transcriptionButton(
-                                transcript: transcript,
-                                transcriptHidden: transcriptHidden,
+                            child: Text(
+                              message.authorName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                // One hue per person rather than the brand for
+                                // everybody — see [AppColors.authorTint].
+                                color: AppColors.authorTint(
+                                  message.authorId ?? message.authorName!,
+                                ),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                          if (message.isMine &&
-                              message.status == MessageStatus.sending) ...[
-                            const SizedBox(width: 8),
-                            _SendProgressRing(
-                              messageId: message.id,
-                              // 32 rather than 26: a cross in it has to be a
-                              // target a thumb can find.
-                              diameter: 32,
-                              onSurface: true,
-                              onCancel: _cancelSend,
-                            ),
-                          ],
                         ],
                       ),
-                    ],
-                  )
-                else if (playableVideo)
-                  // A clip travels as a file and used to be drawn as one: a
-                  // row with a name and a size, opened by handing it to
-                  // whatever the phone calls a video player. It plays here
-                  // now. Still a file underneath — the transport, the
-                  // transfer queue and the long-press actions are unchanged.
-                  //
-                  // The same Stack the picture above gets, for the same
-                  // reasons: the clock in the corner rather than on a strip of
-                  // bubble below, and our own upload counted out on the clip
-                  // instead of the word "sending" for the whole of a transfer
-                  // that is minutes long over Bluetooth.
-                  //
-                  // A circle takes neither: `metaOnMedia` is false for it,
-                  // because it is round and already carries its own ring and
-                  // its own countdown — a rectangular pill would hang off the
-                  // shape at the corner.
-                  Stack(
-                    children: [
-                      VideoBubble(
-                        message: message,
-                        chatId: widget.chatId,
-                        transcriptionButton: circle
-                            ? _transcriptionButton(
-                                circle: true,
-                                transcript: transcript,
-                                transcriptHidden: transcriptHidden,
-                              )
-                            : null,
-                      ),
-                      if (metaOnMedia)
-                        Positioned(
-                          right: 8,
-                          bottom: 8,
-                          // Inert, so the pill cannot swallow the tap that
-                          // starts the clip underneath it.
-                          child: IgnorePointer(child: _MetaPill(child: meta)),
-                        ),
-                      if (clip &&
-                          message.isMine &&
-                          message.status == MessageStatus.sending)
-                        Positioned.fill(
-                          child: _SendProgressRing(
-                            messageId: message.id,
-                            onCancel: _cancelSend,
-                          ),
-                        ),
-                    ],
-                  )
-                else if (message.kind == MessageKind.file)
-                  // Restricted means "do not take this elsewhere", not "do not
-                  // look at it". Wrapping the row in an IgnorePointer made a
-                  // received file unopenable on the device it was sent to,
-                  // which is not a privacy control — it is the file simply not
-                  // working. The restriction belongs one level in, on the
-                  // share-to-another-app fallback.
-                  FileBubble(
-                    message: message,
-                    sharingRestricted: copyingRestricted,
-                  )
-                else if (message.kind == MessageKind.poll)
-                  PollBubble(
-                    message: message,
-                    chatId: widget.chatId,
-                  )
-                else if (mapFriendLink != null &&
-                    !widget.chatId.startsWith('#'))
-                  _MapFriendLinkBubble(
-                    link: mapFriendLink,
-                    active: activeMapFriends.contains(widget.chatId),
-                    mine: message.isMine,
-                    onTap: () async {
-                      if (mapFriendLink.kind == MapFriendLinkKind.invite &&
-                          !message.isMine &&
-                          !activeMapFriends.contains(widget.chatId)) {
-                        await ref
-                            .read(mapFriendsControllerProvider.notifier)
-                            .activate(widget.chatId);
-                        await ref.read(messagingServiceProvider).sendText(
-                              widget.chatId,
-                              MapFriendLink.accepted(
-                                displayName:
-                                    ref.read(nicknameControllerProvider),
-                              ).encode(),
-                            );
-                        // Accepting pairs two people on the map; showing your
-                        // own location is asked separately. It used to switch
-                        // sharing on in the same tap, on the reasoning that
-                        // accepting was agreeing — App Store review rejected
-                        // that under guideline 5.1.2(i), which wants a person
-                        // asked, with the option to decline. A "no" still
-                        // leaves the pairing: they see the friend, the friend
-                        // does not see them until they choose Show me.
-                        if (!context.mounted) return;
-                        if (await confirmMapSharing(context, ref)) {
-                          await ref
-                              .read(mapPresenceControllerProvider.notifier)
-                              .pokeNow();
-                        }
-                      }
-                      if (!context.mounted) return;
-                      context.go('/map');
-                    },
-                  )
-                else if (sharedLocation != null)
-                  _SharedLocationBubble(location: sharedLocation)
-                else if (sharedContact != null)
-                  _SharedContactBubble(
-                    contact: sharedContact,
-                    onTap: () => _openSharedContact(sharedContact),
-                  )
-                else if (tryParseCallRecord(message.text) case final call?)
-                  // A call you can make again from where it sits, the way
-                  // Telegram's are: "зробити клікабельні дзвінки, натискаєш і
-                  // дзвониш прямо в стрічці". It was a line of text. Off while
-                  // selecting, where a tap on the row means the tick.
-                  _CallRecordBubble(
-                    call: call,
-                    onCall: selecting
-                        ? null
-                        : () => unawaited(
-                              ref.read(callControllerProvider).dial(
-                                    widget.chatId,
-                                  ),
-                            ),
-                  )
-                else if (drawnFace != null)
-                  // One emoji, and we have a drawing of that one: it moves.
-                  //
-                  // Only when it is alone. Two of them are closer to a line of
-                  // text than to a gesture, and three animations side by side
-                  // in a transcript is a decoration nobody asked for running
-                  // while somebody is trying to read. The rule is the same one
-                  // the size switch below states in points — one is the loudest
-                  // — said in movement instead.
-                  Image.asset(
-                    StickerPack.animation(drawnFace),
-                    width: 96,
-                    height: 96,
-                    filterQuality: FilterQuality.medium,
-                  )
-                else
-                  MentionText(
-                    message.text,
-                    highlight: searchQuery,
-                    // Fewer of them, bigger — one on its own is the loudest and
-                    // three are closer to a line of text than to a gesture.
-                    // Sticker-sized at the top end rather than merely larger:
-                    // the point of a bare emoji is that it is not a sentence.
-                    fontSize: switch (bareEmoji) {
-                      1 => 48,
-                      2 => 40,
-                      3 => 32,
-                      _ => null,
-                    },
-                  ),
-                // The circle's button has flown off by now, so the wait is
-                // shown where the text is about to land. A voice note keeps
-                // its spinner in the button, which stays.
-                if (circle && _transcribing && transcript == null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    ),
+                    if (!media) const SizedBox(height: 2),
+                  ],
+                  if (message.replyToWireId != null)
+                    inBubble(_quotedBox(message.replyToWireId!)),
+                  if (message.kind == MessageKind.image) ...[
+                    // The picture, with the clock floating in its bottom corner
+                    // when the bubble has no other line to put it on.
+                    Stack(
                       children: [
-                        SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.6,
-                            color: AppColors.textOnGlassDim,
+                        if (widget.album case final album?)
+                          _AlbumPayload(
+                            messages: album,
+                            chatId: widget.chatId,
+                            onDoubleTap: _canReact ? _quickReact : null,
+                          )
+                        else
+                          _ImagePayload(
+                            message: message,
+                            chatId: widget.chatId,
+                            onDoubleTap: _canReact ? _quickReact : null,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          AppLocalizations.of(context).chatTranscribing,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textOnGlassDim,
+                        if (metaOnMedia)
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            // Inert, so the pill cannot swallow the tap that
+                            // opens the photo underneath it.
+                            child: IgnorePointer(child: _MetaPill(child: meta)),
                           ),
-                        ),
+                        // How far the upload has got. Only on our own pictures
+                        // and only while they are still going: a photo over
+                        // Bluetooth is a few hundred chunks and minutes of them,
+                        // and "sending" for all of it could not be told apart
+                        // from a transfer that had stalled.
+                        if (message.isMine &&
+                            message.status == MessageStatus.sending)
+                          Positioned.fill(
+                            child: _SendProgressRing(
+                              messageId: message.id,
+                              onCancel: _cancelSend,
+                            ),
+                          ),
                       ],
                     ),
-                  ),
-                // Folded away with "↑" hides the text, not the failure note.
-                if (message.isVoiceNote &&
-                    (transcript != null
-                        ? !transcriptHidden
-                        : _transcriptionFailed))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      transcript ??
-                          switch (ref
-                              .read(voiceTranscriptionProvider.notifier)
-                              .failureOf(message.id)) {
-                            // Said as what to do, not just that it failed:
-                            // both have a way out.
-                            'model_downloading' => AppLocalizations.of(context)
-                                .chatTranscribeDownloading,
-                            'language_not_supported' =>
-                              AppLocalizations.of(context)
-                                  .chatTranscribeNoLanguage,
-                            // iOS: refused once, refused until Settings.
-                            'not_authorized' => AppLocalizations.of(context)
-                                .chatTranscribeNotAllowed,
-                            _ => AppLocalizations.of(context)
-                                .chatTranscribeFailed,
-                          },
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.35,
-                        color: readingColor,
+                    // The caption, which used to go missing entirely. It rides in
+                    // `text`, and the chain below renders `text` only for a
+                    // message that matched none of these branches — so a photo
+                    // took the image branch and its caption was never drawn,
+                    // however carefully it had been typed and delivered.
+                    // One caption for the set. It is sent on the first photo of a
+                    // batch, which is where it used to be drawn — reading as a
+                    // remark about that one picture rather than about the lot.
+                    if (_caption case final caption?)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: widget.album == null
+                                ? photoBubbleWidth(context)
+                                : _kAlbumWidth,
+                          ),
+                          child: MentionText(caption, highlight: searchQuery),
+                        ),
                       ),
-                    ),
-                  ),
-                // Under the message, never instead of it. What they wrote is
-                // still what they wrote; this is a reading of it, and a
-                // translation that replaced the original would hide the one
-                // thing a reader can check.
-                // A voice note's translation is a reading of its transcript,
-                // and folds away with it.
-                if (ref.watch(
-                      translationProvider.select((t) => t[message.id]),
-                    ) case final String translated when !(message.isVoiceNote && transcriptHidden))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      translated,
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.35,
-                        fontStyle: FontStyle.italic,
-                        color: readingColor,
-                      ),
-                    ),
-                  ),
-                if (!metaOnMedia) ...[
-                  if (!media) const SizedBox(height: 4),
-                  // Reactions and the clock on one line, inside the bubble.
-                  //
-                  // They used to be a second row hanging *below* the bubble,
-                  // which is a shape no messenger draws: it detached the
-                  // reaction from the thing reacted to, pushed the next message
-                  // down by a whole row, and left the bubble's own bottom line
-                  // carrying nothing but four characters of time. One line, the
-                  // reaction where it was put and the clock where it always is.
-                  //
-                  // Held here invisibly when the footer is drawn at the right
-                  // (below), so the bubble is still as wide and as tall as
-                  // the footer needs.
-                  if (footerAtEnd)
-                    Visibility(
-                      visible: false,
-                      maintainSize: true,
-                      maintainAnimation: true,
-                      maintainState: true,
-                      child: footer,
+                  ] else if (message.kind == MessageKind.audio)
+                    // A voice note over Bluetooth is as long a wait as a photo,
+                    // and said as little about itself. Beside the bubble rather
+                    // than over it: the waveform is the thing being read, and a
+                    // disc in the middle of it would cover exactly that.
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: VoiceBubble(
+                                message: message,
+                                chatId: widget.chatId,
+                                transcriptionButton: _transcriptionButton(
+                                  transcript: transcript,
+                                  transcriptHidden: transcriptHidden,
+                                ),
+                              ),
+                            ),
+                            if (message.isMine &&
+                                message.status == MessageStatus.sending) ...[
+                              const SizedBox(width: 8),
+                              _SendProgressRing(
+                                messageId: message.id,
+                                // 32 rather than 26: a cross in it has to be a
+                                // target a thumb can find.
+                                diameter: 32,
+                                onSurface: true,
+                                onCancel: _cancelSend,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    )
+                  else if (playableVideo)
+                    // A clip travels as a file and used to be drawn as one: a
+                    // row with a name and a size, opened by handing it to
+                    // whatever the phone calls a video player. It plays here
+                    // now. Still a file underneath — the transport, the
+                    // transfer queue and the long-press actions are unchanged.
+                    //
+                    // The same Stack the picture above gets, for the same
+                    // reasons: the clock in the corner rather than on a strip of
+                    // bubble below, and our own upload counted out on the clip
+                    // instead of the word "sending" for the whole of a transfer
+                    // that is minutes long over Bluetooth.
+                    //
+                    // A circle takes neither: `metaOnMedia` is false for it,
+                    // because it is round and already carries its own ring and
+                    // its own countdown — a rectangular pill would hang off the
+                    // shape at the corner.
+                    Stack(
+                      children: [
+                        VideoBubble(
+                          message: message,
+                          chatId: widget.chatId,
+                          transcriptionButton: circle
+                              ? _transcriptionButton(
+                                  circle: true,
+                                  transcript: transcript,
+                                  transcriptHidden: transcriptHidden,
+                                )
+                              : null,
+                        ),
+                        if (metaOnMedia)
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            // Inert, so the pill cannot swallow the tap that
+                            // starts the clip underneath it.
+                            child: IgnorePointer(child: _MetaPill(child: meta)),
+                          ),
+                        if (clip &&
+                            message.isMine &&
+                            message.status == MessageStatus.sending)
+                          Positioned.fill(
+                            child: _SendProgressRing(
+                              messageId: message.id,
+                              onCancel: _cancelSend,
+                            ),
+                          ),
+                      ],
+                    )
+                  else if (message.kind == MessageKind.file)
+                    // Restricted means "do not take this elsewhere", not "do not
+                    // look at it". Wrapping the row in an IgnorePointer made a
+                    // received file unopenable on the device it was sent to,
+                    // which is not a privacy control — it is the file simply not
+                    // working. The restriction belongs one level in, on the
+                    // share-to-another-app fallback.
+                    FileBubble(
+                      message: message,
+                      sharingRestricted: copyingRestricted,
+                    )
+                  else if (message.kind == MessageKind.poll)
+                    PollBubble(
+                      message: message,
+                      chatId: widget.chatId,
+                    )
+                  else if (mapFriendLink != null &&
+                      !widget.chatId.startsWith('#'))
+                    _MapFriendLinkBubble(
+                      link: mapFriendLink,
+                      active: activeMapFriends.contains(widget.chatId),
+                      mine: message.isMine,
+                      onTap: () async {
+                        if (mapFriendLink.kind == MapFriendLinkKind.invite &&
+                            !message.isMine &&
+                            !activeMapFriends.contains(widget.chatId)) {
+                          await ref
+                              .read(mapFriendsControllerProvider.notifier)
+                              .activate(widget.chatId);
+                          await ref.read(messagingServiceProvider).sendText(
+                                widget.chatId,
+                                MapFriendLink.accepted(
+                                  displayName:
+                                      ref.read(nicknameControllerProvider),
+                                ).encode(),
+                              );
+                          // Accepting pairs two people on the map; showing your
+                          // own location is asked separately. It used to switch
+                          // sharing on in the same tap, on the reasoning that
+                          // accepting was agreeing — App Store review rejected
+                          // that under guideline 5.1.2(i), which wants a person
+                          // asked, with the option to decline. A "no" still
+                          // leaves the pairing: they see the friend, the friend
+                          // does not see them until they choose Show me.
+                          if (!context.mounted) return;
+                          if (await confirmMapSharing(context, ref)) {
+                            await ref
+                                .read(mapPresenceControllerProvider.notifier)
+                                .pokeNow();
+                          }
+                        }
+                        if (!context.mounted) return;
+                        context.go('/map');
+                      },
+                    )
+                  else if (sharedLocation != null)
+                    _SharedLocationBubble(location: sharedLocation)
+                  else if (sharedContact != null)
+                    _SharedContactBubble(
+                      contact: sharedContact,
+                      onTap: () => _openSharedContact(sharedContact),
+                    )
+                  else if (tryParseCallRecord(message.text) case final call?)
+                    // A call you can make again from where it sits, the way
+                    // Telegram's are: "зробити клікабельні дзвінки, натискаєш і
+                    // дзвониш прямо в стрічці". It was a line of text. Off while
+                    // selecting, where a tap on the row means the tick.
+                    _CallRecordBubble(
+                      call: call,
+                      onCall: selecting
+                          ? null
+                          : () => unawaited(
+                                ref.read(callControllerProvider).dial(
+                                      widget.chatId,
+                                    ),
+                              ),
+                    )
+                  else if (drawnFace != null)
+                    // One emoji, and we have a drawing of that one: it moves.
+                    //
+                    // Only when it is alone. Two of them are closer to a line of
+                    // text than to a gesture, and three animations side by side
+                    // in a transcript is a decoration nobody asked for running
+                    // while somebody is trying to read. The rule is the same one
+                    // the size switch below states in points — one is the loudest
+                    // — said in movement instead.
+                    Image.asset(
+                      StickerPack.animation(drawnFace),
+                      width: 96,
+                      height: 96,
+                      filterQuality: FilterQuality.medium,
                     )
                   else
-                    footer,
-                ],
-                // The way into what everybody said about this post.
-                //
-                // Only under a post in an announcement channel, because that
-                // is the only place a reader has nowhere else to put a reply —
-                // in a room where anybody may write, the reply goes in the
-                // room. Not on our own posts either: the admin already has the
-                // discussion a tap away in the header.
-                if (_showsComments) ...[
-                  const SizedBox(height: 4),
-                  inBubble(
-                    _CommentsLink(
-                      channelName: widget.chatId,
-                      post: message,
+                    MentionText(
+                      message.text,
+                      highlight: searchQuery,
+                      // Fewer of them, bigger — one on its own is the loudest and
+                      // three are closer to a line of text than to a gesture.
+                      // Sticker-sized at the top end rather than merely larger:
+                      // the point of a bare emoji is that it is not a sentence.
+                      fontSize: switch (bareEmoji) {
+                        1 => 48,
+                        2 => 40,
+                        3 => 32,
+                        _ => null,
+                      },
                     ),
-                  ),
+                  // The circle's button has flown off by now, so the wait is
+                  // shown where the text is about to land. A voice note keeps
+                  // its spinner in the button, which stays.
+                  if (circle && _transcribing && transcript == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.6,
+                              color: AppColors.textOnGlassDim,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            AppLocalizations.of(context).chatTranscribing,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textOnGlassDim,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Folded away with "↑" hides the text, not the failure note.
+                  if (message.isVoiceNote &&
+                      (transcript != null
+                          ? !transcriptHidden
+                          : _transcriptionFailed))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        transcript ??
+                            switch (ref
+                                .read(voiceTranscriptionProvider.notifier)
+                                .failureOf(message.id)) {
+                              // Said as what to do, not just that it failed:
+                              // both have a way out.
+                              'model_downloading' =>
+                                AppLocalizations.of(context)
+                                    .chatTranscribeDownloading,
+                              'language_not_supported' =>
+                                AppLocalizations.of(context)
+                                    .chatTranscribeNoLanguage,
+                              // iOS: refused once, refused until Settings.
+                              'not_authorized' => AppLocalizations.of(context)
+                                  .chatTranscribeNotAllowed,
+                              _ => AppLocalizations.of(context)
+                                  .chatTranscribeFailed,
+                            },
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.35,
+                          color: readingColor,
+                        ),
+                      ),
+                    ),
+                  // Under the message, never instead of it. What they wrote is
+                  // still what they wrote; this is a reading of it, and a
+                  // translation that replaced the original would hide the one
+                  // thing a reader can check.
+                  // A voice note's translation is a reading of its transcript,
+                  // and folds away with it.
+                  if (ref.watch(
+                    translationProvider.select((t) => t[message.id]),
+                  )
+                      case final String translated
+                      when !(message.isVoiceNote && transcriptHidden))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        translated,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.35,
+                          fontStyle: FontStyle.italic,
+                          color: readingColor,
+                        ),
+                      ),
+                    ),
+                  if (!metaOnMedia) ...[
+                    if (!media) const SizedBox(height: 4),
+                    // Reactions and the clock on one line, inside the bubble.
+                    //
+                    // They used to be a second row hanging *below* the bubble,
+                    // which is a shape no messenger draws: it detached the
+                    // reaction from the thing reacted to, pushed the next message
+                    // down by a whole row, and left the bubble's own bottom line
+                    // carrying nothing but four characters of time. One line, the
+                    // reaction where it was put and the clock where it always is.
+                    //
+                    // Held here invisibly when the footer is drawn at the right
+                    // (below), so the bubble is still as wide and as tall as
+                    // the footer needs.
+                    if (footerAtEnd)
+                      Visibility(
+                        visible: false,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: footer,
+                      )
+                    else
+                      footer,
+                  ],
+                  // The way into what everybody said about this post.
+                  //
+                  // Only under a post in an announcement channel, because that
+                  // is the only place a reader has nowhere else to put a reply —
+                  // in a room where anybody may write, the reply goes in the
+                  // room. Not on our own posts either: the admin already has the
+                  // discussion a tap away in the header.
+                  if (_showsComments) ...[
+                    const SizedBox(height: 4),
+                    inBubble(
+                      _CommentsLink(
+                        channelName: widget.chatId,
+                        post: message,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
+              ),
             ),
           ),
         ),
@@ -2709,9 +2821,8 @@ class _CallRecordBubble extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: missed
-                              ? AppColors.danger
-                              : AppColors.textOnGlass,
+                          color:
+                              missed ? AppColors.danger : AppColors.textOnGlass,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
@@ -3401,35 +3512,36 @@ class _ImagePayload extends StatelessWidget {
     // lights it in the spotlight with everything that can be done to it, which
     // is where a sticker's actions belong and where Telegram keeps them too.
     final opens = fileExists && !message.isSticker;
-    final picture = TransitionProbe.instance.placeholderMedia.value &&
-            !message.isSticker
-        ? const _MediaPlaceholder()
-        : Image.file(
-      // Only ever drawn on the `fileExists` side of the branch below, which is
-      // where the null check lives.
-      File(path!),
-      // A sticker is drawn whole, not cropped to a square: it has a shape,
-      // usually with transparency around it, and cover would trim exactly the
-      // part that gives it one.
-      fit: message.isSticker ? BoxFit.contain : BoxFit.cover,
-      // Decoded at the size it is drawn, not the size it was sent.
-      //
-      // Without this the bubble decodes the whole photo — the mesh encoder
-      // tops out around 1600 px, so that is a 1600×1600 bitmap, ten megabytes
-      // of it, to fill a box 220 points wide. Every photo in the conversation,
-      // held in the image cache. Scrolling a chat with pictures in it then
-      // costs a full-resolution decode per photo and a texture upload to
-      // match, which is most of why such a chat warms the phone. At the drawn
-      // size it is a twenty-fifth of the pixels.
-      cacheWidth:
-          ((message.isSticker ? kStickerWidth : photoBubbleWidth(context)) *
-                  MediaQuery.devicePixelRatioOf(context))
-              .round(),
-      errorBuilder: (_, __, ___) => _ImagePlaceholder(
-        icon: Icons.broken_image_rounded,
-        label: message.imageMime ?? 'image',
-      ),
-    );
+    final picture =
+        TransitionProbe.instance.placeholderMedia.value && !message.isSticker
+            ? const _MediaPlaceholder()
+            : Image.file(
+                // Only ever drawn on the `fileExists` side of the branch below, which is
+                // where the null check lives.
+                File(path!),
+                // A sticker is drawn whole, not cropped to a square: it has a shape,
+                // usually with transparency around it, and cover would trim exactly the
+                // part that gives it one.
+                fit: message.isSticker ? BoxFit.contain : BoxFit.cover,
+                // Decoded at the size it is drawn, not the size it was sent.
+                //
+                // Without this the bubble decodes the whole photo — the mesh encoder
+                // tops out around 1600 px, so that is a 1600×1600 bitmap, ten megabytes
+                // of it, to fill a box 220 points wide. Every photo in the conversation,
+                // held in the image cache. Scrolling a chat with pictures in it then
+                // costs a full-resolution decode per photo and a texture upload to
+                // match, which is most of why such a chat warms the phone. At the drawn
+                // size it is a twenty-fifth of the pixels.
+                cacheWidth: ((message.isSticker
+                            ? kStickerWidth
+                            : photoBubbleWidth(context)) *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                errorBuilder: (_, __, ___) => _ImagePlaceholder(
+                  icon: Icons.broken_image_rounded,
+                  label: message.imageMime ?? 'image',
+                ),
+              );
     final body = fileExists
         ? GestureDetector(
             onDoubleTap: onDoubleTap,

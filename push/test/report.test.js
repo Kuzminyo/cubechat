@@ -155,6 +155,16 @@ test('message.sentAt must be a non-negative safe integer', async () => {
   }
 });
 
+test('a channel author can be reported by the 16-hex signing fingerprint available to receivers', async () => {
+  const store = fakeStore();
+  const content = JSON.stringify({ reason: 'abuse', context: 'channel', channelId: '#room', target: 'ab'.repeat(8) });
+  const result = await handleReport(signed({ content }), {
+    nowSeconds: now, limiter: fakeLimiter(), store,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(store.calls[0].target, 'ab'.repeat(8));
+});
+
 test('a general report needs no target', async () => {
   const store = fakeStore();
   const content = JSON.stringify({ reason: 'other', context: 'general' });

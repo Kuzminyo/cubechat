@@ -454,7 +454,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   MarkReadOutcome markRead(String peerId, Set<String> wireIds) {
     final current = state[peerId];
     if (current == null || wireIds.isEmpty) {
-      return MarkReadOutcome(marked: 0, alreadyRead: 0, unknown: wireIds.length);
+      return MarkReadOutcome(
+          marked: 0, alreadyRead: 0, unknown: wireIds.length);
     }
     var changed = 0;
     final seen = <String>{};
@@ -504,6 +505,20 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       'delete for me: took ${current.length - next.length} of '
           '${current.length}',
     );
+  }
+
+  /// Undo a local hide at its original place, without replaying it as a new
+  /// arrival or moving an old message to the bottom of the conversation.
+  void restoreLocal(String peerId, Message message, int index) {
+    final current = state[peerId] ?? const <Message>[];
+    if (current.any((m) =>
+        m.id == message.id ||
+        (message.wireId != null && m.wireId == message.wireId))) {
+      return;
+    }
+    final next = [...current]..insert(index.clamp(0, current.length), message);
+    state = {...state, peerId: next};
+    _persist(peerId, next);
   }
 
   /// The same, for a whole selection.
@@ -993,9 +1008,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   Future<void> clearForChatUpTo(String chatId, DateTime upTo) async {
     final existing = state[chatId];
     if (existing == null) return;
-    final kept = existing
-        .where((m) => m.sentAt.isAfter(upTo))
-        .toList(growable: false);
+    final kept =
+        existing.where((m) => m.sentAt.isAfter(upTo)).toList(growable: false);
     if (kept.length == existing.length) return;
     if (kept.isEmpty) return clearForChat(chatId);
     state = {...state, chatId: kept};

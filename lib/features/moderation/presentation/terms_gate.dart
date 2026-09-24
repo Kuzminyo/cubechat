@@ -9,6 +9,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/terms_controller.dart';
+import 'legal_links.dart';
 
 /// Stands in front of the whole app until the current rules are accepted.
 ///
@@ -117,7 +118,7 @@ class _TermsScreen extends ConsumerWidget {
                 TextButton(
                   onPressed: () => unawaited(
                     launchUrl(
-                      Uri.parse('https://cubechat.tech/terms'),
+                      termsDocumentUrl(context),
                       mode: LaunchMode.externalApplication,
                     ),
                   ),
@@ -132,8 +133,8 @@ class _TermsScreen extends ConsumerWidget {
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: () =>
-                        unawaited(ref.read(termsControllerProvider.notifier).accept()),
+                    onPressed: () => unawaited(
+                        ref.read(termsControllerProvider.notifier).accept()),
                     child: Text(t.termsAccept),
                   ),
                 ),

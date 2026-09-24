@@ -17,6 +17,7 @@ import '../../contacts/presentation/contacts_screen.dart'
     show contactChatsProvider;
 import '../../files/data/file_transfer_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../moderation/data/ban_list_controller.dart';
 import '../domain/airdrop_rules.dart';
 import '../domain/airdrop_spam_guard.dart';
 import '../domain/airdrop_transfer.dart';
@@ -524,6 +525,7 @@ class AirDropController extends Notifier<AirDropState>
   }
 
   Future<void> _onOffer(String peerHex, NearbyOffer offer) async {
+    if (ref.read(banListProvider).isBannedIdentity(peerHex)) return;
     final id = nearbyHex(offer.transferId);
     if (state.byId(id) != null) return;
     final contact = ref.read(airdropContactsProvider).contains(peerHex);

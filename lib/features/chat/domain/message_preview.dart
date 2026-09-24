@@ -17,7 +17,10 @@ import '../models/message.dart';
 ///
 /// A sticker is named by the emoji it was filed under, which is the only name
 /// it has; see [Message.stickerMarkerFor].
-String messagePreview(Message message, AppLocalizations t) {
+String messagePreview(Message message, AppLocalizations t, {
+  bool hideOffensive = false,
+}) {
+  if (hideOffensive) return t.filteredMessage;
   // Somebody reacting to what you last said is the newest thing that happened
   // in that conversation, and the row said nothing about it — it went on
   // showing your own message, so a chat that had just been answered looked

@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 24 September 2026**
+**Last updated: 25 September 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -53,7 +53,7 @@ whose key is held in the Android Keystore or the iOS Keychain:
 - pinned, archived, hidden and foldered conversations;
 - the in-app diagnostic log (the most recent 1000 lines).
 
-None of it is uploaded anywhere. It is removed when you uninstall the app, use
+This history stays on the phone unless you choose a message and tap Report; that report sends only the selected excerpt described below. Local copies are removed when you uninstall the app, use
 **Emergency Wipe**, or when the **dead man's switch** you configured fires.
 
 The diagnostic log stays on the device unless you deliberately export it and
@@ -249,6 +249,25 @@ Media you receive is stored inside the app's private container.
 
 ---
 
+### Reports and moderation
+
+When you tap Report, the app sends a signed complaint over HTTPS to our push
+service. It contains your public signing key, the reason and optional note,
+the reported person's public identity or channel-author fingerprint, and, if
+you reported a specific message, its type, time and selected text or caption
+(up to 4,000 characters). A channel report also names the channel. Nothing is
+sent for an ordinary message you do not report. If you are offline, the report
+waits in encrypted storage on your phone for up to seven days and is signed
+again when delivery resumes.
+
+The developer reviews reports through a private Telegram moderation bot. The bot forwards the reason, note, a shortened reporter and target key, and up to 1,000 characters of the selected message excerpt to Telegram, a third-party service. The
+server stores the report for review and a decision; it does not yet delete old
+report records automatically. Contact us to request deletion. A decision to
+ban publishes a signed list containing public identity keys, Nostr public keys
+and channel-author fingerprints only. Every app can download that public list
+to suppress banned senders. The list never contains report text or your note.
+
+---
 ## 8. What Cubechat does not do
 
 - **No analytics.** No Firebase Analytics, no Crashlytics, no Sentry, no
@@ -259,7 +278,7 @@ Media you receive is stored inside the app's private container.
   linked to you or your device for advertising, and nothing is shared with a
   data broker.
 - **No selling or sharing of personal data.** There is nothing to sell.
-- **No content scanning.** We cannot read your messages; the design makes it
+- **No server-side content scanning.** We cannot read ordinary messages; the design makes it
   impossible rather than merely forbidden.
 
 ---
@@ -297,9 +316,8 @@ If the GDPR, the UK GDPR or Ukraine's law on personal data protection applies
 to you, you have the right to access, correct, erase, restrict and port your
 personal data, and to object to processing.
 
-In practice these rights are mostly satisfied by the design: the only personal
-data we hold is the push registration described in section 5, and you can erase
-it yourself at any moment by switching push off. The call relay in section 5.1
+Push registrations can be erased by switching push off. Submitted reports are
+also held by our service; contact us to request access or deletion. The call relay in section 5.1
 keeps connection metadata only for operating and securing the service. For anything else, or to
 complain, use the contact address in section 1. You may also complain to your
 national supervisory authority.
@@ -308,15 +326,16 @@ national supervisory authority.
 location sharing. Both are revocable at any moment from inside the app, and
 both sit behind an operating-system permission prompt that you answer yourself
 — declining it means nothing is collected, whatever the in-app switch says.
-Legitimate interest covers keeping the push service secure and operational.
+Legitimate interest covers keeping the push service secure and operational and
+reviewing abuse reports you choose to submit.
 
 ---
 
 ## 12. Children
 
-Cubechat is intended for adults and is rated **18+**. It is not directed at
+Cubechat is intended for adults aged **18+**. It is not directed at
 children. If you believe a child has provided us with personal data — which,
-given section 2, would be limited to a push registration — contact us and it
+given section 2, could include a push registration or a submitted report — contact us and it
 will be deleted.
 
 ---
@@ -344,7 +363,7 @@ Known limitations, stated plainly because you deserve to know them:
 
 If this policy changes materially, the app will say so and the date at the top
 will change. The current version is always published at
-`https://cubechat.tech/privacy`.
+`https://github.com/Kuzminyo/cubechat/blob/main/docs/legal/privacy-policy.en.md`.
 
 ---
 

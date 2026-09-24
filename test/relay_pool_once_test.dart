@@ -78,7 +78,15 @@ void main() {
     );
     addTearDown(container.dispose);
     container.read(messagingServiceProvider);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    // Parallel suites can delay identity setup well beyond 300 ms. Wait for
+    // the actual pool decision instead of a wall-clock guess.
+    final deadline = DateTime.now().add(const Duration(seconds: 3));
+    while (!DebugLog.instance.entries.any(
+          (e) => e.text.contains('internet fallback off'),
+        ) &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
 
     final lines = DebugLog.instance.entries.map((e) => e.text).toList();
     expect(

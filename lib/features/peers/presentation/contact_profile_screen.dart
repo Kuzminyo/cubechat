@@ -30,6 +30,8 @@ import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../profile/data/privacy_settings_controller.dart';
+import '../../moderation/domain/report.dart';
+import '../../moderation/presentation/report_sheet.dart';
 import '../data/contact_aliases_controller.dart';
 import '../data/contact_tags_controller.dart';
 import '../data/contact_removal.dart';
@@ -676,6 +678,26 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                             },
                           ),
                         const Divider(height: 1, color: Color(0x26FFFFFF)),
+                        _ActionTile(
+                          icon: Icons.flag_outlined,
+                          label: t.reportAction,
+                          tone: AppColors.danger,
+                          onTap: () {
+                            close();
+                            final npub = peer?.nostrPubkey;
+                            unawaited(showReportSheet(
+                              context,
+                              reportContext: ReportContext.direct,
+                              targetHex: peerPubkeyHex,
+                              targetNpub: npub == null
+                                  ? null
+                                  : npub
+                                      .map((b) =>
+                                          b.toRadixString(16).padLeft(2, '0'))
+                                      .join(),
+                            ));
+                          },
+                        ),
                         _ActionTile(
                           icon: Icons.block_rounded,
                           label: peer?.isBlocked == true

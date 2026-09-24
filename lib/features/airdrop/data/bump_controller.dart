@@ -24,6 +24,7 @@ import 'airdrop_port.dart';
 import 'airdrop_source.dart';
 import 'airdrop_staged.dart';
 import 'bump_ledger.dart';
+import '../../moderation/data/ban_list_controller.dart';
 
 /// What a matched bump turned into — the card the page shows once.
 sealed class BumpEvent {
@@ -515,6 +516,7 @@ class BumpController extends Notifier<BumpState> {
     final bump = m.bump;
     if (bump == null || !m.direct || _tick == null) return;
     final hex = m.peerHex;
+    if (ref.read(banListProvider).isBannedIdentity(hex)) return;
     final at = _now;
     if (!_remember(nearbyHex(bump.bumpId), at)) return;
     // Quiet means quiet: a bump from them in the pause is the same pair of

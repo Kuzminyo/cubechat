@@ -41,6 +41,8 @@ import '../data/nav_bar_controller.dart';
 import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
+import '../../moderation/data/filter_settings.dart';
+import '../../moderation/presentation/about_screen.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/util/platform_info.dart';
@@ -636,65 +638,66 @@ class _DiscoverableCard extends ConsumerWidget {
         child: IgnorePointer(
           ignoring: !usable,
           child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.glass(0.08),
-                  border: Border.all(color: AppColors.glass(0.18)),
-                ),
-                child: Icon(
-                  on
-                      ? Icons.visibility_rounded
-                      : Icons.visibility_off_rounded,
-                  color: on ? AppColors.textOnGlass : AppColors.brandPrimary,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t.profileDiscoverable,
-                      style:
-                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.glass(0.08),
+                      border: Border.all(color: AppColors.glass(0.18)),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
+                    child: Icon(
                       on
-                          ? t.profileDiscoverableOnHint
-                          : t.profileDiscoverableOffHint,
-                      style: TextStyle(
-                          color: AppColors.textOnGlassDim, fontSize: 11.5),
+                          ? Icons.visibility_rounded
+                          : Icons.visibility_off_rounded,
+                      color:
+                          on ? AppColors.textOnGlass : AppColors.brandPrimary,
+                      size: 18,
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t.profileDiscoverable,
+                          style: TextStyle(
+                              color: AppColors.textOnGlass, fontSize: 14),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          on
+                              ? t.profileDiscoverableOnHint
+                              : t.profileDiscoverableOffHint,
+                          style: TextStyle(
+                              color: AppColors.textOnGlassDim, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: on,
+                    activeThumbColor: AppColors.brandPrimary,
+                    onChanged: (v) => ref
+                        .read(discoverySettingsProvider.notifier)
+                        .setDiscoverable(v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t.profileDiscoverableExplainer,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 11.5,
+                  height: 1.35,
                 ),
               ),
-              Switch(
-                value: on,
-                activeThumbColor: AppColors.brandPrimary,
-                onChanged: (v) => ref
-                    .read(discoverySettingsProvider.notifier)
-                    .setDiscoverable(v),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            t.profileDiscoverableExplainer,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              height: 1.35,
-            ),
-          ),
             ],
           ),
         ),
@@ -795,9 +798,8 @@ class _DeadMansRow extends ConsumerWidget {
                 Text(
                   _label(t, days),
                   style: TextStyle(
-                    color: days == 0
-                        ? AppColors.textOnGlassDim
-                        : AppColors.danger,
+                    color:
+                        days == 0 ? AppColors.textOnGlassDim : AppColors.danger,
                     fontSize: 12.5,
                   ),
                 ),
@@ -899,8 +901,7 @@ class _GraceRow extends ConsumerWidget {
             ),
             Text(
               _label(t, seconds),
-              style:
-                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right_rounded,
@@ -1289,6 +1290,16 @@ class _PrivacyCard extends ConsumerWidget {
           const SizedBox(height: 10),
           const _DeadMansRow(),
           const SizedBox(height: 14),
+          _SettingSwitch(
+            icon: Icons.shield_outlined,
+            title: t.filterToggle,
+            hint: t.filterToggleHint,
+            value: ref.watch(filterEnabledProvider),
+            onChanged: (enabled) => unawaited(
+              ref.read(filterEnabledProvider.notifier).setEnabled(enabled),
+            ),
+          ),
+          const SizedBox(height: 14),
           // A setting rather than a button on the recorder, because the camera
           // plugin cannot hand a running capture to the other sensor: a switch
           // on the circle itself would either do nothing until the next one or
@@ -1360,7 +1371,8 @@ class _PrivacyCard extends ConsumerWidget {
                       : t.callFullScreenBody,
                   value: access.complete,
                   onChanged: (_) {
-                    final notifier = ref.read(callScreenAccessProvider.notifier);
+                    final notifier =
+                        ref.read(callScreenAccessProvider.notifier);
                     unawaited(
                       access.complete && access.xiaomi
                           ? notifier.openVendorSettings()
@@ -1647,8 +1659,8 @@ class _TransportRow extends StatelessWidget {
               border: Border.all(
                   color: AppColors.brandPrimary.withValues(alpha: 0.4)),
             ),
-            child:
-                Icon(Icons.bluetooth_rounded, color: AppColors.brandPrimary, size: 18),
+            child: Icon(Icons.bluetooth_rounded,
+                color: AppColors.brandPrimary, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1722,31 +1734,36 @@ class _AboutRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return _frame(
-      false,
-      child: Row(
-        children: [
-          const CubeLogo(size: 36),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cubechat',
-                  style: AppTypography.heading(
-                      size: 15, color: AppColors.textOnGlass),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  t.profileVersion(appVersion),
-                  style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-                ),
-              ],
+    return InkWell(
+      onTap: () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+      ),
+      child: _frame(
+        false,
+        child: Row(
+          children: [
+            const CubeLogo(size: 36),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Cubechat',
+                    style: AppTypography.heading(
+                        size: 15, color: AppColors.textOnGlass),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    t.profileVersion(appVersion),
+                    style: TextStyle(
+                        color: AppColors.textOnGlassDim, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1761,9 +1778,8 @@ String _customizeSummary(WidgetRef ref, AppLocalizations t) {
   // steps. "115%" answers "did I change anything?" better than a word that has
   // to be mapped back onto a size.
   final factor = scale.factor;
-  final size = factor == null
-      ? t.profileScaleSystem
-      : '${(factor * 100).round()}%';
+  final size =
+      factor == null ? t.profileScaleSystem : '${(factor * 100).round()}%';
   return '$size · ${layout.shown.length}/${NavDestination.values.length}';
 }
 
@@ -2117,8 +2133,8 @@ class _FingerprintRow extends StatelessWidget {
               IconButton(
                 visualDensity: VisualDensity.compact,
                 splashRadius: 18,
-                icon:
-                    Icon(Icons.copy_rounded, size: 16, color: AppColors.textOnGlassDim),
+                icon: Icon(Icons.copy_rounded,
+                    size: 16, color: AppColors.textOnGlassDim),
                 tooltip: t.copy,
                 onPressed: ready
                     ? () async {
@@ -2473,7 +2489,6 @@ class _CoverBody extends ConsumerWidget {
     bool discoverable,
     double width,
   ) {
-
     // The circle and the cover are the same rectangle at two sizes; lerping it
     // (and the corner radius with it) is what makes one grow into the other.
     // Centred at rest, full-bleed open. It used to sit in the left corner with
@@ -2562,9 +2577,8 @@ class _CoverBody extends ConsumerWidget {
                       ..onStart = ((_) => onFaceDragStart())
                       ..onUpdate = onFaceDrag,
                   ),
-                  TapGestureRecognizer:
-                      GestureRecognizerFactoryWithHandlers<
-                          TapGestureRecognizer>(
+                  TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<
+                      TapGestureRecognizer>(
                     TapGestureRecognizer.new,
                     (r) => r.onTap = onToggle,
                   ),
@@ -2644,63 +2658,64 @@ class _CoverBody extends ConsumerWidget {
             child: Align(
               alignment: Alignment(nameAlign, 0),
               child: Column(
-              // Each line centred under the disc at rest, ranged left over the
-              // photo once it is open. The switch happens at the halfway point
-              // of a drag where every part of the header is already moving,
-              // which is the one moment it cannot be noticed — there is no
-              // lerp between two cross-axis alignments to be had.
-              crossAxisAlignment:
-                  t < 0.5 ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  nickname,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.heading(
-                    size: titleSize,
-                    color: AppColors.textOnGlass,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  // Shrink-wrapped, so the dot and the line it belongs to are
-                  // centred *together* under the name. Left to fill the width
-                  // the row stayed put while the text inside it moved, which
-                  // is what put the status a few points off the axis
-                  // everything else on this header sits on.
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: t < 0.5
-                      ? MainAxisAlignment.center
-                      : MainAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: discoverable
-                            ? AppColors.online
-                            : AppColors.textOnGlassDim,
-                      ),
+                // Each line centred under the disc at rest, ranged left over the
+                // photo once it is open. The switch happens at the halfway point
+                // of a drag where every part of the header is already moving,
+                // which is the one moment it cannot be noticed — there is no
+                // lerp between two cross-axis alignments to be had.
+                crossAxisAlignment: t < 0.5
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.heading(
+                      size: titleSize,
+                      color: AppColors.textOnGlass,
                     ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        discoverable
-                            ? tt.profileDiscoverableOnHint
-                            : tt.profileDiscoverableOffHint,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: AppColors.textOnGlassDim,
-                          fontSize: _coverStatusSize,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    // Shrink-wrapped, so the dot and the line it belongs to are
+                    // centred *together* under the name. Left to fill the width
+                    // the row stayed put while the text inside it moved, which
+                    // is what put the status a few points off the axis
+                    // everything else on this header sits on.
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: t < 0.5
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: discoverable
+                              ? AppColors.online
+                              : AppColors.textOnGlassDim,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          discoverable
+                              ? tt.profileDiscoverableOnHint
+                              : tt.profileDiscoverableOffHint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.textOnGlassDim,
+                            fontSize: _coverStatusSize,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

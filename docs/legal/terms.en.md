@@ -1,6 +1,6 @@
 # Cubechat Terms of Use
 
-**Last updated: 7 September 2026**
+**Last updated: 25 September 2026**
 
 > This document is not legal advice; have it reviewed before you rely on it.
 
@@ -28,8 +28,8 @@ the app or forget a backup passphrase, that identity and its history are gone
 permanently. Keep backups if the history matters to you.
 
 **Your messages.** You are responsible for what you send and for the law where
-you are. Do not use Cubechat to send unlawful content, to harass, to
-impersonate, or to distribute malware.
+you are. We have zero tolerance for harassment, threats, sexual content
+involving minors, spam, unlawful content, impersonation and malware.
 
 **Your room passwords.** A group room can be read by anyone who knows its name
 and password. Share them accordingly.
@@ -39,22 +39,22 @@ Using Cubechat where it is unlawful to do so is your responsibility, not ours.
 
 ---
 
-## 3. What we cannot do
+## 3. Reports and enforcement
 
-We cannot read your messages, moderate them, recover them, or hand them over,
-because we do not have them. This is a property of the design rather than a
-promise about our conduct.
+Ordinary messages are end-to-end encrypted and are not visible to us. If you
+choose Report on a message or person, the app sends the selected complaint to
+our moderation service, including the selected message text or caption when
+one was chosen. We review submitted reports as promptly as we can. You can also hide a message
+or block a person locally. We may ban an abusive public identity or channel
+author, and our signed ban list lets other phones suppress that sender.
 
-Consequently we cannot act on a report about the *content* of a conversation.
-Blocking, muting and deleting are available to you inside the app, and they are
-the only remedies that exist.
+Do not submit knowingly false or malicious reports. A report is not a way to
+send us your entire conversation; only the selected content is transmitted.
 
 ---
-
 ## 4. Age
 
-You must be at least 13 years old, or the minimum age of digital consent where
-you live if that is higher, to use Cubechat.
+You must be at least 18 years old to use Cubechat.
 
 ---
 

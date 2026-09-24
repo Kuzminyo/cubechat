@@ -3423,11 +3423,85 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get termsBody =>
-      'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer and are acted on within 24 hours, and offenders are banned.';
+      'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer for review, and offenders can be banned.';
 
   @override
   String get termsReadFull => 'Read the full terms';
 
   @override
   String get termsAccept => 'I agree';
+
+  @override
+  String get messageHide => 'Hide';
+
+  @override
+  String get messageHidden => 'Hidden for you';
+
+  @override
+  String get reportAction => 'Report';
+
+  @override
+  String get reportTitle => 'What\'s wrong?';
+
+  @override
+  String get reportReasonSpam => 'Spam';
+
+  @override
+  String get reportReasonAbuse => 'Abuse or harassment';
+
+  @override
+  String get reportReasonViolence => 'Violence';
+
+  @override
+  String get reportReasonSexual => 'Sexual content';
+
+  @override
+  String get reportReasonOther => 'Other';
+
+  @override
+  String get reportNoteHint => 'Describe (optional)';
+
+  @override
+  String get reportSend => 'Send report';
+
+  @override
+  String get reportDisclosure =>
+      'The selected message text and your report go to Cubechat moderation and its private Telegram bot.';
+
+  @override
+  String get reportSent => 'Report sent for review.';
+
+  @override
+  String get reportQueued => 'Report saved. It will send when online.';
+
+  @override
+  String get reportFailed => 'Could not send the report.';
+
+  @override
+  String get filteredMessage => 'Hidden by the filter';
+
+  @override
+  String get filteredShow => 'Show';
+
+  @override
+  String get filterToggle => 'Offensive-content filter';
+
+  @override
+  String get filterToggleHint =>
+      'Hides rude words from strangers and in channels';
+
+  @override
+  String get aboutTitle => 'About';
+
+  @override
+  String get aboutContact => 'Email the developer';
+
+  @override
+  String get aboutReport => 'Report a violation';
+
+  @override
+  String get aboutTerms => 'Terms of use';
+
+  @override
+  String get aboutPrivacy => 'Privacy policy';
 }

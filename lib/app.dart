@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'features/airdrop/data/airdrop_controller.dart';
 import 'features/airdrop/data/share_inbox.dart';
 import 'features/airdrop/presentation/airdrop_banner.dart';
@@ -25,6 +26,8 @@ import 'features/profile/data/dead_mans_switch_controller.dart';
 import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
 import 'features/moderation/presentation/terms_gate.dart';
+import 'features/moderation/data/report_client.dart';
+import 'features/moderation/data/ban_list_controller.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/transition_probe.dart';
 import 'core/util/ui_activity.dart';
@@ -93,11 +96,23 @@ class CubechatApp extends ConsumerStatefulWidget {
 class _CubechatAppState extends ConsumerState<CubechatApp>
     with WidgetsBindingObserver {
   late final _router = buildRouter(seenOnboarding: widget.seenOnboarding);
+  StreamSubscription<List<ConnectivityResult>>? _reportConnectivitySub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Reports are persisted before POST. Retry after a cold start or when the
+    // network comes back; neither path polls while the phone is offline.
+    unawaited(ref.read(reportClientProvider).flush());
+    unawaited(ref.read(banListProvider.notifier).refresh());
+    _reportConnectivitySub =
+        Connectivity().onConnectivityChanged.listen((links) {
+      if (links.any((link) => link != ConnectivityResult.none)) {
+        unawaited(ref.read(reportClientProvider).flush());
+    unawaited(ref.read(banListProvider.notifier).refresh());
+      }
+    });
     // Seed the foreground flag. didChangeAppLifecycleState only fires on a
     // *transition*, so an app that starts already resumed never gets the
     // callback — isForeground would stay false for the whole session, and
@@ -451,6 +466,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   @override
   void dispose() {
+    unawaited(_reportConnectivitySub?.cancel() ?? Future<void>.value());
     _goodbyeTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -469,6 +485,8 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // back asks again only if the grace has run out.
     final lock = ref.read(appLockControllerProvider.notifier);
     if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(reportClientProvider).flush());
+    unawaited(ref.read(banListProvider.notifier).refresh());
       // Measured apart from any chat opened straight after, when the
       // transition probe is armed - see [TransitionProbe.noteResume].
       TransitionProbe.instance.noteResume();

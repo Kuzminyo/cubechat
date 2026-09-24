@@ -18,6 +18,8 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/presentation/widgets/image_editor.dart';
+import '../../moderation/domain/report.dart';
+import '../../moderation/presentation/report_sheet.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
@@ -129,8 +131,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
             ),
             if (cleared)
               ListTile(
-                leading: Icon(Icons.undo_rounded,
-                    color: AppColors.brandPrimary),
+                leading:
+                    Icon(Icons.undo_rounded, color: AppColors.brandPrimary),
                 title: Text(
                   t.channelUnmuteMember,
                   style: TextStyle(color: AppColors.textOnGlass),
@@ -138,8 +140,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 onTap: () => Navigator.of(sheetContext).pop('clear'),
               ),
             ListTile(
-              leading: Icon(Icons.volume_off_rounded,
-                  color: AppColors.textOnGlass),
+              leading:
+                  Icon(Icons.volume_off_rounded, color: AppColors.textOnGlass),
               title: Text(
                 t.channelMuteMember,
                 style: TextStyle(color: AppColors.textOnGlass),
@@ -147,9 +149,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               onTap: () => Navigator.of(sheetContext).pop('mute'),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.person_remove_rounded,
-                      color: AppColors.danger),
+              leading: const Icon(Icons.person_remove_rounded,
+                  color: AppColors.danger),
               title: Text(
                 t.channelRemoveMember,
                 style: const TextStyle(color: AppColors.danger),
@@ -525,21 +526,27 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     // meaning again.
     final canManage =
         _myId != null && roster.isAdmin(widget.channelName, _myId!);
-    final adminOnly = ref
-            .watch(channelControllerProvider)[widget.channelName]
-            ?.adminOnly ??
-        false;
-    final picture =
-        ref.watch(channelAvatarsControllerProvider).isEmpty
-            ? null
-            : ref
-                .read(channelAvatarsControllerProvider.notifier)
-                .forChannel(widget.channelName);
+    final adminOnly =
+        ref.watch(channelControllerProvider)[widget.channelName]?.adminOnly ??
+            false;
+    final picture = ref.watch(channelAvatarsControllerProvider).isEmpty
+        ? null
+        : ref
+            .read(channelAvatarsControllerProvider.notifier)
+            .forChannel(widget.channelName);
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
     final description =
         ref.watch(channelDescriptionsControllerProvider)[widget.channelName];
 
-    final admins = [for (final m in members) if (m.isAdmin) m];
+    final admins = [
+      for (final m in members)
+        if (m.isAdmin) m
+    ];
+    final owners = [
+      for (final m in members)
+        if (m.isOwner) m
+    ];
+    final ownerId = owners.isEmpty ? null : owners.first.id;
     final muted = ref
             .watch(conversationSettingsControllerProvider)[widget.channelName]
             ?.isMutedNow ??
@@ -564,9 +571,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               canManage: canManage,
               onBack: () => Navigator.of(context).maybePop(),
               onEdit: canManage ? _editChannel : null,
-              onOpenPicture: picture == null
-                  ? null
-                  : () => _openPicture(picture),
+              onOpenPicture:
+                  picture == null ? null : () => _openPicture(picture),
             ),
             const SizedBox(height: 14),
             Padding(
@@ -683,7 +689,25 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 ),
               ),
             ),
-            // The end of the room, and only for the one person who can end it.
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: GlassCard(
+                padding: EdgeInsets.zero,
+                child: _InfoRow(
+                  icon: Icons.flag_outlined,
+                  label: t.reportAction,
+                  tone: AppColors.danger,
+                  onTap: () => showReportSheet(
+                    context,
+                    reportContext: ReportContext.channel,
+                    targetHex: ownerId,
+                    channelId: widget.channelName,
+                  ),
+                  last: true,
+                ),
+              ),
+            ), // The end of the room, and only for the one person who can end it.
             // Below everything else rather than among the settings, because it
             // is not a setting.
             if (_myId != null &&
@@ -1275,7 +1299,8 @@ class _ChannelCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final top = MediaQuery.paddingOf(context).top;
-    final height = (MediaQuery.sizeOf(context).height * 0.42).clamp(260.0, 420.0);
+    final height =
+        (MediaQuery.sizeOf(context).height * 0.42).clamp(260.0, 420.0);
     final shot = picture;
     return SizedBox(
       height: height,
@@ -1625,8 +1650,7 @@ class _MemberRow extends StatelessWidget {
           else if (member.isAdmin)
             Icon(Icons.verified_user_rounded, color: AppColors.brandPrimary)
           else if (peer != null)
-            Icon(Icons.chevron_right_rounded,
-                color: AppColors.textOnGlassFaint)
+            Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint)
           // Somebody in the room we have never spoken to 1:1. The room shows
           // their signing fingerprint and nothing we could message, so the
           // only move available is to hand them ours.

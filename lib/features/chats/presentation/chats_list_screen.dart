@@ -43,6 +43,11 @@ import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../chat/domain/message_preview.dart';
+import '../../moderation/domain/profanity.dart';
+import '../../moderation/data/filter_settings.dart';
+import '../../moderation/data/ban_list_controller.dart';
+import '../../moderation/data/hidden_authors.dart';
+import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -269,9 +274,14 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final t = lookupAppLocalizations(ref.watch(localeControllerProvider));
   final settings = ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
+  final filterEnabled = ref.watch(filterEnabledProvider);
+  final bans = ref.watch(banListProvider);
+  final hiddenAuthors = ref.watch(hiddenAuthorsProvider);
+  final removedContacts = ref.watch(removedContactsControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
   final channels = ref.watch(channelControllerProvider);
+  final channelRoster = ref.watch(channelRosterControllerProvider);
   final favorites = ref.watch(favoritesControllerProvider);
   final pinnedChats = ref.watch(pinnedChatsControllerProvider);
   final readMarkers = ref.watch(readMarkersControllerProvider);
@@ -308,7 +318,9 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   // takes over below; the two agree, so nothing moves when it does.
   final summaries = ref.read(messagesControllerProvider.notifier).summaries;
 
-  final entries = known.values.map((peer) {
+  final entries = known.values
+      .where((peer) => !bans.isBannedPeer(peer.pubkeyHex, peer.nostrPubkey))
+      .map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex];
     final summary = msgs == null ? summaries[peer.pubkeyHex] : null;
     // Map beacons are not conversation, so they must not be what a tile says
@@ -371,7 +383,18 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         pubkeyHex: peer.pubkeyHex,
       ),
       lastMessage: draft?.text ??
-          (last == null ? 'Secured · Noise XX' : messagePreview(last, t)),
+          (last == null
+              ? 'Secured · Noise XX'
+              : messagePreview(
+                  last,
+                  t,
+                  hideOffensive: shouldFilter(
+                    message: last,
+                    isChannel: false,
+                    fromContact: !removedContacts.contains(peer.pubkeyHex),
+                    enabled: filterEnabled,
+                  ),
+                )),
       // An empty conversation sinks instead of floating.
       //
       // It used to fall back to the peer's lastSeen, which every announcement
@@ -402,16 +425,32 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   // membership is just holding the key. Last-message preview prefixes the
   // author for readability since a channel bucket mixes senders.
   for (final ch in channels.values) {
-    final msgs = messagesByChat[ch.name] ?? const [];
+    if (channelRoster[ch.name]?.values.any((member) =>
+            (member.isOwner || member.isAdmin) &&
+            bans.isBannedFingerprint(member.id)) ??
+        false) continue;
+    final msgs = (messagesByChat[ch.name] ?? const <Message>[])
+        .where((message) =>
+            message.authorId == null ||
+            (!bans.isBannedFingerprint(message.authorId!) &&
+                !hiddenAuthors.contains(message.authorId!.toLowerCase())))
+        .toList();
     final last = msgs.isNotEmpty ? msgs.last : null;
     final unread = unreadMessageCount(msgs, readMarkers[ch.name]);
     final draft = drafts[ch.name];
+    final hideOffensive = last != null &&
+        shouldFilter(
+          message: last,
+          isChannel: true,
+          fromContact: false,
+          enabled: filterEnabled,
+        );
     final preview = draft?.text ??
         (last == null
             ? 'Group channel'
             : (!last.isMine && last.authorName != null
-                ? '${last.authorName}: ${messagePreview(last, t)}'
-                : messagePreview(last, t)));
+                ? '${last.authorName}: ${messagePreview(last, t, hideOffensive: hideOffensive)}'
+                : messagePreview(last, t, hideOffensive: hideOffensive)));
     entries.add(
       Chat(
         id: ch.name,

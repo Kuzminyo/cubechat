@@ -3465,11 +3465,85 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get termsBody =>
-      'cubechat не терпить образливого вмісту та тих, хто ним зловживає. Продовжуючи, ви погоджуєтеся не надсилати цькування, погрози, сексуальний вміст за участю неповнолітніх, спам і нічого незаконного. Будь-хто може поскаржитися на повідомлення чи людину; скарги надходять розробнику й розглядаються протягом 24 годин, порушників блокують.';
+      'cubechat не терпить образливого вмісту та тих, хто ним зловживає. Продовжуючи, ви погоджуєтеся не надсилати цькування, погрози, сексуальний вміст за участю неповнолітніх, спам і нічого незаконного. Будь-хто може поскаржитися на повідомлення чи людину; скарги надходять розробнику на розгляд, а порушників можуть заблокувати.';
 
   @override
   String get termsReadFull => 'Повні умови';
 
   @override
   String get termsAccept => 'Приймаю';
+
+  @override
+  String get messageHide => 'Приховати';
+
+  @override
+  String get messageHidden => 'Приховано для вас';
+
+  @override
+  String get reportAction => 'Поскаржитися';
+
+  @override
+  String get reportTitle => 'Що не так?';
+
+  @override
+  String get reportReasonSpam => 'Спам';
+
+  @override
+  String get reportReasonAbuse => 'Образа або цькування';
+
+  @override
+  String get reportReasonViolence => 'Насильство';
+
+  @override
+  String get reportReasonSexual => 'Сексуальний вміст';
+
+  @override
+  String get reportReasonOther => 'Інше';
+
+  @override
+  String get reportNoteHint => 'Опишіть (необов\'язково)';
+
+  @override
+  String get reportSend => 'Надіслати скаргу';
+
+  @override
+  String get reportDisclosure =>
+      'Текст вибраного повідомлення та скаргу буде передано модерації Cubechat і її приватному боту в Telegram.';
+
+  @override
+  String get reportSent => 'Скаргу надіслано на розгляд.';
+
+  @override
+  String get reportQueued =>
+      'Скаргу збережено. Надішлемо її, коли з\'явиться мережа.';
+
+  @override
+  String get reportFailed => 'Не вдалося надіслати скаргу.';
+
+  @override
+  String get filteredMessage => 'Приховано фільтром';
+
+  @override
+  String get filteredShow => 'Показати';
+
+  @override
+  String get filterToggle => 'Фільтр образливого вмісту';
+
+  @override
+  String get filterToggleHint => 'Ховає грубі слова від незнайомих і в каналах';
+
+  @override
+  String get aboutTitle => 'Про застосунок';
+
+  @override
+  String get aboutContact => 'Написати розробнику';
+
+  @override
+  String get aboutReport => 'Повідомити про порушення';
+
+  @override
+  String get aboutTerms => 'Умови використання';
+
+  @override
+  String get aboutPrivacy => 'Політика конфіденційності';
 }

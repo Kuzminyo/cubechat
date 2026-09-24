@@ -26,6 +26,10 @@ import '../../features/chat/data/held_media.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chat/domain/message_preview.dart';
+import '../../features/moderation/domain/profanity.dart';
+import '../../features/moderation/data/filter_settings.dart';
+import '../../features/moderation/data/ban_list_controller.dart';
+import '../../features/moderation/data/hidden_authors.dart';
 import '../../features/chat/models/message.dart';
 import '../../l10n/app_localizations.dart';
 import '../locale/locale_controller.dart';
@@ -6144,6 +6148,8 @@ class MessagingService {
       if (channelStale && !survivesReplayWindow(unpacked.type)) return;
       final authorName = _resolveAuthorName(senderEdPub);
       final reactorId = _hexOf(senderEdPub).substring(0, 16);
+      if (_ref.read(banListProvider).isBannedFingerprint(reactorId) ||
+          _ref.read(hiddenAuthorsProvider).contains(reactorId)) return;
       await _ref.read(channelRosterControllerProvider.notifier).record(
             channel.name,
             ChannelMember(
@@ -6764,7 +6770,7 @@ class MessagingService {
     unawaited(NotificationService.instance.showMessage(
       threadKey: channel.name,
       title: mentioned ? '@ ${channel.name}' : channel.name,
-      body: '$authorName: ${messagePreview(message, _localizations)}',
+      body: '$authorName: ${messagePreview(message, _localizations, hideOffensive: shouldFilter(message: message, isChannel: true, fromContact: false, enabled: _ref.read(filterEnabledProvider)))}',
       senderId: channel.name,
       isGroup: true,
     ));
@@ -7307,9 +7313,14 @@ class MessagingService {
       // Blocked peer: drop everything they send (messages, receipts,
       // reactions, edits) before it can touch the store or the UI.
       if (senderPub != null &&
-          _ref
-              .read(knownPeersControllerProvider.notifier)
-              .isBlocked(_hexOf(senderPub))) {
+          (_ref
+                  .read(knownPeersControllerProvider.notifier)
+                  .isBlocked(_hexOf(senderPub)) ||
+              _ref.read(banListProvider).isBannedPeer(
+                    _hexOf(senderPub),
+                    _ref.read(knownPeersControllerProvider)[_hexOf(senderPub)]
+                        ?.nostrPubkey,
+                  ))) {
         DebugLog.instance.log('MESH', 'drop inbound from blocked peer');
         return;
       }
@@ -11972,7 +11983,17 @@ class MessagingService {
     // The same line the chat list shows, in the language the app is set to: a
     // notification used to announce '📷 Photo' for a sticker and, in English,
     // to somebody using the app in Ukrainian.
-    final preview = messagePreview(message, _localizations);
+    final preview = messagePreview(
+      message,
+      _localizations,
+      hideOffensive: shouldFilter(
+        message: message,
+        isChannel: false,
+        fromContact: known != null &&
+            !_ref.read(removedContactsControllerProvider).contains(canonicalId),
+        enabled: _ref.read(filterEnabledProvider),
+      ),
+    );
     unawaited(NotificationService.instance.showMessage(
       threadKey: canonicalId,
       title: name,

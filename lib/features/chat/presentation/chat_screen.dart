@@ -45,6 +45,8 @@ import '../../chats/data/saved_tags_controller.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../moderation/data/hidden_authors.dart';
+import '../../moderation/data/ban_list_controller.dart';
 import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
@@ -352,13 +354,19 @@ class ChatScreen extends ConsumerWidget {
     // It also has to be read after `canonicalId`, which needs the session, so
     // this cannot sit at the top of build the way the map did — and putting it
     // here takes it off the channel path, which watches its own list below.
-    final messages = visibleMessages(
-      ref.watch(
-        messagesControllerProvider.select(
-          (m) => m[canonicalId] ?? m[peerId] ?? const <Message>[],
-        ),
-      ),
-    );
+    final bannedPeer = ref.watch(banListProvider).isBannedPeer(
+          canonicalId,
+          ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey,
+        );
+    final messages = bannedPeer
+        ? const <Message>[]
+        : visibleMessages(
+            ref.watch(
+              messagesControllerProvider.select(
+                (m) => m[canonicalId] ?? m[peerId] ?? const <Message>[],
+              ),
+            ),
+          );
     // A prior announcement gives us the peer's pubkey (and, when present, their
     // Nostr npub) even with no live BLE session — enough for sendText to carry
     // a frame over the mesh, the Nostr internet fallback, or store-and-forward.
@@ -387,7 +395,8 @@ class ChatScreen extends ConsumerWidget {
     // nothing ever left the phone (no bubble, no error). Enable Send whenever we
     // can address the peer at all — sendText appends the bubble and it shows a
     // clock until a transport (mesh / Nostr / store-and-forward) takes it.
-    final canSend = (session?.isEstablished ?? false) || known != null;
+    final canSend =
+        !bannedPeer && ((session?.isEstablished ?? false) || known != null);
 
     // The header name is resolved here rather than taken from [peerLabel],
     // which is a route query parameter and therefore frozen at the moment the
@@ -457,15 +466,14 @@ class ChatScreen extends ConsumerWidget {
     // blind. Somebody who switched their own times off stays switched off
     // here no matter who is looking — that is their setting, and the half of
     // the old trade that was never ours to spend.
-    final hideTimes =
-        beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false;
+    final hideTimes = beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false;
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
     ref.watch(typingControllerProvider.select((all) => all[canonicalId]));
     final activity =
         ref.read(typingControllerProvider.notifier).activityOf(canonicalId);
 
-    final blocked = known?.isBlocked ?? false;
+    final blocked = (known?.isBlocked ?? false) || bannedPeer;
 
     // Blocked, connecting, doing something, online, or when last here — in
     // that order, for the reasons on [peerStatusLine]. The peek says the same
@@ -607,12 +615,10 @@ class ChatScreen extends ConsumerWidget {
     // against the channels actually joined rather than taken from the suffix:
     // a room genuinely called `#news-chat` derives its key from its own name
     // and has nothing to do with `#news`, and we may not be in `#news` at all.
-    final parentChannel =
-        saved ? null : channelForCommunity(peerId);
+    final parentChannel = saved ? null : channelForCommunity(peerId);
     final isCommunity = parentChannel != null &&
         ref.watch(
-          channelControllerProvider
-              .select((all) => all[parentChannel] != null),
+          channelControllerProvider.select((all) => all[parentChannel] != null),
         );
     final self = saved
         ? null
@@ -623,13 +629,24 @@ class ChatScreen extends ConsumerWidget {
                 (self != null &&
                     (self.isAdmin ||
                         (rosterVersion[peerId]?[self.id]?.isAdmin ?? false)))));
-    final messages = visibleMessages(
+    final allMessages = visibleMessages(
       ref.watch(
         messagesControllerProvider.select(
           (m) => m[peerId] ?? const <Message>[],
         ),
       ),
     );
+    final hiddenAuthors =
+        saved ? const <String>{} : ref.watch(hiddenAuthorsProvider);
+    final bannedAuthors = ref.watch(banListProvider).fingerprints;
+    final suppressedAuthors = {...hiddenAuthors, ...bannedAuthors};
+    final messages = suppressedAuthors.isEmpty
+        ? allMessages
+        : allMessages
+            .where((m) =>
+                m.authorId == null ||
+                !suppressedAuthors.contains(m.authorId!.toLowerCase()))
+            .toList();
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
       meshAvailable: ref.watch(
@@ -973,8 +990,9 @@ class _ChatHeader extends StatelessWidget {
                                 // то…". The badge has an icon-only form for
                                 // exactly this and was only ever reaching it on
                                 // a narrow phone.
-                                final compactRoute = constraints.maxWidth < 140 ||
-                                    statusText.length > 18;
+                                final compactRoute =
+                                    constraints.maxWidth < 140 ||
+                                        statusText.length > 18;
                                 return Row(
                                   children: [
                                     Expanded(
@@ -1123,8 +1141,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
           ),
           subtitle: Text(
             hint,
-            style:
-                TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
           ),
           trailing: active
               ? Icon(Icons.check_rounded, color: AppColors.brandPrimary)
@@ -1181,8 +1198,8 @@ class _ChatRouteIndicator extends ConsumerWidget {
             Consumer(
               builder: (_, sheetRef, __) {
                 final prefersRelay = sheetRef
-                    .watch(conversationSettingsControllerProvider)[chatId]
-                    ?.preferRelay ??
+                        .watch(conversationSettingsControllerProvider)[chatId]
+                        ?.preferRelay ??
                     false;
                 Widget option(
                   IconData icon,
@@ -1402,9 +1419,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   ///
   /// Keyed on identity: the store hands back the same `Message` object until
   /// that message changes, and the same album list until its photos do.
-  final Map<String,
-          ({Message message, List<Message>? album, bool animate, Widget bubble})>
-      _bubbles = {};
+  final Map<
+      String,
+      ({
+        Message message,
+        List<Message>? album,
+        bool animate,
+        Widget bubble
+      })> _bubbles = {};
 
   Widget _bubbleFor(Message m, List<Message>? album, bool animate) {
     final cached = _bubbles[m.id];
@@ -1621,8 +1643,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // asked for. Audio and files are left out — they appear from a picker or
     // a recorder, not from the keyboard, so the send is not the gesture the
     // eye is following.
-    if (message.kind != MessageKind.text &&
-        message.kind != MessageKind.image) {
+    if (message.kind != MessageKind.text && message.kind != MessageKind.image) {
       return false;
     }
     // The age guard is what keeps a chat's whole history from animating when
@@ -2229,7 +2250,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // both are read here so the itemBuilder does not touch a provider per row.
     final saved = isSavedChat(widget.chatId);
     final tagFilter = saved ? ref.watch(savedTagFilterProvider) : null;
-    final tags = saved ? ref.watch(savedTagsProvider) : const <String, String>{};
+    final tags =
+        saved ? ref.watch(savedTagsProvider) : const <String, String>{};
     ref.watch(pinnedControllerProvider);
     final pins =
         ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
@@ -2332,116 +2354,118 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             : Stack(
                 children: [
                   ListView.builder(
-                key: _listKey,
-                reverse: true,
-                controller: _scroll,
-                padding: padding,
-                itemCount: messages.length,
-                itemBuilder: (_, i) {
-                  // Where the list currently is, in the only terms it will give
-                  // up. See [_noteBuilt] — a jump reads this to pick a direction.
-                  _noteBuilt(i);
-                  final m = messages[messages.length - 1 - i];
-                  // A photo drawn inside the album above it keeps its place in
-                  // the list and gives up its height. Collapsing here rather
-                  // than filtering the list keeps every index-sensitive thing
-                  // on this screen — the jump anchors, the search highlight,
-                  // _noteBuilt — addressing the same messages it always did.
-                  if (albums.isFolded(m.id)) return const SizedBox.shrink();
-                  // A tag filter hides non-matching notes the same way — by
-                  // giving up their height, not by leaving the list — so every
-                  // index above stays pointing at the message it always did.
-                  if (tagFilter != null && tags[m.id] != tagFilter) {
-                    return const SizedBox.shrink();
-                  }
-                  final album = albums.albumAt(m.id);
-                  // An album answers to the ids of every photo in it.
-                  //
-                  // Only the first photo of a batch is drawn; the rest give up
-                  // their height. So a jump aimed at one of those — a pinned
-                  // photo, a search hit, a notification tap — was aimed at a
-                  // widget that would never exist, and the walk spent its
-                  // attempts hunting for it and stopped wherever it had got
-                  // to. The album is where those photos are on screen, so it
-                  // takes their keys.
-                  bool isHere(String? id) =>
-                      id != null &&
-                      (m.id == id ||
-                          (album?.any((photo) => photo.id == id) ?? false));
-                  Widget bubble =
-                      _bubbleFor(m, album, _smoothSendIds.contains(m.id));
-                  if (isHere(widget.initialMessageId)) {
-                    bubble =
-                        KeyedSubtree(key: _initialMessageKey, child: bubble);
-                  }
-                  if (isHere(flashing)) {
-                    bubble = KeyedSubtree(key: _jumpTargetKey, child: bubble);
-                  }
-                  if (isHere(selectedMessage?.id)) {
-                    bubble = KeyedSubtree(
-                      key: _searchResultKey,
-                      child: _SearchResultHighlight(child: bubble),
-                    );
-                  }
+                    key: _listKey,
+                    reverse: true,
+                    controller: _scroll,
+                    padding: padding,
+                    itemCount: messages.length,
+                    itemBuilder: (_, i) {
+                      // Where the list currently is, in the only terms it will give
+                      // up. See [_noteBuilt] — a jump reads this to pick a direction.
+                      _noteBuilt(i);
+                      final m = messages[messages.length - 1 - i];
+                      // A photo drawn inside the album above it keeps its place in
+                      // the list and gives up its height. Collapsing here rather
+                      // than filtering the list keeps every index-sensitive thing
+                      // on this screen — the jump anchors, the search highlight,
+                      // _noteBuilt — addressing the same messages it always did.
+                      if (albums.isFolded(m.id)) return const SizedBox.shrink();
+                      // A tag filter hides non-matching notes the same way — by
+                      // giving up their height, not by leaving the list — so every
+                      // index above stays pointing at the message it always did.
+                      if (tagFilter != null && tags[m.id] != tagFilter) {
+                        return const SizedBox.shrink();
+                      }
+                      final album = albums.albumAt(m.id);
+                      // An album answers to the ids of every photo in it.
+                      //
+                      // Only the first photo of a batch is drawn; the rest give up
+                      // their height. So a jump aimed at one of those — a pinned
+                      // photo, a search hit, a notification tap — was aimed at a
+                      // widget that would never exist, and the walk spent its
+                      // attempts hunting for it and stopped wherever it had got
+                      // to. The album is where those photos are on screen, so it
+                      // takes their keys.
+                      bool isHere(String? id) =>
+                          id != null &&
+                          (m.id == id ||
+                              (album?.any((photo) => photo.id == id) ?? false));
+                      Widget bubble =
+                          _bubbleFor(m, album, _smoothSendIds.contains(m.id));
+                      if (isHere(widget.initialMessageId)) {
+                        bubble = KeyedSubtree(
+                            key: _initialMessageKey, child: bubble);
+                      }
+                      if (isHere(flashing)) {
+                        bubble =
+                            KeyedSubtree(key: _jumpTargetKey, child: bubble);
+                      }
+                      if (isHere(selectedMessage?.id)) {
+                        bubble = KeyedSubtree(
+                          key: _searchResultKey,
+                          child: _SearchResultHighlight(child: bubble),
+                        );
+                      }
 
-                  // The day this message opens, if it opens one.
-                  //
-                  // Drawn above the bubble, which in a reversed list means
-                  // first in this item's own column — the reversal is of the
-                  // *list*, not of what a single item lays out. Compared
-                  // against the message before it in conversation order, so
-                  // the separator sits between the last message of one day and
-                  // the first of the next, and nowhere else.
-                  //
-                  // A photo folded into somebody else's album has already
-                  // returned above, so a batch carries at most one separator
-                  // and it belongs to the album's anchor — the oldest picture
-                  // in it, which is where the batch began.
-                  final index = messages.length - 1 - i;
-                  final previous = index > 0 ? messages[index - 1] : null;
-                  // Wrapped last, so a deletion plays out the whole row —
-                  // the bubble and the day separator it may have opened —
-                  // rather than collapsing the bubble inside a heading that
-                  // stays behind for a frame with nothing under it.
-                  final leaving = farewell.contains(m.id) ||
-                      (album?.every((photo) => farewell.contains(photo.id)) ??
-                          false);
-                  // The key belongs out here, on whatever the builder returns.
-                  //
-                  // It was on the bubble, which is one widget deeper, and a
-                  // lazy list only ever sees the outermost one: without a key
-                  // there it matched rows by *position*, so deleting a message
-                  // handed this row's element — and the collapse animation
-                  // inside it, sitting at zero — to the message that moved up
-                  // into the slot. That message then rendered as nothing until
-                  // the element happened to be rebuilt. Two rows disappearing
-                  // when one was deleted, the second coming back later.
-                  //
-                  // The comment on the bubble's own key says exactly why this
-                  // matters and it was right; the key was one layer too low to
-                  // do it.
-                  if (!startsNewDay(m.sentAt, previous?.sentAt)) {
-                    return _MessageFarewellRow(
-                      key: ValueKey('row-${m.id}'),
-                      leaving: leaving,
-                      child: bubble,
-                    );
-                  }
-                  return _MessageFarewellRow(
-                    key: ValueKey('row-${m.id}'),
-                    leaving: leaving,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _DaySeparator(
-                          day: m.sentAt,
-                          onTap: () => unawaited(_openCalendar(m.sentAt)),
+                      // The day this message opens, if it opens one.
+                      //
+                      // Drawn above the bubble, which in a reversed list means
+                      // first in this item's own column — the reversal is of the
+                      // *list*, not of what a single item lays out. Compared
+                      // against the message before it in conversation order, so
+                      // the separator sits between the last message of one day and
+                      // the first of the next, and nowhere else.
+                      //
+                      // A photo folded into somebody else's album has already
+                      // returned above, so a batch carries at most one separator
+                      // and it belongs to the album's anchor — the oldest picture
+                      // in it, which is where the batch began.
+                      final index = messages.length - 1 - i;
+                      final previous = index > 0 ? messages[index - 1] : null;
+                      // Wrapped last, so a deletion plays out the whole row —
+                      // the bubble and the day separator it may have opened —
+                      // rather than collapsing the bubble inside a heading that
+                      // stays behind for a frame with nothing under it.
+                      final leaving = farewell.contains(m.id) ||
+                          (album?.every(
+                                  (photo) => farewell.contains(photo.id)) ??
+                              false);
+                      // The key belongs out here, on whatever the builder returns.
+                      //
+                      // It was on the bubble, which is one widget deeper, and a
+                      // lazy list only ever sees the outermost one: without a key
+                      // there it matched rows by *position*, so deleting a message
+                      // handed this row's element — and the collapse animation
+                      // inside it, sitting at zero — to the message that moved up
+                      // into the slot. That message then rendered as nothing until
+                      // the element happened to be rebuilt. Two rows disappearing
+                      // when one was deleted, the second coming back later.
+                      //
+                      // The comment on the bubble's own key says exactly why this
+                      // matters and it was right; the key was one layer too low to
+                      // do it.
+                      if (!startsNewDay(m.sentAt, previous?.sentAt)) {
+                        return _MessageFarewellRow(
+                          key: ValueKey('row-${m.id}'),
+                          leaving: leaving,
+                          child: bubble,
+                        );
+                      }
+                      return _MessageFarewellRow(
+                        key: ValueKey('row-${m.id}'),
+                        leaving: leaving,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _DaySeparator(
+                              day: m.sentAt,
+                              onTap: () => unawaited(_openCalendar(m.sentAt)),
+                            ),
+                            bubble,
+                          ],
                         ),
-                        bubble,
-                      ],
-                    ),
-                  );
-                },
+                      );
+                    },
                   ),
                   // The date of whatever is at the top, following the scroll.
                   // The separators below stay exactly where they were; this is
@@ -2520,8 +2544,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       onDelete: () => unawaited(_deleteSelection(selection)),
                       onTranslate: singleSelected == null ||
                               _translatableText(singleSelected) == null ||
-                              ref.read(translationProvider)[
-                                      singleSelected.id] !=
+                              ref.read(
+                                      translationProvider)[singleSelected.id] !=
                                   null
                           ? null
                           : () =>
@@ -2713,8 +2737,7 @@ class _DaySeparator extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               color: AppColors.pane(0.55),
               borderRadius: BorderRadius.circular(12),
@@ -3330,8 +3353,8 @@ class _PinnedBar extends StatelessWidget {
               // pinned. Same reasoning as the bubble thumbnails and the
               // gallery cells; this one was missed because it is not in a
               // grid, which is where the cost was being looked for.
-              cacheWidth: (_thumb * MediaQuery.devicePixelRatioOf(context))
-                  .round(),
+              cacheWidth:
+                  (_thumb * MediaQuery.devicePixelRatioOf(context)).round(),
               // A pinned photo whose cache file went missing must not take the
               // whole header down with it.
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
@@ -3406,7 +3429,6 @@ class _PinnedBar extends StatelessWidget {
       ),
     );
   }
-
 }
 
 /// Telegram's pin rail: one segment per pinned message, the shown one lit.
@@ -4119,10 +4141,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordStart() async {
     if (_recordMode == RecordMode.circle) {
-      if (_circleStarting || _circleFinishing || (_circle?.isActive ?? false)) return;
+      if (_circleStarting || _circleFinishing || (_circle?.isActive ?? false))
+        return;
       final session = ++_circleSession;
       final recorder = _circleRecorder;
-      setState(() { _circleStarting = true; _recordLocked = false; });
+      setState(() {
+        _circleStarting = true;
+        _recordLocked = false;
+      });
       // Keep the composer's focus and keyboard. The recording overlay uses
       // the existing viewInsets and leaves the draft field mounted.
       _showCircleOverlay();
@@ -4135,10 +4161,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       if (!ok) {
         _hideCircleOverlay();
         if (recorder.error != null) {
-          showGlassToast(context,
+          showGlassToast(
+            context,
             recorder.error == 'camera-or-microphone-denied'
-              ? AppLocalizations.of(context).circleNeedsCamera
-              : AppLocalizations.of(context).circleFailed,
+                ? AppLocalizations.of(context).circleNeedsCamera
+                : AppLocalizations.of(context).circleFailed,
             tone: ToastTone.danger,
           );
         }
@@ -4194,7 +4221,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       try {
         final shot = await stopping;
         if (shot == null) return;
-        if (!mounted) { await _discardRecording(shot.file.path); return; }
+        if (!mounted) {
+          await _discardRecording(shot.file.path);
+          return;
+        }
         // Not awaited, and that is the fix rather than an oversight.
         //
         // This gate exists to stop two recordings overlapping, and it used to
@@ -4354,8 +4384,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     final from = (envelope.length * startMs / fullMs)
         .floor()
         .clamp(0, envelope.length - 1);
-    final to =
-        (envelope.length * endMs / fullMs).ceil().clamp(from + 1, envelope.length);
+    final to = (envelope.length * endMs / fullMs)
+        .ceil()
+        .clamp(from + 1, envelope.length);
     return envelope.sublist(from, to);
   }
 
@@ -4932,7 +4963,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     for (var i = 0; i < encoded.length; i++) {
       // A view-once photo is never written to this phone — see
       // [_sendImageBytes] for the whole argument.
-      cached.add(viewOnce ? null : await _cacheOutgoingImage(encoded[i], 'p$i-$stamp'));
+      cached.add(viewOnce
+          ? null
+          : await _cacheOutgoingImage(encoded[i], 'p$i-$stamp'));
     }
     if (!mounted) return;
 
@@ -5474,7 +5507,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
 
     return PopScope<void>(
-      canPop: selectedMessages.isEmpty && !_circleStarting && !(_circle?.isActive ?? false),
+      canPop: selectedMessages.isEmpty &&
+          !_circleStarting &&
+          !(_circle?.isActive ?? false),
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_circleStarting || (_circle?.isActive ?? false)) {

@@ -1259,7 +1259,10 @@ export function parseReportPayload(content) {
   if (!REPORT_REASONS.has(reason)) return null;
   if (!REPORT_CONTEXTS.has(context)) return null;
   if (context === 'direct' && typeof target !== 'string') return null;
-  if (target !== undefined && (typeof target !== 'string' || !HEX64.test(target))) return null;
+  // Channel frames expose only the author's 8-byte signing fingerprint.
+  // Requiring a full mesh identity here made every real channel report fail.
+  if (target !== undefined && (typeof target !== 'string' ||
+      !(context === 'channel' ? /^[0-9a-f]{16}$/i.test(target) : HEX64.test(target)))) return null;
   if (targetNpub !== undefined && (typeof targetNpub !== 'string' || !HEX64.test(targetNpub))) return null;
   if (note !== undefined && (typeof note !== 'string' || note.length > 500)) return null;
   if (channelId !== undefined && typeof channelId !== 'string') return null;

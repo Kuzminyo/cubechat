@@ -5933,7 +5933,7 @@ abstract class AppLocalizations {
   /// No description provided for @termsBody.
   ///
   /// In en, this message translates to:
-  /// **'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer and are acted on within 24 hours, and offenders are banned.'**
+  /// **'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer for review, and offenders can be banned.'**
   String get termsBody;
 
   /// No description provided for @termsReadFull.
@@ -5947,6 +5947,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'I agree'**
   String get termsAccept;
+
+  /// No description provided for @messageHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get messageHide;
+
+  /// No description provided for @messageHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden for you'**
+  String get messageHidden;
+
+  /// No description provided for @reportAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get reportAction;
+
+  /// No description provided for @reportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s wrong?'**
+  String get reportTitle;
+
+  /// No description provided for @reportReasonSpam.
+  ///
+  /// In en, this message translates to:
+  /// **'Spam'**
+  String get reportReasonSpam;
+
+  /// No description provided for @reportReasonAbuse.
+  ///
+  /// In en, this message translates to:
+  /// **'Abuse or harassment'**
+  String get reportReasonAbuse;
+
+  /// No description provided for @reportReasonViolence.
+  ///
+  /// In en, this message translates to:
+  /// **'Violence'**
+  String get reportReasonViolence;
+
+  /// No description provided for @reportReasonSexual.
+  ///
+  /// In en, this message translates to:
+  /// **'Sexual content'**
+  String get reportReasonSexual;
+
+  /// No description provided for @reportReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get reportReasonOther;
+
+  /// No description provided for @reportNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe (optional)'**
+  String get reportNoteHint;
+
+  /// No description provided for @reportSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send report'**
+  String get reportSend;
+
+  /// No description provided for @reportDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected message text and your report go to Cubechat moderation and its private Telegram bot.'**
+  String get reportDisclosure;
+
+  /// No description provided for @reportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent for review.'**
+  String get reportSent;
+
+  /// No description provided for @reportQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Report saved. It will send when online.'**
+  String get reportQueued;
+
+  /// No description provided for @reportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not send the report.'**
+  String get reportFailed;
+
+  /// No description provided for @filteredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden by the filter'**
+  String get filteredMessage;
+
+  /// No description provided for @filteredShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get filteredShow;
+
+  /// No description provided for @filterToggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Offensive-content filter'**
+  String get filterToggle;
+
+  /// No description provided for @filterToggleHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hides rude words from strangers and in channels'**
+  String get filterToggleHint;
+
+  /// No description provided for @aboutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get aboutTitle;
+
+  /// No description provided for @aboutContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Email the developer'**
+  String get aboutContact;
+
+  /// No description provided for @aboutReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Report a violation'**
+  String get aboutReport;
+
+  /// No description provided for @aboutTerms.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of use'**
+  String get aboutTerms;
+
+  /// No description provided for @aboutPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy policy'**
+  String get aboutPrivacy;
 }
 
 class _AppLocalizationsDelegate
