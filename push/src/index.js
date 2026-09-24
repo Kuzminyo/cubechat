@@ -9,9 +9,9 @@
 // not a policy but a fact about what it is given.
 
 import { createServer } from 'node:http';
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { connect as http2Connect } from 'node:http2';
-import { createSign, createHmac, randomUUID } from 'node:crypto';
+import { createSign, createHmac, randomUUID, randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { schnorr } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
@@ -1055,6 +1055,19 @@ export const server = createServer(async (request, response) => {
     response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
   }
+  if (request.method === 'POST' && request.url === '/report') {
+    let event;
+    try {
+      event = JSON.parse(await readBody(request));
+    } catch {
+      return json(response, 400, { ok: false, reason: 'body' });
+    }
+    const result = await handleReport(event, {
+      limiter: reportLimiter, store: reportStore, notify: logReport,
+    });
+    response.setHeader('cache-control', 'no-store');
+    return json(response, result.status, result.body);
+  }
   if (request.method === 'POST' && request.url === '/register') {
     let event;
     try {
@@ -1153,4 +1166,250 @@ export function handleTurn(event, {
   } catch {
     return { status: 503, body: { ok: false, reason: 'unconfigured' } };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+// A report is signed the same way a TURN request is — same kind, same key,
+// its own `action` tag — for the same reason: unforgeable without inventing a
+// second signing scheme, and unforwardable to a different purpose because the
+// purpose is inside what got signed.
+const REPORT_KIND = REGISTER_KIND;
+
+// Wider than a registration's five minutes in both directions, because a
+// report is typed by a person rather than fired by a background timer: the
+// sheet can sit open while they write a note, and the phone's clock is
+// trusted less than the seconds it takes to submit. Still bounded, so a
+// captured report can't be replayed indefinitely.
+const REPORT_MAX_PAST_SECONDS = 600;
+const REPORT_MAX_FUTURE_SECONDS = 60;
+
+const REPORT_REASONS = new Set(['spam', 'abuse', 'violence', 'sexual', 'other']);
+const REPORT_CONTEXTS = new Set(['direct', 'channel', 'airdrop', 'general']);
+const REPORT_MESSAGE_KINDS = new Set(['text', 'photo', 'video', 'voice', 'file', 'sticker', 'other']);
+
+const HEX64 = /^[0-9a-f]{64}$/i;
+
+/// The report payload out of an event's `content`, or `null` when anything in
+/// it is malformed — never thrown, so the caller has one thing to check.
+///
+/// `target` is required for `direct` (there is no other way to say who the
+/// report is about) and optional everywhere else: `general` has nobody in
+/// particular, and `channel`/`airdrop` reports may carry only a message.
+export function parseReportPayload(content) {
+  let payload;
+  try {
+    payload = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+
+  const { reason, note, target, targetNpub, context, channelId, message } = payload;
+  if (!REPORT_REASONS.has(reason)) return null;
+  if (!REPORT_CONTEXTS.has(context)) return null;
+  if (context === 'direct' && typeof target !== 'string') return null;
+  if (target !== undefined && (typeof target !== 'string' || !HEX64.test(target))) return null;
+  if (targetNpub !== undefined && (typeof targetNpub !== 'string' || !HEX64.test(targetNpub))) return null;
+  if (note !== undefined && (typeof note !== 'string' || note.length > 500)) return null;
+  if (channelId !== undefined && typeof channelId !== 'string') return null;
+
+  let parsedMessage;
+  if (message !== undefined) {
+    if (!message || typeof message !== 'object' || Array.isArray(message)) return null;
+    const { text, kind, sentAt } = message;
+    if (text !== undefined && (typeof text !== 'string' || text.length > 4000)) return null;
+    if (kind !== undefined && !REPORT_MESSAGE_KINDS.has(kind)) return null;
+    if (sentAt !== undefined && typeof sentAt !== 'number') return null;
+    parsedMessage = {
+      ...(text !== undefined ? { text } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+      ...(sentAt !== undefined ? { sentAt } : {}),
+    };
+  }
+
+  return {
+    reason,
+    context,
+    ...(note !== undefined ? { note } : {}),
+    ...(target !== undefined ? { target } : {}),
+    ...(targetNpub !== undefined ? { targetNpub } : {}),
+    ...(channelId !== undefined ? { channelId } : {}),
+    ...(parsedMessage !== undefined ? { message: parsedMessage } : {}),
+  };
+}
+
+/// A sliding-window log: one array of accepted timestamps per key, plus one
+/// for the whole service. Trimmed to the window on every call, so a key's or
+/// the service's quota is always exactly "how many in the last hour", not a
+/// count that resets on a clock boundary and can be burst around.
+export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 3600 } = {}) {
+  const perKeyHits = new Map();
+  let totalHits = [];
+
+  return {
+    allow(pubkey, nowSeconds) {
+      const cutoff = nowSeconds - windowSeconds;
+      totalHits = totalHits.filter((t) => t > cutoff);
+      const keyHits = (perKeyHits.get(pubkey) ?? []).filter((t) => t > cutoff);
+
+      if (keyHits.length >= perKey || totalHits.length >= total) {
+        perKeyHits.set(pubkey, keyHits);
+        return false;
+      }
+
+      keyHits.push(nowSeconds);
+      totalHits.push(nowSeconds);
+      perKeyHits.set(pubkey, keyHits);
+      return true;
+    },
+  };
+}
+
+/// The report store: an append-only log on disk (`reports.jsonl`), mirrored
+/// in memory. `seq` is assigned here, monotonically, and survives a restart
+/// by scanning the highest `seq` already on disk — there is no separate
+/// counter file to fall out of step with the log itself.
+///
+/// `append` only ever grows the file. `update` (S2's ban/dismiss) can't:
+/// changing one line of a JSONL file in place means rewriting it, so it goes
+/// through the same temp-file-then-rename the token store uses at ~line 107
+/// — a crash mid-write leaves the old file intact rather than a half-written
+/// one.
+export function createReportStore(path = process.env.REPORTS_PATH || './reports.jsonl') {
+  let reports = null;
+  let nextSeq = 1;
+  let loadingPromise = null;
+
+  function load() {
+    if (reports) return Promise.resolve();
+    if (!loadingPromise) {
+      loadingPromise = (async () => {
+        const map = new Map();
+        let maxSeq = 0;
+        try {
+          const raw = await readFile(path, 'utf8');
+          for (const line of raw.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              const report = JSON.parse(line);
+              if (report && typeof report.id === 'string') {
+                map.set(report.id, report);
+                if (Number.isSafeInteger(report.seq) && report.seq > maxSeq) maxSeq = report.seq;
+              }
+            } catch {
+              // One corrupt line (a crash mid-append, before appendFile's
+              // write completed) must not lose every report before it.
+            }
+          }
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        reports = map;
+        nextSeq = maxSeq + 1;
+      })();
+    }
+    return loadingPromise;
+  }
+
+  // Every write — append or update — goes through this queue, so an update
+  // racing an append can't read the map mid-mutation or clobber a rewrite
+  // with a stale one.
+  let queue = Promise.resolve();
+  function enqueue(task) {
+    const result = queue.then(task);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async function rewrite() {
+    const body = [...reports.values()]
+      .sort((a, b) => a.seq - b.seq)
+      .map((report) => JSON.stringify(report))
+      .join('\n');
+    const temp = `${path}.${randomUUID()}`;
+    await writeFile(temp, body.length ? `${body}\n` : '');
+    await rename(temp, path);
+  }
+
+  return {
+    async append(report) {
+      await load();
+      return enqueue(async () => {
+        const stored = { ...report, seq: nextSeq++ };
+        reports.set(stored.id, stored);
+        await appendFile(path, `${JSON.stringify(stored)}\n`);
+        return stored;
+      });
+    },
+    async update(id, patch) {
+      await load();
+      return enqueue(async () => {
+        const existing = reports.get(id);
+        if (!existing) return null;
+        const updated = { ...existing, ...patch };
+        reports.set(id, updated);
+        await rewrite();
+        return updated;
+      });
+    },
+    async open() {
+      await load();
+      return [...reports.values()]
+        .filter((report) => report.status === 'open')
+        .sort((a, b) => a.seq - b.seq);
+    },
+    // S2's `GET /admin/reports?since=<seq>` paging: everything appended after
+    // `seq` (0 = all), in order, plus the `seq` to ask for next time.
+    async since(seq) {
+      await load();
+      const rest = [...reports.values()]
+        .filter((report) => report.seq > seq)
+        .sort((a, b) => a.seq - b.seq);
+      const next = rest.length ? rest[rest.length - 1].seq : seq;
+      return { reports: rest, next };
+    },
+  };
+}
+
+const reportLimiter = createRateLimiter();
+const reportStore = createReportStore();
+
+function logReport(report) {
+  log('report', `${short(report.reporter)} reported ${report.context} (${report.reason}) [${report.id}]`);
+}
+
+export async function handleReport(event, {
+  nowSeconds = Math.floor(Date.now() / 1000),
+  limiter,
+  store,
+  notify = () => {},
+} = {}) {
+  if (!verifyEvent(event) || event.kind !== REPORT_KIND ||
+      !event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action' && tag[1] === 'report')) {
+    return { status: 401, body: { ok: false, reason: 'signature' } };
+  }
+  if (!Number.isSafeInteger(event.created_at) ||
+      event.created_at < nowSeconds - REPORT_MAX_PAST_SECONDS ||
+      event.created_at > nowSeconds + REPORT_MAX_FUTURE_SECONDS) {
+    return { status: 401, body: { ok: false, reason: 'stale' } };
+  }
+  const payload = parseReportPayload(event.content);
+  if (!payload) return { status: 400, body: { ok: false, reason: 'payload' } };
+  if (!limiter.allow(event.pubkey, nowSeconds)) {
+    return { status: 429, body: { ok: false, reason: 'rate' } };
+  }
+
+  const report = {
+    id: randomBytes(8).toString('hex'),
+    at: nowSeconds,
+    reporter: event.pubkey,
+    status: 'open',
+    ...payload,
+  };
+  const stored = await store.append(report);
+  notify(stored ?? report);
+  return { status: 200, body: { ok: true, id: report.id } };
 }
