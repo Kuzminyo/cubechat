@@ -694,12 +694,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
                       fit: StackFit.expand,
                       children: [
                         child ?? const SizedBox.shrink(),
-                        Positioned(
-                          top: MediaQuery.paddingOf(context).top + 8,
-                          left: 12,
-                          right: 12,
-                          child: AirDropRequestBanner(onOpen: _openAirDrop),
-                        ),
+                        AirDropRequestOverlay(onOpen: _openAirDrop),
                       ],
                     ),
                   ),

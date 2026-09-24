@@ -64,6 +64,28 @@ class AppShell extends ConsumerWidget {
   /// is torn down.
   final StatefulNavigationShell shell;
 
+  /// Space between the safe area and the capsule; see where it is used.
+  static double get _barGap => PlatformInfo.isIOS ? 8 : 12;
+
+  /// How far above the bottom edge of the screen the bar's top edge sits.
+  ///
+  /// For things that float over every tab and must stay clear of the bar —
+  /// the AirDrop request card. Computed from the same constants the capsule is
+  /// laid out with, label line scaled by the text scale the app clamps to, so
+  /// a change to the bar moves them with it instead of leaving a guessed
+  /// number behind.
+  static double barTop(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final label =
+        scaler.scale(_GlassPillState._label) * _GlassPillState._labelHeight;
+    return MediaQuery.paddingOf(context).bottom +
+        _barGap +
+        _GlassPillState._padV * 2 +
+        _GlassPillState._iconBox +
+        _GlassPillState._labelGap +
+        label;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
@@ -162,8 +184,7 @@ class AppShell extends ConsumerWidget {
               // platform the spacing was drawn against. Asked for as "чуть
               // чуть опусти" and it is exactly that much — a nudge, not a new
               // number.
-              bottom: MediaQuery.paddingOf(context).bottom +
-                  (PlatformInfo.isIOS ? 8 : 12),
+              bottom: MediaQuery.paddingOf(context).bottom + _barGap,
               // Row, not Center: with only `bottom` pinned the child gets loose
               // height, and Center would happily grow to the whole Stack. Row
               // keeps the height tight to the capsule.
@@ -244,6 +265,10 @@ class _GlassPillState extends State<_GlassPill>
   static const double _iconBox = 46;
   static const double _iconSize = 24;
   static const double _labelGap = 2;
+
+  /// The label's font size and line height, read by [AppShell.barTop] too.
+  static const double _label = 10.5;
+  static const double _labelHeight = 1.2;
 
   /// 240 ms, down from 420.
   ///
@@ -462,8 +487,8 @@ class _NavItem extends StatelessWidget {
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               style: TextStyle(
-                fontSize: 10.5,
-                height: 1.2,
+                fontSize: _GlassPillState._label,
+                height: _GlassPillState._labelHeight,
                 color: color,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),

@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/core/routing/app_shell.dart';
+import 'package:cubechat/core/widgets/bar_glass.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/contacts/presentation/contacts_screen.dart';
@@ -102,5 +104,30 @@ void main() {
       );
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AppShell.barTop is where the capsule really ends',
+      (WidgetTester tester) async {
+    // The AirDrop request card floats this far up to clear the bar; a bar that
+    // grew without barTop following would slide under the card.
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 2.75;
+    tester.view.padding = const FakeViewPadding(bottom: 66);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final bar = find.descendant(
+      of: find.byType(AppShell),
+      matching: find.byType(BarGlass),
+    );
+    final capsuleTop = [
+      for (final e in bar.evaluate()) tester.getRect(find.byWidget(e.widget)),
+    ].reduce((a, b) => a.bottom > b.bottom ? a : b).top;
+    final screen = tester.view.physicalSize.height / 2.75;
+    final barTop = AppShell.barTop(tester.element(find.byType(AppShell)));
+    expect(screen - barTop, moreOrLessEquals(capsuleTop, epsilon: 0.5));
   });
 }

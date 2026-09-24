@@ -6,6 +6,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/transport/nearby_offer.dart';
 import '../../../core/util/media_storage.dart';
 import '../../../core/utils/file_mime.dart';
+import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
@@ -78,6 +79,7 @@ class AirDropRequestCard extends StatelessWidget {
     required this.onAccept,
     required this.onDecline,
     this.onTap,
+    this.floating = false,
   });
 
   final AirDropTransfer transfer;
@@ -85,14 +87,37 @@ class AirDropRequestCard extends StatelessWidget {
   final VoidCallback onDecline;
   final VoidCallback? onTap;
 
+  /// Drawn over arbitrary content — the banner over a chat — rather than on
+  /// the aurora. A [GlassCard] is 4-22% white and unblurred: rendered over a
+  /// conversation, the bubbles behind read straight through the name and the
+  /// buttons. Floating, it takes the composer's own pane (a 52-66% smoked fill
+  /// plus the blur), which costs a backdrop pass only while a request is
+  /// pending — a minute at most.
+  final bool floating;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final names = transfer.files.take(3).map((f) => f.name).join(', ');
     final more = transfer.files.length > 3 ? ' …' : '';
+    final content = _content(t, names, more);
+    if (floating) {
+      return FloatingGlass(
+        onTap: onTap,
+        borderRadius: 24,
+        padding: const EdgeInsets.all(16),
+        child: content,
+      );
+    }
     return GlassCard(
       onTap: onTap,
-      child: Column(
+      strong: true,
+      borderRadius: 24,
+      child: content,
+    );
+  }
+
+  Widget _content(AppLocalizations t, String names, String more) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -100,33 +125,49 @@ class AirDropRequestCard extends StatelessWidget {
               IdentityAvatar(
                 seed: transfer.peerHex,
                 label: transfer.peerName,
-                size: 40,
+                size: 44,
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: transfer.peerName,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      transfer.peerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                      TextSpan(text: ' ${airdropRequestBody(t, transfer)}'),
-                    ],
-                  ),
-                  style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      airdropRequestBody(t, transfer),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _dim(13),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.file_present_rounded,
+                color: AppColors.brandPrimary,
+                size: 22,
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             '$names$more',
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: _dim(12),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -148,9 +189,7 @@ class AirDropRequestCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
+      );
 }
 
 class AirDropProgressCard extends StatelessWidget {
