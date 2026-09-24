@@ -12,6 +12,7 @@ import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_page.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_people_sheet.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
+import 'package:cubechat/features/peers/data/peer_discovery_controller.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +78,18 @@ class _IdleBump extends BumpController {
   BumpState build() => const BumpState();
 }
 
+/// Stands in for the scanner, which the page now watches for the adapter
+/// state — the real controller would reach for flutter_blue_plus.
+class _Discovery extends PeerDiscoveryController {
+  _Discovery(this.status);
+
+  final PeerDiscoveryStatus status;
+
+  @override
+  PeerDiscoveryState build() =>
+      PeerDiscoveryState(status: status, peers: const []);
+}
+
 class _MemTransfers extends FileTransferController {
   @override
   Map<String, FileTransferTask> build() => const {};
@@ -122,6 +135,7 @@ Widget _app(Widget home, List<Override> overrides) => ProviderScope(
 void main() {
   late _Receive receive;
   late _Lane lane;
+  late PeerDiscoveryStatus scan;
 
   List<Override> overrides(
     _FakeAirDrop airdrop, [
@@ -134,12 +148,41 @@ void main() {
         airdropLaneProvider.overrideWith(() => lane),
         fileTransferControllerProvider.overrideWith(_MemTransfers.new),
         bumpControllerProvider.overrideWith(_IdleBump.new),
+        peerDiscoveryControllerProvider.overrideWith(() => _Discovery(scan)),
       ];
 
   setUp(() {
     receive = _Receive();
     lane = _Lane();
+    scan = PeerDiscoveryStatus.scanning;
   });
+
+  const bluetoothHint = 'Увімкніть Bluetooth на обох телефонах, щоб знайти '
+      'один одного й підтвердити передачу.';
+
+  testWidgets('with Bluetooth off the page says both phones need it',
+      (tester) async {
+    scan = PeerDiscoveryStatus.adapterOff;
+    final airdrop = _FakeAirDrop(const AirDropState());
+    await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+    await tester.pumpAndSettle();
+    expect(find.text(bluetoothHint), findsOneWidget);
+  });
+
+  // Bluetooth on, or merely not known yet: no hint.
+  for (final status in [
+    PeerDiscoveryStatus.scanning,
+    PeerDiscoveryStatus.idle,
+    PeerDiscoveryStatus.permissionsUnknown,
+  ]) {
+    testWidgets('no Bluetooth hint while ${status.name}', (tester) async {
+      scan = status;
+      final airdrop = _FakeAirDrop(const AirDropState());
+      await tester.pumpWidget(_app(const AirDropPage(), overrides(airdrop)));
+      await tester.pumpAndSettle();
+      expect(find.text(bluetoothHint), findsNothing);
+    });
+  }
 
   testWidgets('a request says who, what and how much, and both buttons work',
       (tester) async {
@@ -233,7 +276,7 @@ void main() {
     expect(picked?.hex, 'dd');
   });
 
-  testWidgets('with nobody linked the list says how to link', (tester) async {
+  testWidgets('with nobody nearby the list says so', (tester) async {
     await tester.pumpWidget(
       _app(
         AirDropPeopleList(onPick: (_) {}),
@@ -241,7 +284,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('Поруч ніхто не підключений'), findsOneWidget);
+    expect(find.text('Поруч поки нікого з cubechat'), findsOneWidget);
   });
 
   testWidgets(
@@ -353,8 +396,18 @@ void main() {
       'pick a person', (tester) async {
     final airdrop = _FakeAirDrop(const AirDropState());
     final staged = [
-      AirDropSource(file: File('a.jpg'), name: 'a.jpg', size: 10, mime: 'image/jpeg'),
-      AirDropSource(file: File('b.jpg'), name: 'b.jpg', size: 20, mime: 'image/jpeg'),
+      AirDropSource(
+        file: File('a.jpg'),
+        name: 'a.jpg',
+        size: 10,
+        mime: 'image/jpeg',
+      ),
+      AirDropSource(
+        file: File('b.jpg'),
+        name: 'b.jpg',
+        size: 20,
+        mime: 'image/jpeg',
+      ),
     ];
     await tester.pumpWidget(
       _app(const AirDropPage(), [
@@ -366,7 +419,10 @@ void main() {
 
     expect(find.text('2 файли готові'), findsOneWidget);
     expect(
-      find.text('Піднесіть телефон до іншого або виберіть людину'),
+      find.text(
+        'З увімкненим Bluetooth та AirDrop на обох телефонах піднесіть їх '
+        'або виберіть людину',
+      ),
       findsOneWidget,
     );
     expect(find.text('Вибрати людину'), findsOneWidget);

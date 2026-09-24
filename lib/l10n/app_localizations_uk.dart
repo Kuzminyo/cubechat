@@ -3262,7 +3262,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get airdropStagedHint =>
-      'Піднесіть телефон до іншого або виберіть людину';
+      'З увімкненим Bluetooth та AirDrop на обох телефонах піднесіть їх або виберіть людину';
 
   @override
   String get airdropStagedPickPerson => 'Вибрати людину';
@@ -3378,8 +3378,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String get airdropPickPerson => 'Надіслати кому';
 
   @override
-  String get airdropNobody =>
-      'Поруч ніхто не підключений. Спершу відкрийте «Поблизу» і торкніться людини.';
+  String get airdropNobody => 'Поруч поки нікого з cubechat';
 
   @override
   String get airdropNoDirect => 'Немає зв’язку Bluetooth з цією людиною';
@@ -3425,8 +3424,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get airdropLaneWifi => 'Wi‑Fi';
 
   @override
+  String get airdropBluetoothNeededHint =>
+      'Увімкніть Bluetooth на обох телефонах, щоб знайти один одного й підтвердити передачу.';
+
+  @override
   String get airdropLaneHint =>
-      'Wi‑Fi працює, коли ви в одній мережі або один роздає точку доступу.';
+      'Bluetooth знаходить і з’єднує телефони. Wi‑Fi передає файли, коли обидва телефони в одній мережі або точці доступу.';
 
   @override
   String get airdropWifiUnreachable => 'Не в одній мережі';

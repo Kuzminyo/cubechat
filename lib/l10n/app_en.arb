@@ -1592,7 +1592,7 @@
       "count": {"type": "int"}
     }
   },
-  "airdropStagedHint": "Hold your phone against theirs, or choose a person",
+  "airdropStagedHint": "With Bluetooth on and AirDrop open on both phones, hold them together or choose a person",
   "airdropStagedPickPerson": "Choose person",
   "airdropRequestBody": "wants to send {what} · {size}",
   "@airdropRequestBody": {
@@ -1642,7 +1642,7 @@
   "airdropClearHistory": "Clear history",
   "airdropEmpty": "Files you send or receive nearby will be here",
   "airdropPickPerson": "Send to",
-  "airdropNobody": "Nobody is connected nearby. Open Nearby and tap a person first.",
+  "airdropNobody": "Nobody nearby with cubechat yet",
   "airdropNoDirect": "No Bluetooth connection with this person",
   "airdropNearbyUnknown": "Nearby",
   "airdropConnecting": "Connecting…",
@@ -1667,7 +1667,8 @@
   "airdropLaneAuto": "Auto",
   "airdropLaneBluetooth": "Bluetooth",
   "airdropLaneWifi": "Wi‑Fi",
-  "airdropLaneHint": "Wi‑Fi works when you are both on one network or one shares a hotspot.",
+  "airdropBluetoothNeededHint": "Turn on Bluetooth on both phones to find each other and confirm a transfer.",
+  "airdropLaneHint": "Bluetooth finds and connects the phones. Wi‑Fi moves files when both phones share a network or hotspot.",
   "airdropWifiUnreachable": "Not on the same network",
   "airdropWifiOldVersion": "Their app can't receive over Wi‑Fi yet",
   "airdropBumpAdd": "Add",

@@ -5609,7 +5609,7 @@ abstract class AppLocalizations {
   /// No description provided for @airdropStagedHint.
   ///
   /// In en, this message translates to:
-  /// **'Hold your phone against theirs, or choose a person'**
+  /// **'With Bluetooth on and AirDrop open on both phones, hold them together or choose a person'**
   String get airdropStagedHint;
 
   /// No description provided for @airdropStagedPickPerson.
@@ -5783,7 +5783,7 @@ abstract class AppLocalizations {
   /// No description provided for @airdropNobody.
   ///
   /// In en, this message translates to:
-  /// **'Nobody is connected nearby. Open Nearby and tap a person first.'**
+  /// **'Nobody nearby with cubechat yet'**
   String get airdropNobody;
 
   /// No description provided for @airdropNoDirect.
@@ -5864,10 +5864,16 @@ abstract class AppLocalizations {
   /// **'Wi‑Fi'**
   String get airdropLaneWifi;
 
+  /// No description provided for @airdropBluetoothNeededHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on Bluetooth on both phones to find each other and confirm a transfer.'**
+  String get airdropBluetoothNeededHint;
+
   /// No description provided for @airdropLaneHint.
   ///
   /// In en, this message translates to:
-  /// **'Wi‑Fi works when you are both on one network or one shares a hotspot.'**
+  /// **'Bluetooth finds and connects the phones. Wi‑Fi moves files when both phones share a network or hotspot.'**
   String get airdropLaneHint;
 
   /// No description provided for @airdropWifiUnreachable.

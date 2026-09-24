@@ -111,7 +111,7 @@ void main() {
       tester.getTopLeft(find.text('Оля')).dy,
       lessThan(tester.getTopLeft(find.text('Поруч')).dy),
     );
-    expect(find.textContaining('ніхто не підключений'), findsNothing);
+    expect(find.text('Поруч поки нікого з cubechat'), findsNothing);
   });
 
   testWidgets('one row per person: a scanned phone that is linked is not two',

@@ -3223,7 +3223,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get airdropStagedHint =>
-      'Hold your phone against theirs, or choose a person';
+      'With Bluetooth on and AirDrop open on both phones, hold them together or choose a person';
 
   @override
   String get airdropStagedPickPerson => 'Choose person';
@@ -3337,8 +3337,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get airdropPickPerson => 'Send to';
 
   @override
-  String get airdropNobody =>
-      'Nobody is connected nearby. Open Nearby and tap a person first.';
+  String get airdropNobody => 'Nobody nearby with cubechat yet';
 
   @override
   String get airdropNoDirect => 'No Bluetooth connection with this person';
@@ -3384,8 +3383,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get airdropLaneWifi => 'Wi‑Fi';
 
   @override
+  String get airdropBluetoothNeededHint =>
+      'Turn on Bluetooth on both phones to find each other and confirm a transfer.';
+
+  @override
   String get airdropLaneHint =>
-      'Wi‑Fi works when you are both on one network or one shares a hotspot.';
+      'Bluetooth finds and connects the phones. Wi‑Fi moves files when both phones share a network or hotspot.';
 
   @override
   String get airdropWifiUnreachable => 'Not on the same network';

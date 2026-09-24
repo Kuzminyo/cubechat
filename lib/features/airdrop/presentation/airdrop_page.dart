@@ -18,6 +18,7 @@ import '../data/airdrop_receive_controller.dart';
 import '../data/airdrop_source.dart';
 import '../data/airdrop_staged.dart';
 import '../domain/airdrop_transfer.dart';
+import '../../peers/data/peer_discovery_controller.dart';
 import 'airdrop_cards.dart';
 import 'airdrop_send_flow.dart';
 import 'bump_glow.dart';
@@ -33,6 +34,11 @@ class AirDropPage extends ConsumerWidget {
     final state = ref.watch(airdropControllerProvider);
     final history = ref.watch(airdropHistoryProvider);
     final staged = ref.watch(airdropStagedProvider);
+    final bluetoothOff = ref.watch(
+      peerDiscoveryControllerProvider.select(
+        (discovery) => discovery.status == PeerDiscoveryStatus.adapterOff,
+      ),
+    );
     final controller = ref.read(airdropControllerProvider.notifier);
     final reduced = MediaQuery.disableAnimationsOf(context);
     final now = DateTime.now();
@@ -44,6 +50,32 @@ class AirDropPage extends ConsumerWidget {
         // page and already pads the switch away from it (nearby_screen.dart).
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
         children: [
+          if (bluetoothOff) ...[
+            GlassCard(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bluetooth_disabled_rounded,
+                    color: AppColors.warning,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      t.airdropBluetoothNeededHint,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           AppearAnimation(
             enabled: animate && !reduced,
             child: const _ReceiveSwitch(),
@@ -114,8 +146,7 @@ class AirDropPage extends ConsumerWidget {
                       }
                     },
                     onClear: () {
-                      ref.read(airdropStagedProvider.notifier).state =
-                          const [];
+                      ref.read(airdropStagedProvider.notifier).state = const [];
                     },
                   ),
           ),
@@ -147,8 +178,7 @@ class AirDropPage extends ConsumerWidget {
                           key: const ValueKey('request'),
                           transfer: x,
                           onAccept: () => unawaited(controller.accept(x.id)),
-                          onDecline: () =>
-                              unawaited(controller.decline(x.id)),
+                          onDecline: () => unawaited(controller.decline(x.id)),
                         )
                       : AirDropProgressCard(
                           key: const ValueKey('progress'),
@@ -204,8 +234,7 @@ class AirDropPage extends ConsumerWidget {
                     (animate ||
                         now.difference(history[i].at) <
                             const Duration(seconds: 2)),
-                delay:
-                    animate ? AppearAnimation.stagger(i + 3) : Duration.zero,
+                delay: animate ? AppearAnimation.stagger(i + 3) : Duration.zero,
                 child: AirDropHistoryRow(entry: history[i]),
               ),
             ),
