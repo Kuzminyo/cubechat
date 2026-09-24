@@ -1079,6 +1079,10 @@ export const server = createServer(async (request, response) => {
     return json(response, result.ok ? 200 : 400, result);
   }
   if (request.url.startsWith('/admin/')) {
+    // Set before any response on this path, including the "body too large"
+    // 400 below — every /admin/ response is uncacheable, not just the happy
+    // ones.
+    response.setHeader('cache-control', 'no-store');
     let body = '';
     try {
       body = await readBody(request);
@@ -1089,7 +1093,6 @@ export const server = createServer(async (request, response) => {
       { method: request.method, url: request.url, headers: request.headers, body },
       { store: reportStore, bans: adminBans, remoteAddress: request.socket.remoteAddress },
     );
-    response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
   }
   return json(response, 404, { ok: false });
@@ -1398,6 +1401,29 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
         return updated;
       });
     },
+    // The atomic half of ban/dismiss (S2 review, round 1): reading a report's
+    // status and later writing a new one, as two separate calls, lets two
+    // concurrent decisions both read 'open' and both win. This does the
+    // check and the write inside the *same* enqueued task, so the second of
+    // two concurrent `decide` calls on one report sees the first one's write
+    // — `enqueue` chains every task after the one before it, `append` and
+    // `update` included, so this serializes against those too.
+    //
+    // Returns `{notFound: true}`, `{conflict: <current status>}`, or
+    // `{report: <updated>}` — never throws for an ordinary "already decided",
+    // since that is the expected outcome of a race, not a failure.
+    async decide(id, patch) {
+      await load();
+      return enqueue(async () => {
+        const existing = reports.get(id);
+        if (!existing) return { notFound: true };
+        if (existing.status !== 'open') return { conflict: existing.status };
+        const updated = { ...existing, ...patch };
+        reports.set(id, updated);
+        await rewrite();
+        return { report: updated };
+      });
+    },
     async open() {
       await load();
       return [...reports.values()]
@@ -1529,11 +1555,17 @@ const ADMIN_DECISION_ROUTE = /^\/admin\/reports\/([^/]+)\/(ban|dismiss)$/;
 /// 127.0.0.1. If that check were trusted alone, the bearer token would be the
 /// only real gate — one leaked token and the admin API is open to the
 /// internet. So it isn't trusted alone: Caddy's `reverse_proxy` always adds
-/// `X-Forwarded-For` (and `Via`) to what it forwards, and the bot, calling
-/// :8080 directly, never sends either. A request that carries one is refused
-/// here regardless of address or token, which is what actually distinguishes
-/// "came in through Caddy" from "came from the bot on this box". See
-/// `push/test/admin.test.js` for the proof.
+/// `X-Forwarded-For` (along with `X-Forwarded-Proto`/`X-Forwarded-Host`) to
+/// what it forwards, and the bot, calling :8080 directly, never sends it. A
+/// request that carries one is refused here regardless of address or token,
+/// which is what actually distinguishes "came in through Caddy" from "came
+/// from the bot on this box". `Via` is checked too — Caddy doesn't set it by
+/// default, but a proxy in front of *that* might, and refusing it costs
+/// nothing a real local caller would ever trip over. See
+/// `push/test/admin.test.js` for the proof, and `push/deploy/Caddyfile` for
+/// the first layer: Caddy itself now 404s `/admin/*` before this code ever
+/// sees the request, so this header check is defence in depth, not the only
+/// thing standing in the way.
 export async function handleAdmin(request, {
   adminToken = process.env.ADMIN_TOKEN,
   remoteAddress,
@@ -1561,8 +1593,18 @@ export async function handleAdmin(request, {
       return { status: 200, body: { reports: await store.open() } };
     }
     const rawSince = url.searchParams.get('since');
-    const since = rawSince === null ? 0 : Number(rawSince);
-    const sinceSeq = Number.isSafeInteger(since) && since >= 0 ? since : 0;
+    let sinceSeq = 0;
+    if (rawSince !== null) {
+      const parsed = Number(rawSince);
+      // Anything that isn't a non-negative integer — `abc`, `-1`, `1.5` — is
+      // refused rather than quietly treated as "from the start": a typo in a
+      // bot restart's saved `seq` should not silently resend the whole
+      // history of reports.
+      if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        return { status: 400, body: { reason: 'since' } };
+      }
+      sinceSeq = parsed;
+    }
     const { reports, next } = await store.since(sinceSeq);
     return { status: 200, body: { reports, next } };
   }
@@ -1570,22 +1612,27 @@ export async function handleAdmin(request, {
   const decision = method === 'POST' ? url.pathname.match(ADMIN_DECISION_ROUTE) : null;
   if (decision) {
     const [, id, action] = decision;
-    const report = await store.get(id);
-    if (!report) return { status: 404, body: { reason: 'no such report' } };
-    if (report.status !== 'open') {
-      return { status: 409, body: { ok: false, status: report.status } };
+    // `decide` does the read-check-write atomically inside the store's write
+    // queue (S2 review, round 1): two concurrent decisions on one report
+    // can't both observe 'open' the way a separate `get` then `update` could.
+    // For a dismiss that's the whole story. For a ban, the status is flipped
+    // to 'banned' *before* `bans.ban` runs — only the winner of the race gets
+    // this far — and reverted through the same queue if `bans.ban` rejects,
+    // so the only 200 a caller ever sees is a ban that was actually applied.
+    const targetStatus = action === 'ban' ? 'banned' : 'dismissed';
+    const decided = await store.decide(id, { status: targetStatus });
+    if (decided.notFound) return { status: 404, body: { reason: 'no such report' } };
+    if (decided.conflict) return { status: 409, body: { ok: false, status: decided.conflict } };
+    if (action === 'dismiss') {
+      return { status: 200, body: { ok: true, report: decided.report } };
     }
-    if (action === 'ban') {
-      try {
-        await bans.ban(report);
-      } catch {
-        return { status: 503, body: { reason: 'bans unavailable' } };
-      }
-      const updated = await store.update(id, { status: 'banned' });
-      return { status: 200, body: { ok: true, report: updated } };
+    try {
+      await bans.ban(decided.report);
+    } catch {
+      await store.update(id, { status: 'open' });
+      return { status: 503, body: { reason: 'bans unavailable' } };
     }
-    const updated = await store.update(id, { status: 'dismissed' });
-    return { status: 200, body: { ok: true, report: updated } };
+    return { status: 200, body: { ok: true, report: decided.report } };
   }
 
   if (method === 'POST' && url.pathname === '/admin/unban') {

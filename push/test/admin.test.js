@@ -13,7 +13,7 @@ const reportsDir = await mkdtemp(path.join(tmpdir(), 'cubechat-admin-reports-'))
 process.env.REPORTS_PATH = path.join(reportsDir, 'reports.jsonl');
 process.env.ADMIN_TOKEN = 'test-admin-token';
 
-const { handleAdmin, server } = await import('../src/index.js');
+const { handleAdmin, server, createReportStore } = await import('../src/index.js');
 
 const TOKEN = 'test-admin-token';
 const LOCAL = '127.0.0.1';
@@ -30,6 +30,17 @@ function fakeStore(initial = []) {
       const updated = { ...existing, ...patch };
       reports.set(id, updated);
       return updated;
+    },
+    // Mirrors the real store's atomic decide: check-and-set with no `await`
+    // in between, so this fake is race-free too (a real concurrency test
+    // uses the actual queued `createReportStore`, further down).
+    async decide(id, patch) {
+      const existing = reports.get(id);
+      if (!existing) return { notFound: true };
+      if (existing.status !== 'open') return { conflict: existing.status };
+      const updated = { ...existing, ...patch };
+      reports.set(id, updated);
+      return { report: updated };
     },
     async open() {
       return [...reports.values()].filter((r) => r.status === 'open').sort((a, b) => a.seq - b.seq);
@@ -77,6 +88,18 @@ test('GET /admin/reports?since= returns only newer reports and the right next', 
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.reports.map((r) => r.id), ['b', 'c']);
   assert.equal(result.body.next, 3);
+});
+
+test('a non-numeric or negative since is refused as 400 rather than silently treated as 0', async () => {
+  const store = fakeStore([{ id: 'a', seq: 1, status: 'open' }]);
+  for (const since of ['abc', '-1', '1.5', 'NaN']) {
+    const result = await handleAdmin(
+      req({ url: `/admin/reports?since=${since}`, headers: { authorization: `Bearer ${TOKEN}` } }),
+      { adminToken: TOKEN, remoteAddress: LOCAL, store, bans: fakeBans() },
+    );
+    assert.equal(result.status, 400, `since=${since} should be refused`);
+    assert.equal(result.body.reason, 'since');
+  }
 });
 
 test('GET /admin/reports with no since returns everything', async () => {
@@ -161,6 +184,50 @@ test('a ban whose bans.ban rejects is 503 and the report stays open', async () =
   assert.equal((await store.get('a')).status, 'open');
 });
 
+// The race S2 review round 1 flagged: reading a report's status and later
+// writing a decision, as two separate steps, let two concurrent decisions
+// both see 'open' and both return 200. These use the real, queue-backed
+// `createReportStore` rather than the fake above, because the fake's
+// check-and-set already happens with no `await` in between and so can't
+// reproduce the race a truly concurrent pair of `handleAdmin` calls exercises
+// against the real store's `enqueue`d `decide`.
+test('two concurrent bans on one report: exactly one wins, bans.ban runs once', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-admin-race-'));
+  const store = createReportStore(path.join(dir, 'reports.jsonl'));
+  await store.append({ id: 'r1', status: 'open', reason: 'spam' });
+  const bans = fakeBans();
+  const call = () => handleAdmin(
+    req({ method: 'POST', url: '/admin/reports/r1/ban', headers: { authorization: `Bearer ${TOKEN}` } }),
+    { adminToken: TOKEN, remoteAddress: LOCAL, store, bans },
+  );
+  const [a, b] = await Promise.all([call(), call()]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  assert.equal(bans.banned.length, 1, 'bans.ban must run exactly once');
+  assert.equal((await store.get('r1')).status, 'banned');
+});
+
+test('a concurrent ban and dismiss on one report: exactly one wins, the other is 409', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-admin-race-'));
+  const store = createReportStore(path.join(dir, 'reports.jsonl'));
+  await store.append({ id: 'r1', status: 'open', reason: 'spam' });
+  const bans = fakeBans();
+  const ban = handleAdmin(
+    req({ method: 'POST', url: '/admin/reports/r1/ban', headers: { authorization: `Bearer ${TOKEN}` } }),
+    { adminToken: TOKEN, remoteAddress: LOCAL, store, bans },
+  );
+  const dismiss = handleAdmin(
+    req({ method: 'POST', url: '/admin/reports/r1/dismiss', headers: { authorization: `Bearer ${TOKEN}` } }),
+    { adminToken: TOKEN, remoteAddress: LOCAL, store, bans },
+  );
+  const [banResult, dismissResult] = await Promise.all([ban, dismiss]);
+  assert.deepEqual([banResult.status, dismissResult.status].sort(), [200, 409]);
+  // Whichever one won decided the final status; either is a legitimate
+  // outcome of a genuine race, so this only checks that exactly one did.
+  const finalStatus = (await store.get('r1')).status;
+  assert.ok(['banned', 'dismissed'].includes(finalStatus));
+  assert.equal(bans.banned.length, finalStatus === 'banned' ? 1 : 0);
+});
+
 test('POST /admin/unban calls bans.unban with the key and reports whether it was removed', async () => {
   const store = fakeStore([]);
   const bans = fakeBans();
@@ -235,8 +302,9 @@ test('a right token and a local address are still refused when the request carri
   // This is what makes the loopback check mean something: Caddy proxies every
   // public request to 127.0.0.1 too (see push/deploy/Caddyfile), so the
   // remoteAddress alone can't tell a stranger through Caddy from the bot
-  // calling :8080 directly — but Caddy always adds X-Forwarded-For (and Via),
-  // and the bot never does.
+  // calling :8080 directly — but Caddy always adds X-Forwarded-For, and the
+  // bot never does. Via is checked too, defensively, though Caddy doesn't set
+  // it by default here.
   const store = fakeStore([]);
   for (const headers of [
     { authorization: `Bearer ${TOKEN}`, 'x-forwarded-for': '203.0.113.9' },
@@ -294,6 +362,14 @@ test('the HTTP route wires request.socket.remoteAddress and the store through, e
       headers: { authorization: `Bearer ${TOKEN}`, 'x-forwarded-for': '203.0.113.9' },
     });
     assert.equal(spoofed.status, 404);
+
+    // The 400 path (a malformed `since`) is uncacheable too — every /admin/
+    // response is, not just the 200s.
+    const badSince = await fetch(`${endpoint}/admin/reports?since=abc`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    assert.equal(badSince.status, 400);
+    assert.equal(badSince.headers.get('cache-control'), 'no-store');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

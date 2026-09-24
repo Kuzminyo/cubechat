@@ -17,10 +17,24 @@
 # cubechat.qpon is kept out: it has never resolved, so Caddy would fail the
 # ACME challenge for it on every start.
 
+# /admin/* (Task S2) is for the Telegram bot on this droplet, talking to
+# :8080 directly — it must never be reachable from the internet at all. The
+# Node handler already refuses it without a loopback remoteAddress and a
+# bearer token, but Caddy proxying a stranger's request to 127.0.0.1 is
+# exactly what makes that remoteAddress check alone insufficient (see the
+# comment above handleAdmin in push/src/index.js). So it's blocked here too,
+# before reverse_proxy ever sees it — belt and suspenders, not either alone.
+
 push.cubechat.tech {
+	@admin path /admin/*
+	respond @admin 404
+
 	reverse_proxy 127.0.0.1:8080
 }
 
 209-38-225-225.sslip.io {
+	@admin path /admin/*
+	respond @admin 404
+
 	reverse_proxy 127.0.0.1:8080
 }
