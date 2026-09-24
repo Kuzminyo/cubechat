@@ -4,9 +4,9 @@
 
 **Goal:** Pass App Review guideline 1.2: a terms gate, one-tap report (report + block + remove), a local profanity filter for strangers and channels, hide-for-me, in-app contact, and a moderation back end — reports to a Telegram bot with Ban/Dismiss buttons and a signed global ban list every phone applies.
 
-**Architecture:** The push server (`push/src/index.js`, Node ≥ 20, no framework) gains three pure, exported handlers in the `handleTurn` style — `handleReport`, the Telegram notifier/poller, `bannedList` — wired into the existing `createServer`. The app gains `lib/features/moderation/` (data: terms, reports queue/client, ban list, filter settings; domain: report payload, profanity normaliser; presentation: terms gate, report sheet, about screen) and small additive hooks in the message bubble menu, contact profile, channel info, message preview and the inbound path.
+**Architecture:** The push server (`push/src/index.js`, Node ≥ 20, no framework) gains pure, exported handlers in the `handleTurn` style — `handleReport`, a localhost-only admin API, `bannedList` — wired into the existing `createServer`. The Telegram bot is a separate Python service (`bot/`, stdlib only) that talks to that admin API — the owner's choice (2026-09-24), so the bot can be developed and attached to the server on its own. The app gains `lib/features/moderation/` (data: terms, reports queue/client, ban list, filter settings; domain: report payload, profanity normaliser; presentation: terms gate, report sheet, about screen) and small additive hooks in the message bubble menu, contact profile, channel info, message preview and the inbound path.
 
-**Tech Stack:** Flutter/Riverpod Notifiers, Hive encrypted settings box, `cryptography` (Ed25519 verify), the in-repo `Secp256k1NostrSigner`; Node `node:test`, `@noble/curves` (already a dependency), `node:crypto` Ed25519, global `fetch` for Telegram Bot API.
+**Tech Stack:** Flutter/Riverpod Notifiers, Hive encrypted settings box, `cryptography` (Ed25519 verify), the in-repo `Secp256k1NostrSigner`; Node `node:test`, `@noble/curves` (already a dependency), `node:crypto` Ed25519; Python ≥ 3.10 stdlib (`urllib.request`, `json`, `unittest`) for the bot.
 
 **Spec:** `docs/superpowers/specs/2026-09-24-moderation-ugc-design.md` (Russian; authority).
 
@@ -25,7 +25,8 @@
 
 | File | Responsibility |
 |---|---|
-| `push/src/index.js` | `handleReport`, `createTelegram`, `bannedList`, `/report`, `/banned`, 403 for banned on `/register`/`/turn` |
+| `push/src/index.js` | `handleReport`, `handleAdmin` (localhost admin API), `bannedList`, `/report`, `/banned`, 403 for banned on `/register`/`/turn` |
+| `bot/cubechat_bot.py` | Python Telegram bot (stdlib only) over the admin API |
 | `push/tool/gen_ban_key.mjs` | prints a fresh Ed25519 key pair (private PKCS8 base64 for env, public raw hex for the app) |
 | `push/test/report.test.js`, `telegram.test.js`, `banned.test.js` | server tests |
 | `push/deploy/README.md` | bot + env setup steps |
@@ -74,31 +75,30 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
 - [ ] **Step 4:** tests pass; `node --test` whole suite passes.
 - [ ] **Step 5: Commit** — "The push server takes signed abuse reports and keeps them".
 
-### Task S2: reports reach the owner's Telegram, with Ban / Dismiss
+### Task S2: a localhost-only admin API the bot talks to
 
-**Files:** Modify `push/src/index.js`; Create `push/test/telegram.test.js`.
+The owner chose a separate Python bot (Task S4). The Node server therefore does not talk to Telegram at all; it exposes a small admin API that only the bot, on the same droplet, can reach.
+
+**Files:** Modify `push/src/index.js`; Create `push/test/admin.test.js`.
 
 **Interfaces — Produces:**
 ```js
-export function createTelegram({ token, ownerChatId, fetchImpl = fetch, store, bans, log = console.log })
-// → { notify(report): void, pollOnce(): Promise<void>, start(): void, stop(): void }
-export function reportMessage(report) // → { text, reply_markup }
+export function handleAdmin(request /* {method, url, headers, body} */, {
+  adminToken = process.env.ADMIN_TOKEN, remoteAddress, store, bans, nowSeconds,
+}) // → Promise<{ status, body }>
 ```
-`bans` is S3's `{ ban(report): Promise<void>, unban(key): Promise<boolean> }` — in S2 tests pass a fake.
+Routes (all JSON, all require `authorization: Bearer <ADMIN_TOKEN>` AND `remoteAddress` in `127.0.0.1` / `::1` / `::ffff:127.0.0.1`; otherwise 404 — not 401, so the API isn't advertised; unconfigured `ADMIN_TOKEN` → 404 always):
+- `GET /admin/reports?since=<seq>` → `{ reports: [...], next: <seq> }` — reports appended after sequence number `since` (0 = all), in order. The store gains a monotonically increasing `seq` per report (persisted).
+- `GET /admin/reports?status=open` → open reports.
+- `POST /admin/reports/<id>/ban` → `bans.ban(report)`, status `banned` → `{ ok, report }`.
+- `POST /admin/reports/<id>/dismiss` → status `dismissed`.
+- `POST /admin/unban` body `{ key }` → `{ ok: removed }`.
+Unknown id → 404 `{reason:'no such report'}`; a report already decided → 409 with its current status.
+`bans` is S3's `{ ban(report), unban(key) }` — S2 tests pass a fake; S3 wires the real one.
 
-- [ ] **Step 1: Failing tests** with a fake `fetchImpl` recording calls to `https://api.telegram.org/bot<token>/<method>`:
-  1. `notify(report)` posts `sendMessage` to `ownerChatId` with text containing the reason label, context, the first 8 hex of target and reporter, the message text cut to 1000 chars, and `reply_markup.inline_keyboard` = `[[{text:'Забанити',callback_data:'ban:<id>'},{text:'Відхилити',callback_data:'dismiss:<id>'}]]`;
-  2. a failing `sendMessage` (fetch rejects / `ok:false`) is retried with backoff (1 s, 5 s, 30 s, then gives up with a log line) — use injected timers or a `retryDelays` option; the report stays stored;
-  3. `pollOnce()` calls `getUpdates` with `offset` = last update id + 1 and `timeout` ≥ 25; a `callback_query` `ban:<id>` from `ownerChatId` → `bans.ban(report)`, `store.update(id,{status:'banned'})`, `answerCallbackQuery`, `editMessageText` appending "✅ Забанено";
-  4. `dismiss:<id>` → status `dismissed`, "✖️ Відхилено";
-  5. a callback or message from another chat id → ignored (no store/ban calls);
-  6. text `/reports` from the owner → `sendMessage` listing open reports (id, reason, target short), or "Відкритих скарг немає";
-  7. `/unban <hex>` → `bans.unban(hex)` and a confirmation;
-  8. missing `token` or `ownerChatId` → `notify` and `start` are no-ops that log once "telegram not configured".
-- [ ] **Step 2:** FAIL.
-- [ ] **Step 3: Implement.** `start()` runs `pollOnce` in a loop (`timeout: 30` long poll, on error wait 5 s), guarded against double start; `stop()` ends it (tests and shutdown). Wire into the server: env `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_CHAT_ID`; `handleReport`'s `notify` → `telegram.notify`; call `telegram.start()` where the server starts listening (not on import, so tests importing `server` don't poll — follow how the relay sockets are started).
-- [ ] **Step 4:** pass; whole suite.
-- [ ] **Step 5: Commit** — "Every report pings the owner in Telegram, with Ban and Dismiss on it".
+- [ ] **Step 1: Failing tests:** each route's happy path; wrong/missing token → 404; token right but remote address `10.0.0.5` → 404; `since` paging returns only newer reports and the right `next`; ban/dismiss change status and persist (`store.update`); deciding twice → 409; `ADMIN_TOKEN` unset → 404 for everything; the HTTP wiring passes `request.socket.remoteAddress`.
+- [ ] **Step 2:** FAIL. **Step 3: Implement** and wire into `createServer` for `url.startsWith('/admin/')`. **Step 4:** pass; whole suite.
+- [ ] **Step 5: Commit** — "The push server lets a bot on the same machine read reports and decide them".
 
 ### Task S3: a signed global ban list, enforced on the server too
 
@@ -115,9 +115,46 @@ export function canonicalBanBody(body) // JSON.stringify of {v, updatedAt, ident
 
 - [ ] **Step 1: Failing tests:** `ban` then `list()` → contains the key, `sig` verifies with the public key (`crypto.verify(null, …)`), and fails after any field is altered; `unban` removes it; persisted across a new `createBans` on the same file; `GET /banned` returns the signed body with `cache-control: public, max-age=300`; `/register` and `/turn` return 403 `banned` for an event whose `pubkey` is a banned npub (sign with the helper and ban that npub first); no signing key configured → `/banned` 503 `unconfigured`.
 - [ ] **Step 2:** FAIL.
-- [ ] **Step 3: Implement**, plus `push/tool/gen_ban_key.mjs`: `crypto.generateKeyPairSync('ed25519')`; print `BAN_SIGNING_KEY=<pkcs8 der base64>` and `APP_PUBLIC_KEY_HEX=<raw 32-byte public key hex>` (raw = last 32 bytes of the SPKI DER). Deploy README: a "Moderation" section — create a bot with @BotFather (`/newbot`), send it any message, get your chat id from `https://api.telegram.org/bot<TOKEN>/getUpdates` (`message.chat.id`), run `node tool/gen_ban_key.mjs` once, add the three env vars to the systemd unit's environment file, restart, check `/health` and `GET /banned`. Bump `VERSION` to `'2026-09-24-moderation'`.
+- [ ] **Step 3: Implement**, plus `push/tool/gen_ban_key.mjs`: `crypto.generateKeyPairSync('ed25519')`; print `BAN_SIGNING_KEY=<pkcs8 der base64>` and `APP_PUBLIC_KEY_HEX=<raw 32-byte public key hex>` (raw = last 32 bytes of the SPKI DER). Deploy README: a "Moderation" section — run `node tool/gen_ban_key.mjs` once, add `BAN_SIGNING_KEY` and `ADMIN_TOKEN` (a random 32-byte hex: `openssl rand -hex 32`) to the systemd unit's environment file, restart, check `/health` and `GET /banned`; the bot's own setup is in `bot/README.md` (Task S4). Bump `VERSION` to `'2026-09-24-moderation'`.
 - [ ] **Step 4:** pass; whole suite.
 - [ ] **Step 5:** Run `node push/tool/gen_ban_key.mjs` once; put the PUBLIC key hex into Task A6's constant (write it into `.superpowers/sdd/<plan>/ban-public-key.txt` for the A6 implementer) and the PRIVATE line into `.superpowers/sdd/<plan>/ban-signing-key.secret` (git-ignored folder; never committed). Commit the code — "Bans are a signed list the server publishes and enforces".
+
+---
+
+### Task S4: the Telegram bot, in Python
+
+**Files:** Create `bot/cubechat_bot.py`, `bot/test_cubechat_bot.py`, `bot/README.md`, `bot/cubechat-bot.service` (systemd unit, same style as `push/deploy/cubechat-push.service`).
+
+**Constraints:** Python ≥ 3.10, **standard library only** (`urllib.request`, `json`, `time`, `logging`, `unittest`) — nothing to `pip install` on the droplet. Config from env: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_CHAT_ID`, `ADMIN_URL` (default `http://127.0.0.1:8080`), `ADMIN_TOKEN`, `STATE_PATH` (default `./bot-state.json`, holds the last report `seq` and Telegram `update_id` so a restart neither re-sends nor loses anything). Never log the tokens.
+
+**Interfaces — Produces:**
+```python
+class Admin:      # wraps S2's API; injectable `opener` for tests
+    def new_reports(self, since: int) -> tuple[list[dict], int]: ...
+    def open_reports(self) -> list[dict]: ...
+    def ban(self, report_id: str) -> dict: ...
+    def dismiss(self, report_id: str) -> dict: ...
+    def unban(self, key: str) -> bool: ...
+class Telegram:   # Bot API over urllib; injectable `opener`
+    def send(self, chat_id, text, buttons=None) -> int: ...          # returns message_id
+    def edit(self, chat_id, message_id, text) -> None: ...
+    def answer(self, callback_id, text='') -> None: ...
+    def updates(self, offset: int, timeout: int = 30) -> list[dict]: ...
+def report_text(report: dict) -> str: ...   # reason label (uk), context, 8-hex target/reporter, excerpt ≤ 1000 chars
+class Bot:
+    def tick(self) -> None: ...   # one pass: forward new reports, then handle updates
+    def run(self) -> None: ...    # loop: tick(); on error log + sleep 5 s
+```
+Behaviour:
+- **Forwarding:** every `tick` asks `Admin.new_reports(state.seq)`; each report → `Telegram.send(owner, report_text(r), buttons=[('Забанити','ban:<id>'),('Відхилити','dismiss:<id>')])`; `state.seq` advances only after a successful send (a Telegram outage re-sends later rather than losing a report); state saved atomically (write temp + `os.replace`).
+- **Buttons:** `callback_query` with `ban:<id>` / `dismiss:<id>` **from the owner chat only** → `Admin.ban/dismiss` → `answer` + `edit` the message appending "✅ Забанено" / "✖️ Відхилено"; 409 from the API → edit with "вже вирішено: <status>".
+- **Commands (owner only):** `/reports` → list of open reports (id, reason, 8-hex target) or "Відкритих скарг немає"; `/unban <key>` → `Admin.unban` → "Розблоковано" / "Такого бану немає"; anything else → a one-line help.
+- Messages/callbacks from any other chat → ignored, logged once per chat id.
+- Long-poll `getUpdates` with `timeout=25`; `offset` = last `update_id` + 1, persisted.
+
+- [ ] **Step 1: Failing tests** (`python -m unittest bot/test_cubechat_bot.py`, fakes for both HTTP sides): a new report is sent once with both buttons and `seq` advances; a failed send leaves `seq` so the next tick re-sends; ban/dismiss callbacks call the API and edit the message; a callback from another chat does nothing; `/reports` and `/unban` replies; 409 handling; state survives a new `Bot` over the same `STATE_PATH`; `report_text` truncates to 1000 chars and never contains the full keys.
+- [ ] **Step 2:** FAIL. **Step 3: Implement.** `bot/README.md`: create the bot with @BotFather (`/newbot`) — the owner already has a token; send the bot any message; get the chat id from `https://api.telegram.org/bot<TOKEN>/getUpdates` (`message.chat.id`); put the four env vars in `/etc/cubechat-bot.env` (mode 600), copy the unit, `systemctl enable --now cubechat-bot`, check `journalctl -u cubechat-bot`. **Step 4:** tests pass.
+- [ ] **Step 5: Commit** — "A Python bot brings every report to the owner's Telegram, with Ban and Dismiss on it".
 
 ---
 
