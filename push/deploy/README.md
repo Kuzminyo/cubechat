@@ -215,6 +215,61 @@ a flat line. Nothing on this droplet is filling. What was accumulating was a
 record of other people's traffic, which is a different problem and the one
 worth acting on.
 
+## Moderation
+
+`/report`, the admin API the Telegram bot talks to (`bot/README.md`), and the
+signed global ban list every phone applies. Two secrets, generated once:
+
+```bash
+node tool/gen_ban_key.mjs
+```
+
+prints `BAN_SIGNING_KEY=…` (the server's private Ed25519 key, PKCS8 DER,
+base64) and `APP_PUBLIC_KEY_HEX=…` (the matching public key, raw 32 bytes,
+hex — this is what goes into the app as `banListPublicKeyHex`, not onto this
+server). Only the first line belongs here.
+
+`ADMIN_TOKEN` is a random 32-byte hex the bot authenticates `/admin/*` with —
+nothing but that same droplet can ever reach the route at all (see the
+comment above `handleAdmin` in `src/index.js`), so this is defence in depth,
+not the only gate:
+
+```bash
+openssl rand -hex 32
+```
+
+Add both to the systemd unit's environment file and restart:
+
+```bash
+cat >> /opt/cubechat-push/.env <<'EOF'
+BAN_SIGNING_KEY=<the value gen_ban_key.mjs printed>
+ADMIN_TOKEN=<the value openssl printed>
+EOF
+chmod 600 /opt/cubechat-push/.env
+systemctl restart cubechat-push
+```
+
+Reports and bans persist to `reports.jsonl` and `banned.json` beside
+`tokens.json` — same directory, same "never overwritten by a deploy" rule as
+the rest of `## Getting the files there` above, because neither is in the
+repository either.
+
+Check it landed:
+
+```bash
+curl -s localhost:8080/health
+curl -s localhost:8080/banned
+```
+
+`/banned` answers `{"v":1,"updatedAt":0,"identities":[],"npubs":[],"fingerprints":[],"sig":"…"}`
+on a fresh install — an empty list, but a *signed* one. `{"ok":false,"reason":"unconfigured"}`
+with a 503 means `BAN_SIGNING_KEY` didn't make it into `.env`, or the process
+wasn't restarted after it did.
+
+The bot's own setup — creating it with @BotFather, finding the owner's chat
+id, its systemd unit — is `bot/README.md` (Task S4), not here: this server
+never talks to Telegram directly.
+
 ## The firewall
 
 Only 80 and 443 need to be open. The service itself listens on 8080 and Caddy

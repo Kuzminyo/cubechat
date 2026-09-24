@@ -10,8 +10,12 @@
 
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, appendFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { connect as http2Connect } from 'node:http2';
-import { createSign, createHmac, randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createSign, createHmac, randomUUID, randomBytes, timingSafeEqual,
+  createPrivateKey, sign as cryptoSign,
+} from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { schnorr } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
@@ -23,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-14-voip-calls';
+const VERSION = '2026-09-24-moderation';
 
 const RECIPIENT_TAG = 'p';
 
@@ -261,9 +265,19 @@ function voipTokenOf(event, platform) {
   return null;
 }
 
-function handleRegister(event) {
+function handleRegister(event, { bans = adminBans } = {}) {
   if (!verifyEvent(event)) return { ok: false, reason: 'signature' };
   if (event.kind !== REGISTER_KIND) return { ok: false, reason: 'kind' };
+  // Checked right after the signature verifies and before anything else, for
+  // the same reason `handleTurn` checks it here rather than earlier: an
+  // unsigned request must not be a way to learn who is banned (S3 spec). A
+  // banned identity is refused before its registration is ever looked at —
+  // it never even reaches the "is this a TURN request replayed here"
+  // check below, so a banned phone can't use either path to keep a token on
+  // file.
+  if (bans.isBannedNpub(event.pubkey)) {
+    return { ok: false, reason: 'banned', status: 403 };
+  }
   // A TURN request is this same kind, signed by the same key, with empty
   // content — and empty content is how a phone asks to be forgotten. Without
   // this, one phone's TURN request replayed here would switch that phone's
@@ -1076,7 +1090,25 @@ export const server = createServer(async (request, response) => {
       return json(response, 400, { ok: false, reason: 'body' });
     }
     const result = handleRegister(event);
-    return json(response, result.ok ? 200 : 400, result);
+    // `status` is only ever set for the one case that isn't a plain 200/400
+    // — a banned npub, which is 403. Everything else keeps the shape this
+    // route always had.
+    return json(response, result.status ?? (result.ok ? 200 : 400), result);
+  }
+  if (request.method === 'GET' && request.url === '/banned') {
+    // No signing key configured is the same "not usable yet" shape `/turn`
+    // answers for a missing TURN_SECRET: 503, so a deployment mid-setup
+    // reads as unfinished rather than as an empty, trustworthy list.
+    if (!adminBans.configured) {
+      response.setHeader('cache-control', 'no-store');
+      return json(response, 503, { ok: false, reason: 'unconfigured' });
+    }
+    // Public and cacheable — this is the list every phone polls every six
+    // hours (A6 spec), not an admin route. `max-age=300` bounds how stale a
+    // CDN or proxy in front of Caddy could ever serve it without gating the
+    // list behind the same no-store every other write-bearing route uses.
+    response.setHeader('cache-control', 'public, max-age=300');
+    return json(response, 200, adminBans.list());
   }
   if (request.url.startsWith('/admin/')) {
     // Set before any response on this path, including the "body too large"
@@ -1161,12 +1193,21 @@ export function handleTurn(event, {
   nowSeconds = Math.floor(Date.now() / 1000),
   secret = process.env.TURN_SECRET,
   urls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean),
+  bans = adminBans,
 } = {}) {
   // A registration signature must not be reusable to obtain TURN access.
   // The purpose is signed too; the client uses the same identity key.
   if (!verifyEvent(event) || event.kind !== REGISTER_KIND ||
       !event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action' && tag[1] === 'turn')) {
     return { status: 401, body: { ok: false, reason: 'signature' } };
+  }
+  // Checked only now — after the signature (and the purpose tag) verified —
+  // so an unsigned request can't be used to probe who is on the list (S3
+  // spec). A banned phone still gets a clean, specific answer rather than the
+  // generic 401 `signature`, which is the point: TURN access is refused
+  // because of the ban, not because the request looked forged.
+  if (bans.isBannedNpub(event.pubkey)) {
+    return { status: 403, body: { ok: false, reason: 'banned' } };
   }
   if (!Number.isSafeInteger(event.created_at) ||
       Math.abs(nowSeconds - event.created_at) > REGISTER_MAX_AGE_SECONDS) {
@@ -1523,18 +1564,182 @@ function timingSafeTokenEqual(provided, expected) {
   return timingSafeEqual(providedBuf, expectedBuf);
 }
 
-// S3 (Task S3) replaces this with the real thing: `{ ban(report), unban(key) }`
-// backed by the signed ban list. Until then, every admin ban/unban call fails
-// closed — 503 `bans unavailable` — rather than throwing an unhandled
-// rejection into the HTTP handler.
-const adminBans = {
-  ban() {
-    return Promise.reject(new Error('bans unavailable — S3 is not wired in yet'));
-  },
-  unban() {
-    return Promise.reject(new Error('bans unavailable — S3 is not wired in yet'));
-  },
-};
+// ---------------------------------------------------------------------------
+// The ban list (Task S3)
+// ---------------------------------------------------------------------------
+
+/// The exact bytes that get signed, and the only ones: `JSON.stringify` of
+/// the four public fields with their arrays sorted, key order fixed, and no
+/// `sig` inside it (a signature can't cover itself). The app verifies with
+/// this same function — see `banListPublicKeyHex`/`canonicalBanBody` in
+/// `lib/features/moderation/data/ban_list_controller.dart` — so a change here
+/// is a wire change and breaks every phone that already trusts a list signed
+/// the old way.
+export function canonicalBanBody({ v, updatedAt, identities, npubs, fingerprints }) {
+  return JSON.stringify({
+    v,
+    updatedAt,
+    identities: [...identities].sort(),
+    npubs: [...npubs].sort(),
+    fingerprints: [...fingerprints].sort(),
+  });
+}
+
+/// The signed, published ban list, plus the store behind it.
+///
+/// Three sets, not one, because "banned" means different things depending on
+/// what the report was about (S3 spec): a direct/general/airdrop report names
+/// an *identity* — the Nostr key a phone signs `/register` and `/turn` with,
+/// which is also what a `report.target` carries for those contexts. A channel
+/// report names a *fingerprint* — a channel post's author is known only by
+/// its signing fingerprint (`Message.authorId`), never by an identity key, so
+/// there is nothing else to ban. `npubs` is separate again: it exists only
+/// when a report also carries `targetNpub`, and it is `npubs` — not
+/// `identities` — that `/register` and `/turn` check, because those routes
+/// see exactly one thing about the caller: the Nostr pubkey the request is
+/// signed with. A report naming only a peer's mesh identity (`target`, no
+/// `targetNpub`) still hides that peer everywhere the app itself enforces the
+/// list (A6); it just can't be turned into a server-side refusal, because the
+/// server was never told which registration key belongs to that peer.
+///
+/// Loaded synchronously at construction (`readFileSync`), not lazily: `list()`
+/// has to be callable the instant this returns — `GET /banned` and the
+/// `/register`/`/turn` 403 checks can't await a load on every request — so
+/// there is no path where an empty, not-yet-loaded cache would be signed and
+/// handed out as if it were the real list. A missing file (first run) is read
+/// as "nothing banned yet", the same way `loadStore` above treats `ENOENT`.
+///
+/// `ban`/`unban` still go through a queue, same shape as the report store's:
+/// two admin decisions arriving at once must not race a read-modify-write of
+/// the in-memory sets and lose one of them.
+export function createBans({
+  path = process.env.BANNED_PATH || './banned.json',
+  signingKeyPkcs8B64 = process.env.BAN_SIGNING_KEY,
+  nowSeconds = Math.floor(Date.now() / 1000),
+} = {}) {
+  const identities = new Set();
+  const npubs = new Set();
+  const fingerprints = new Set();
+  let updatedAt = 0;
+
+  let privateKey = null;
+  if (signingKeyPkcs8B64) {
+    try {
+      privateKey = createPrivateKey({
+        key: Buffer.from(signingKeyPkcs8B64, 'base64'),
+        format: 'der',
+        type: 'pkcs8',
+      });
+    } catch (error) {
+      log('bans', `signing key unusable: ${error.message}`);
+      privateKey = null;
+    }
+  }
+
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    if (Number.isSafeInteger(raw.updatedAt)) updatedAt = raw.updatedAt;
+    for (const id of raw.identities ?? []) if (typeof id === 'string') identities.add(id);
+    for (const npub of raw.npubs ?? []) if (typeof npub === 'string') npubs.add(npub);
+    for (const fp of raw.fingerprints ?? []) if (typeof fp === 'string') fingerprints.add(fp);
+  } catch (error) {
+    if (error.code !== 'ENOENT') log('bans', `load failed: ${error.message}`);
+  }
+
+  let cached;
+  function rebuild() {
+    const body = {
+      v: 1,
+      updatedAt,
+      identities: [...identities].sort(),
+      npubs: [...npubs].sort(),
+      fingerprints: [...fingerprints].sort(),
+    };
+    const sig = privateKey
+      ? cryptoSign(null, Buffer.from(canonicalBanBody(body), 'utf8'), privateKey).toString('hex')
+      : '';
+    cached = { ...body, sig };
+  }
+  rebuild();
+
+  async function persist() {
+    // The raw sets, not the signed body: `sig` is recomputed from them on
+    // every load, so persisting it too would just be a second copy that can
+    // go stale relative to the first if the two are ever written separately.
+    const body = JSON.stringify({
+      updatedAt,
+      identities: [...identities],
+      npubs: [...npubs],
+      fingerprints: [...fingerprints],
+    });
+    const temp = `${path}.${randomUUID()}`;
+    await writeFile(temp, body);
+    await rename(temp, path);
+  }
+
+  // Same pattern as the report store's `enqueue` above: every mutation is
+  // chained after the one before it, so two concurrent bans can't both read
+  // the sets before either has written, and lose one.
+  let queue = Promise.resolve();
+  function enqueue(task) {
+    const result = queue.then(task);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  function currentSeconds() {
+    return typeof nowSeconds === 'function' ? nowSeconds() : nowSeconds;
+  }
+
+  return {
+    // Whether a real signature will ever come out of `list()`. `GET /banned`
+    // uses this to answer 503 `unconfigured` instead of publishing a list
+    // nobody can verify — the same shape as `handleTurn`'s `secret`/`urls`
+    // check.
+    configured: privateKey !== null,
+    async ban(report) {
+      return enqueue(async () => {
+        if (report.context === 'channel') {
+          if (typeof report.target === 'string') fingerprints.add(report.target);
+        } else if (typeof report.target === 'string') {
+          identities.add(report.target);
+        }
+        if (typeof report.targetNpub === 'string') npubs.add(report.targetNpub);
+        updatedAt = currentSeconds();
+        rebuild();
+        await persist();
+      });
+    },
+    async unban(key) {
+      return enqueue(async () => {
+        const inIdentities = identities.delete(key);
+        const inNpubs = npubs.delete(key);
+        const inFingerprints = fingerprints.delete(key);
+        const removed = inIdentities || inNpubs || inFingerprints;
+        if (removed) {
+          updatedAt = currentSeconds();
+          rebuild();
+          await persist();
+        }
+        return removed;
+      });
+    },
+    // What `/register` and `/turn` check: the Nostr pubkey a request is
+    // signed with, which is what a `targetNpub` names. See the block comment
+    // above for why this is deliberately not `identities`.
+    isBannedNpub(hex) {
+      return npubs.has(hex);
+    },
+    // The cached, already-signed body. Rebuilt on every `ban`/`unban` above,
+    // never per call here — signing on every `GET /banned` would be a private
+    // key operation per request for a list that changes only on a decision.
+    list() {
+      return cached;
+    },
+  };
+}
+
+const adminBans = createBans();
 
 const ADMIN_DECISION_ROUTE = /^\/admin\/reports\/([^/]+)\/(ban|dismiss)$/;
 
