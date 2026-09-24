@@ -11,7 +11,7 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { connect as http2Connect } from 'node:http2';
-import { createSign, createHmac, randomUUID, randomBytes } from 'node:crypto';
+import { createSign, createHmac, randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { schnorr } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
@@ -1078,6 +1078,20 @@ export const server = createServer(async (request, response) => {
     const result = handleRegister(event);
     return json(response, result.ok ? 200 : 400, result);
   }
+  if (request.url.startsWith('/admin/')) {
+    let body = '';
+    try {
+      body = await readBody(request);
+    } catch {
+      return json(response, 400, { ok: false, reason: 'body' });
+    }
+    const result = await handleAdmin(
+      { method: request.method, url: request.url, headers: request.headers, body },
+      { store: reportStore, bans: adminBans, remoteAddress: request.socket.remoteAddress },
+    );
+    response.setHeader('cache-control', 'no-store');
+    return json(response, result.status, result.body);
+  }
   return json(response, 404, { ok: false });
 });
 
@@ -1390,6 +1404,14 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
         .filter((report) => report.status === 'open')
         .sort((a, b) => a.seq - b.seq);
     },
+    // S2's admin routes look a report up by id (to check its current status
+    // before ban/dismiss, and to hand the full report to `bans.ban`). `null`
+    // rather than `undefined` for "no such id", so a route can test it the
+    // same way `update` already reports "nothing to update".
+    async get(id) {
+      await load();
+      return reports.get(id) ?? null;
+    },
     // S2's `GET /admin/reports?since=<seq>` paging: everything appended after
     // `seq` (0 = all), in order, plus the `seq` to ask for next time.
     async since(seq) {
@@ -1451,4 +1473,138 @@ export async function handleReport(event, {
     log('report', `notify failed: ${error?.message ?? error}`);
   }
   return { status: 200, body: { ok: true, id: report.id } };
+}
+
+// ---------------------------------------------------------------------------
+// Admin API (Task S2)
+// ---------------------------------------------------------------------------
+
+// The Telegram bot (`bot/`, Task S4) is a separate process on the same
+// droplet. It never gets a copy of anybody's signing key, so it cannot speak
+// the Nostr-event protocol `/report` and `/turn` use — it authenticates with
+// a plain bearer token instead, and is trusted only because nothing but that
+// same droplet can reach it (see the remoteAddress comment below).
+const ADMIN_LOCAL_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/// Constant-time token comparison. `timingSafeEqual` throws on unequal
+/// lengths rather than saying no, so that has to be checked first — and a
+/// length mismatch is itself safe to leak, since it says nothing about which
+/// bytes were right.
+function timingSafeTokenEqual(provided, expected) {
+  const providedBuf = Buffer.from(provided, 'utf8');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
+
+// S3 (Task S3) replaces this with the real thing: `{ ban(report), unban(key) }`
+// backed by the signed ban list. Until then, every admin ban/unban call fails
+// closed — 503 `bans unavailable` — rather than throwing an unhandled
+// rejection into the HTTP handler.
+const adminBans = {
+  ban() {
+    return Promise.reject(new Error('bans unavailable — S3 is not wired in yet'));
+  },
+  unban() {
+    return Promise.reject(new Error('bans unavailable — S3 is not wired in yet'));
+  },
+};
+
+const ADMIN_DECISION_ROUTE = /^\/admin\/reports\/([^/]+)\/(ban|dismiss)$/;
+
+/// The localhost-only admin API the Telegram bot talks to.
+///
+/// Every route needs both an `authorization: Bearer <ADMIN_TOKEN>` header
+/// *and* a loopback `remoteAddress` — and refuses to say which one was wrong.
+/// A mismatched token or a non-local caller both come back 404, the same 404
+/// an unrelated path would get, so a scan of this server never learns that an
+/// admin API exists here at all.
+///
+/// **Why the loopback check alone is not enough.** Caddy
+/// (`push/deploy/Caddyfile`) terminates TLS and reverse-proxies every public
+/// request to `127.0.0.1:8080` — the same process, the same port, this
+/// handler included. From `request.socket.remoteAddress`'s point of view a
+/// stranger's request over the internet and the bot's own request from this
+/// droplet are *indistinguishable*: both arrive as a TCP connection from
+/// 127.0.0.1. If that check were trusted alone, the bearer token would be the
+/// only real gate — one leaked token and the admin API is open to the
+/// internet. So it isn't trusted alone: Caddy's `reverse_proxy` always adds
+/// `X-Forwarded-For` (and `Via`) to what it forwards, and the bot, calling
+/// :8080 directly, never sends either. A request that carries one is refused
+/// here regardless of address or token, which is what actually distinguishes
+/// "came in through Caddy" from "came from the bot on this box". See
+/// `push/test/admin.test.js` for the proof.
+export async function handleAdmin(request, {
+  adminToken = process.env.ADMIN_TOKEN,
+  remoteAddress,
+  store,
+  bans,
+  nowSeconds = Math.floor(Date.now() / 1000),
+} = {}) {
+  void nowSeconds; // reserved for S3-era freshness checks on ban/unban bodies
+  const notFound = { status: 404, body: { ok: false } };
+  if (!adminToken) return notFound;
+  if (!ADMIN_LOCAL_ADDRESSES.has(remoteAddress)) return notFound;
+  const headers = request?.headers ?? {};
+  if (headers['x-forwarded-for'] !== undefined || headers['via'] !== undefined) {
+    return notFound;
+  }
+  const authorization = typeof headers.authorization === 'string' ? headers.authorization : '';
+  const provided = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
+  if (!provided || !timingSafeTokenEqual(provided, adminToken)) return notFound;
+
+  const url = new URL(request.url, 'http://admin.local');
+  const method = request.method;
+
+  if (method === 'GET' && url.pathname === '/admin/reports') {
+    if (url.searchParams.get('status') === 'open') {
+      return { status: 200, body: { reports: await store.open() } };
+    }
+    const rawSince = url.searchParams.get('since');
+    const since = rawSince === null ? 0 : Number(rawSince);
+    const sinceSeq = Number.isSafeInteger(since) && since >= 0 ? since : 0;
+    const { reports, next } = await store.since(sinceSeq);
+    return { status: 200, body: { reports, next } };
+  }
+
+  const decision = method === 'POST' ? url.pathname.match(ADMIN_DECISION_ROUTE) : null;
+  if (decision) {
+    const [, id, action] = decision;
+    const report = await store.get(id);
+    if (!report) return { status: 404, body: { reason: 'no such report' } };
+    if (report.status !== 'open') {
+      return { status: 409, body: { ok: false, status: report.status } };
+    }
+    if (action === 'ban') {
+      try {
+        await bans.ban(report);
+      } catch {
+        return { status: 503, body: { reason: 'bans unavailable' } };
+      }
+      const updated = await store.update(id, { status: 'banned' });
+      return { status: 200, body: { ok: true, report: updated } };
+    }
+    const updated = await store.update(id, { status: 'dismissed' });
+    return { status: 200, body: { ok: true, report: updated } };
+  }
+
+  if (method === 'POST' && url.pathname === '/admin/unban') {
+    let payload;
+    try {
+      payload = JSON.parse(request.body || '{}');
+    } catch {
+      return { status: 400, body: { reason: 'body' } };
+    }
+    if (!payload || typeof payload.key !== 'string' || !payload.key) {
+      return { status: 400, body: { reason: 'payload' } };
+    }
+    try {
+      const removed = await bans.unban(payload.key);
+      return { status: 200, body: { ok: removed } };
+    } catch {
+      return { status: 503, body: { reason: 'bans unavailable' } };
+    }
+  }
+
+  return notFound;
 }
