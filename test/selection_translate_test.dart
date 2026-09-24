@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 class _Ukrainian extends TranscriptionLanguageController {
@@ -88,6 +89,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          acceptedTermsOverride,
           translatorProvider.overrideWithValue(_FakeTranslator()),
           // Chosen already, so the transcription below does not wait on a
           // settings box opened in the test's fake-async zone.

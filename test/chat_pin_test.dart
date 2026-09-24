@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 /// Drives the real chat screen: pin a message from the long-press menu, see the
@@ -47,7 +48,12 @@ void main() {
   /// Opens the channel with one message already pinned, for tests about what
   /// happens *after* pinning rather than about the pin gesture itself.
   Future<ProviderContainer> openPinnedChat(WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -77,7 +83,12 @@ void main() {
 
   testWidgets('pinning from the long-press menu shows the pinned bar',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -177,7 +188,12 @@ void main() {
   // is meant to walk upward through the stack, one pin per tap.
   testWidgets('the bar walks through every pin instead of sticking on one',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -253,7 +269,12 @@ void main() {
   // to. It is here because the walk is fiddly, easy to break silently, and had
   // nothing covering it at all.
   testWidgets('walking the pins actually scrolls to each one', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -322,7 +343,12 @@ void main() {
   // jumping both times and showing 1/2 throughout. Two is the case a counter
   // gets wrong most easily — every wrong answer is also a plausible one.
   testWidgets('two pins alternate on every tap', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -371,7 +397,12 @@ void main() {
 
   testWidgets('a second pin tap works while the first highlight is active',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 
@@ -428,7 +459,12 @@ void main() {
   // the bar appeared stuck. Pinning a *third* message is such a write.
   testWidgets('a new pin does not scramble where the bar is pointing',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 

@@ -3417,4 +3417,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String airdropBumpReceiving(String name) {
     return '$name is sending you files';
   }
+
+  @override
+  String get termsTitle => 'cubechat rules';
+
+  @override
+  String get termsBody =>
+      'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer and are acted on within 24 hours, and offenders are banned.';
+
+  @override
+  String get termsReadFull => 'Read the full terms';
+
+  @override
+  String get termsAccept => 'I agree';
 }

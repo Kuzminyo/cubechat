@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 /// Saved notes borrow the channel screen, because a notebook and a room are the
@@ -49,7 +50,12 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await beat(tester);
 

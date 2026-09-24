@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 /// A voice note playing must not cost the back button.
@@ -66,6 +67,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          acceptedTermsOverride,
           voicePlaybackControllerProvider.overrideWith(_FakePlayback.new),
         ],
         child: const CubechatApp(),

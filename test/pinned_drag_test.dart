@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 void main() {
@@ -30,7 +31,12 @@ void main() {
 
   testWidgets('dragging a pinned row by its grip reorders the pinned block',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 

@@ -24,6 +24,7 @@ import 'core/identity/wipe_service.dart';
 import 'features/profile/data/dead_mans_switch_controller.dart';
 import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
+import 'features/moderation/presentation/terms_gate.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/transition_probe.dart';
 import 'core/util/ui_activity.dart';
@@ -674,28 +675,31 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           // Outside the pointer listener and the voice bar: while the app is
           // locked nothing behind it should be touchable, and the bar is one of
           // the things being covered.
-          child: AppLockGate(
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) {
-                UiActivity.instance.poke();
-                _noticeTouch();
-              },
-              onPointerMove: (_) => UiActivity.instance.poke(),
-              onPointerSignal: (_) => UiActivity.instance.poke(),
-              child: _TapToDismissKeyboard(
-                child: VoiceMiniPlayer(
-                  // The router lives below this builder, so the bar is handed the
-                  // one push it needs rather than looking one up it cannot see.
-                  onOpenChat: (chatId, _) => _openChat(chatId),
-                  child: CallHost(
-                    backButtonDispatcher: _router.backButtonDispatcher,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        child ?? const SizedBox.shrink(),
-                        AirDropRequestOverlay(onOpen: _openAirDrop),
-                      ],
+          child: TermsGate(
+            child: AppLockGate(
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) {
+                  UiActivity.instance.poke();
+                  _noticeTouch();
+                },
+                onPointerMove: (_) => UiActivity.instance.poke(),
+                onPointerSignal: (_) => UiActivity.instance.poke(),
+                child: _TapToDismissKeyboard(
+                  child: VoiceMiniPlayer(
+                    // The router lives below this builder, so the bar is handed
+                    // the one push it needs rather than looking one up it
+                    // cannot see.
+                    onOpenChat: (chatId, _) => _openChat(chatId),
+                    child: CallHost(
+                      backButtonDispatcher: _router.backButtonDispatcher,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          child ?? const SizedBox.shrink(),
+                          AirDropRequestOverlay(onOpen: _openAirDrop),
+                        ],
+                      ),
                     ),
                   ),
                 ),

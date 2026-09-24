@@ -35,6 +35,7 @@ import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/peers/data/contact_aliases_controller.dart';
 import '../../features/peers/data/contact_tags_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
+import '../../features/moderation/data/terms_controller.dart';
 import '../../features/onboarding/data/onboarding_controller.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
@@ -134,6 +135,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // A wiped install has to be indistinguishable from a fresh one, and a fresh
   // one has not seen the intro.
   await ref.read(onboardingControllerProvider.notifier).reset();
+  // Nor agreed to the rules — a fresh install meets the terms gate again.
+  await ref.read(termsControllerProvider.notifier).reset();
   await ref.read(nicknameControllerProvider.notifier).reset();
   // Switches the internet fallback off and forgets any custom relay list, so
   // the next launch talks to nobody until the user opts in again.

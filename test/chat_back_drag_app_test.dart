@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 /// Dragging a conversation back, in the whole app: the tabs' Material page
@@ -37,7 +38,12 @@ void main() {
   Future<void> openChat(WidgetTester tester, {String? location}) async {
     await tester.binding.setSurfaceSize(const Size(400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
     GoRouter.of(tester.element(find.byType(ChatsListScreen)))

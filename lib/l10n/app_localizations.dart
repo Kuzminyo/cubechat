@@ -5923,6 +5923,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{name} is sending you files'**
   String airdropBumpReceiving(String name);
+
+  /// No description provided for @termsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'cubechat rules'**
+  String get termsTitle;
+
+  /// No description provided for @termsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer and are acted on within 24 hours, and offenders are banned.'**
+  String get termsBody;
+
+  /// No description provided for @termsReadFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Read the full terms'**
+  String get termsReadFull;
+
+  /// No description provided for @termsAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'I agree'**
+  String get termsAccept;
 }
 
 class _AppLocalizationsDelegate

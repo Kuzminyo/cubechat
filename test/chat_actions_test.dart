@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/accepted_terms.dart';
 import 'support/hive_settle.dart';
 
 void main() {
@@ -29,7 +30,12 @@ void main() {
 
   testWidgets('long-pressing a chat picks it out for a bulk action',
       (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -59,7 +65,12 @@ void main() {
   });
 
   testWidgets('favouriting from the selection menu persists', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -95,7 +106,12 @@ void main() {
   // the delete button not being pressable. Two or more chats take another path
   // and always worked, which is what made it look like the button.
   testWidgets('the bin asks about a single picked chat', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -131,7 +147,12 @@ void main() {
   // the first route of its branch, so the press goes to the shell instead —
   // which popped, and closed cubechat with a selection still standing.
   testWidgets('the system back gesture cancels a selection', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [acceptedTermsOverride],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 
