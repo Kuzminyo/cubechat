@@ -13,6 +13,12 @@
 	     silently re-enable it. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<false/>
+	<!-- No CFBundleIcons here, on purpose. The per-theme icons are appiconsets
+	     in Assets.xcassets, and ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES in
+	     project.pbxproj is what makes actool compile them and write
+	     CFBundleIcons / CFBundleAlternateIcons into the built Info.plist. A
+	     hand-written copy naming CFBundleIconFiles that exist only inside the
+	     catalog would compete with that generated one. -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

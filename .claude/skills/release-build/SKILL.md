@@ -140,4 +140,12 @@ Regenerated only when the logo changes:
 flutter run -t tool/export_logo.dart -d windows
 dart run flutter_launcher_icons
 dart run flutter_native_splash:create
+flutter test tool/export_theme_icons.dart
 ```
+
+The last one redraws the seven per-theme launcher icons (Android adaptive
+foregrounds and legacy PNGs, iOS `AppIcon<Theme>` sets) from the same painter.
+The theme icon is an `activity-alias` per palette on Android — MAIN/LAUNCHER
+lives only on the aliases, never on `MainActivity` too — and on iOS the
+appiconsets are shipped by `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES` in
+`project.pbxproj`, not by `CFBundleIcons` in Info.plist.

@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#06140D</color>
+    <!-- Each theme icon's backdrop is its palette's bgDeep (theme_controller.dart). -->
+    <color name="ic_launcher_background_indigo">#080A18</color>
+    <color name="ic_launcher_background_amber">#150E05</color>
+    <color name="ic_launcher_background_rose">#160810</color>
+    <color name="ic_launcher_background_fuchsia">#080406</color>
+    <color name="ic_launcher_background_violet">#0B0616</color>
+    <color name="ic_launcher_background_ocean">#04101A</color>
+    <color name="ic_launcher_background_slate">#0A0D10</color>
 </resources>
