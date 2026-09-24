@@ -187,9 +187,11 @@ void main() {
     Future<bool> Function(Uint8List card, String senderHex)? check,
     Future<Uint8List> Function()? ownCard,
     Future<String> Function(Uint8List card)? addContact,
+    Future<String?> Function(String device, String? hex)? dial,
   }) =>
       ProviderContainer(
         overrides: [
+          bumpDialProvider.overrideWithValue(dial ?? (device, hex) async => null),
           airdropClockProvider.overrideWithValue(
             () => DateTime(2026, 9, 23, 12).add(async.elapsed),
           ),
@@ -787,16 +789,225 @@ void main() {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
       c.read(bumpControllerProvider);
-      feed(async, c, _bob, const Duration(seconds: 3), rssi: -70);
+      feed(async, c, _bob, const Duration(seconds: 3), rssi: -50);
       final open = lines.where((l) => l.contains('dBm')).length;
       expect(open, inInclusiveRange(2, 3));
-      expect(lines.first, contains('b0b0b0b0 -70 dBm, next -'));
+      expect(lines.first, contains('b0b0b0b0 -50 dBm, next -'));
 
       c.read(airdropPageOnScreenProvider.notifier).state = false;
       lines.clear();
-      feed(async, c, _bob, const Duration(seconds: 3), rssi: -70);
+      feed(async, c, _bob, const Duration(seconds: 3), rssi: -50);
       expect(lines, isEmpty);
       c.dispose();
+    });
+  });
+
+  test('the BUMP line stays quiet for someone across the room', () {
+    final lines = <String>[];
+    final previous = debugPrint;
+    debugPrint = (String? m, {int? wrapWidth}) {
+      if (m != null && m.startsWith('[BUMP]')) lines.add(m);
+    };
+    addTearDown(() => debugPrint = previous);
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      // A phone at -70 dBm for ten seconds: no glow, nothing changing — one
+      // line when it appears, not one a second (the log holds 200).
+      feed(async, c, _bob, const Duration(seconds: 10), rssi: -70);
+      expect(lines.where((l) => l.contains('dBm')), hasLength(1));
+      c.dispose();
+    });
+  });
+
+  test('a 1 dB wobble does not move the glow', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(seconds: 2), rssi: -50);
+      final changes = <double>[];
+      c.listen<BumpState>(
+        bumpControllerProvider,
+        (_, s) => changes.add(s.warmth),
+      );
+      final ctl = c.read(bumpControllerProvider.notifier);
+      for (var i = 0; i < 40; i++) {
+        ctl.sample(_bob, i.isEven ? -50 : -51);
+        async.elapse(tick);
+      }
+      expect(changes, isEmpty);
+      c.dispose();
+    });
+  });
+
+  group('dialling a phone held close', () {
+    final start = DateTime(2026, 9, 23, 12);
+
+    /// [device] read at [rssi] every 100 ms for [n] readings, starting at
+    /// reading [from], filed under [hex].
+    void readings(
+      FakeAsync async,
+      ProviderContainer c, {
+      required String hex,
+      required String device,
+      required int from,
+      required int n,
+      int rssi = -35,
+    }) {
+      for (var i = from; i < from + n; i++) {
+        c.read(_readings.notifier).state = [
+          (hex: hex, device: device, rssi: rssi, seen: start.add(tick * i)),
+        ];
+        async.elapse(tick);
+      }
+    }
+
+    test('a stranger held close is dialled, at most once per 10 s', () {
+      fakeAsync((async) {
+        final port = _Port();
+        final dials = <(String, String?)>[];
+        final c = make(
+          async,
+          port,
+          direct: const {},
+          dial: (device, hex) async {
+            dials.add((device, hex));
+            return null;
+          },
+        );
+        c.read(bumpControllerProvider);
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
+        expect(dials, [('AA', null)]);
+        // Still held there: no second dial inside the ten seconds.
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 80);
+        expect(dials, hasLength(1));
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 95, n: 15);
+        expect(dials, hasLength(2));
+        c.dispose();
+      });
+    });
+
+    test('a phone that is only in the room is not dialled', () {
+      fakeAsync((async) {
+        final port = _Port();
+        final dials = <String>[];
+        final c = make(
+          async,
+          port,
+          direct: const {},
+          dial: (device, hex) async {
+            dials.add(device);
+            return null;
+          },
+        );
+        c.read(bumpControllerProvider);
+        readings(
+          async,
+          c,
+          hex: '${bumpAnonPrefix}AA',
+          device: 'AA',
+          from: 0,
+          n: 30,
+          rssi: -58,
+        );
+        expect(dials, isEmpty);
+        expect(
+          c.read(bumpControllerProvider).warmth,
+          0,
+          reason: 'nobody bumpable, nobody being dialled: no glow',
+        );
+        c.dispose();
+      });
+    });
+
+    test('a close phone that already has a session is not dialled', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final dials = <String>[];
+        final c = make(
+          async,
+          port,
+          dial: (device, hex) async {
+            dials.add(device);
+            return null;
+          },
+        );
+        c.read(bumpControllerProvider);
+        readings(async, c, hex: _bob, device: 'BB', from: 0, n: 15);
+        expect(dials, isEmpty);
+        expect(port.bumpsTo(_bob), hasLength(1));
+        c.dispose();
+      });
+    });
+
+    test('a named phone with no session is dialled by its identity', () {
+      fakeAsync((async) {
+        final port = _Port();
+        final dials = <(String, String?)>[];
+        final c = make(
+          async,
+          port,
+          direct: const {},
+          dial: (device, hex) async {
+            dials.add((device, hex));
+            return null;
+          },
+        );
+        c.read(bumpControllerProvider);
+        readings(async, c, hex: _eve, device: 'EE', from: 0, n: 15);
+        expect(dials, [('EE', _eve)]);
+        c.dispose();
+      });
+    });
+
+    test('the dialled phone glows and, once connected, is bumped by name', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final connected = Completer<String?>();
+        final c = make(
+          async,
+          port,
+          dial: (device, hex) => connected.future,
+        );
+        c.read(bumpControllerProvider);
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
+        expect(
+          c.read(bumpControllerProvider).warmth,
+          1,
+          reason: 'being dialled counts for the glow',
+        );
+        expect(port.sent, isEmpty);
+
+        // The handshake finishes: this device is Bob, though the scan cannot
+        // name him yet.
+        connected.complete(_bob);
+        async.flushMicrotasks();
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 15);
+        expect(port.bumpsTo(_bob), hasLength(1));
+        c.dispose();
+      });
+    });
+
+    test('a dial that fails is logged and tried again later', () {
+      fakeAsync((async) {
+        final port = _Port();
+        var dials = 0;
+        final c = make(
+          async,
+          port,
+          direct: const {},
+          dial: (device, hex) async {
+            dials++;
+            throw StateError('GATT 133');
+          },
+        );
+        c.read(bumpControllerProvider);
+        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 115);
+        expect(dials, 2);
+        c.dispose();
+      });
     });
   });
 

@@ -5,7 +5,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/announcement.dart';
+import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/contact_card.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/nearby_offer.dart';
@@ -87,6 +89,47 @@ final bumpDirectPeersProvider = Provider<Set<String>>(
   (ref) => {for (final p in ref.watch(airdropDirectPeersProvider)) p.hex},
 );
 
+/// Dials a phone held close that has no session yet, the way a tap on its
+/// row in Nearby would; the pubkey of whoever answered once the handshake is
+/// done, or null. [hex] is null for a phone the scan cannot name. Injectable
+/// for tests.
+///
+/// Build 1109 only ever bumped a phone that already had a session, and only a
+/// tap in Nearby or "Connect" in a chat dials one — so two strangers on the
+/// AirDrop page glowed, faded and never bumped. Being discoverable only lets
+/// a phone *answer* a handshake; somebody has to ring.
+final bumpDialProvider =
+    Provider<Future<String?> Function(String device, String? hex)>(
+  (ref) => (device, hex) async {
+    final messaging = ref.read(messagingServiceProvider);
+    if (hex != null && messaging.hasSessionWithPubkey(hex)) return hex;
+    final discovery = ref.read(peerDiscoveryControllerProvider.notifier);
+    var address = device;
+    if (!messaging.hasLinkOrPendingTo(device)) {
+      address = (hex == null ? null : discovery.addressOf(hex)) ?? device;
+      // Two attempts, not the tap's four: the gesture dials again on its own
+      // ten seconds later if the phones are still together, and a long retry
+      // loop would outlive the moment of the bump.
+      await messaging.connectAsInitiatorWithRetry(
+        deviceId: address,
+        displayName: hex == null
+            ? NicknameController.defaultNickname
+            : ref.read(airdropPeerNameProvider)(hex),
+        refreshId: hex == null ? null : () => discovery.awaitAddressOf(hex),
+        attempts: 2,
+      );
+    }
+    // The GATT link is up; the Noise handshake finishes a moment later.
+    final until = DateTime.now().add(const Duration(seconds: 6));
+    while (DateTime.now().isBefore(until)) {
+      final s = ref.read(chatSessionManagerProvider)[address];
+      if (s != null && s.isEstablished) return s.remotePubkeyHex;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    return null;
+  },
+);
+
 /// Adds a contact from their signed card; the pubkey hex. Injectable for
 /// tests.
 final bumpAddContactProvider = Provider<Future<String> Function(Uint8List)>(
@@ -115,8 +158,8 @@ final bumpCardCheckProvider =
 /// the rest of the time.
 ///
 /// A phone nobody can put a name to still goes in, under `anon:<device id>`:
-/// it can never be bumped (it has no session), but a louder one must still
-/// stop a quieter named phone from counting as the one touching.
+/// held close it is dialled (see [bumpDialProvider]), and a louder one must
+/// still stop a quieter named phone from counting as the one touching.
 final bumpReadingsProvider = Provider.autoDispose<List<BumpReading>>(
   (ref) => [
     for (final p in ref.watch(peerDiscoveryControllerProvider).peers)
@@ -146,6 +189,21 @@ class BumpController extends Notifier<BumpState> {
   static const Duration _tickEvery = Duration(milliseconds: 200);
   static const Duration _logEvery = Duration(seconds: 1);
 
+  /// A phone with no session is dialled once it gives [_dialSamples] readings
+  /// at [dialRssi] or louder inside the tracker's one-second window — ten dB
+  /// short of a bump, so the handshake is under way while the phones are
+  /// still closing in — and at most once per device per [dialEvery].
+  /// [dialEvery] is also how long a dialled phone counts for the glow.
+  static const int dialRssi = -50;
+  static const int _dialSamples = ProximityTracker.minCloseSamples;
+  static const Duration dialEvery = Duration(seconds: 10);
+
+  /// Smallest warmth step the glow is moved by. The warmth spans the 20 dB
+  /// from `glowRssi` to `bumpRssi`, so a twentieth was one decibel — the
+  /// wobble of a phone lying still — and 1109's glow re-animated on almost
+  /// every tick. A tenth is 2 dB of hysteresis.
+  static const double _warmthStep = 0.1;
+
   /// How long a bump id is remembered against replay, and how many at most.
   /// A minute is thirty times the window a replay would have to land in, and
   /// the cap keeps a flood from a hostile peer to a few kilobytes.
@@ -167,6 +225,18 @@ class BumpController extends Notifier<BumpState> {
   /// [_onReadings].
   final Map<String, String> _keyOfDevice = {};
 
+  /// Key → the device its newest reading came from: what a dial rings.
+  final Map<String, String> _deviceOfKey = {};
+
+  /// Device → when it was last dialled — see [dialEvery].
+  final Map<String, DateTime> _dialledAt = {};
+
+  /// Device → the pubkey a dial found behind it. The scan names a phone only
+  /// once its rotating id resolves against the roster, which can take a scan
+  /// window or two after the handshake; until then its readings are filed
+  /// under the identity the handshake proved.
+  final Map<String, String> _identityOfDevice = {};
+
   /// Our bump to each person as it is being handed to the port. A bumped
   /// offer waits on it: the receiver opens its door for the offer when our
   /// bump arrives, so an offer that overtook it would be met by a closed one.
@@ -180,6 +250,10 @@ class BumpController extends Notifier<BumpState> {
   /// closed cannot land in the next visit.
   int _visit = 0;
   DateTime? _lastLog;
+
+  /// What the last BUMP line said — see [_logReading].
+  String? _loggedClosest;
+  bool _loggedClose = false;
 
   /// Our signed card for this visit. Fetched when the page opens: building it
   /// signs an announcement, which the first bump of a visit should not wait
@@ -232,6 +306,10 @@ class BumpController extends Notifier<BumpState> {
     _tracker.clear();
     _fed.clear();
     _keyOfDevice.clear();
+    _deviceOfKey.clear();
+    _identityOfDevice.clear();
+    _loggedClosest = null;
+    _loggedClose = false;
     _sentAt.clear();
     _heard.clear();
     _sending.clear();
@@ -259,6 +337,9 @@ class BumpController extends Notifier<BumpState> {
 
   void _onReadings(List<BumpReading> readings) {
     for (final r in readings) {
+      final key = r.hex.startsWith(bumpAnonPrefix)
+          ? (_identityOfDevice[r.device] ?? r.hex)
+          : r.hex;
       // A phone read as `anon:` a moment ago and named now is one phone, not
       // two. Its anonymous readings would otherwise be held for the tracker's
       // three seconds at the very same RSSI — a runner-up zero dB behind that
@@ -266,16 +347,18 @@ class BumpController extends Notifier<BumpState> {
       // resolved (and again after every rotating-id epoch change).
       final before = _keyOfDevice[r.device];
       if (before != null &&
-          before != r.hex &&
+          before != key &&
           before.startsWith(bumpAnonPrefix)) {
         _tracker.forget(before);
         _fed.remove(before);
+        _deviceOfKey.remove(before);
       }
-      _keyOfDevice[r.device] = r.hex;
-      final last = _fed[r.hex];
+      _keyOfDevice[r.device] = key;
+      _deviceOfKey[key] = r.device;
+      final last = _fed[key];
       if (last != null && !r.seen.isAfter(last)) continue;
-      _fed[r.hex] = r.seen;
-      sample(r.hex, r.rssi);
+      _fed[key] = r.seen;
+      sample(key, r.rssi);
     }
   }
 
@@ -313,17 +396,22 @@ class BumpController extends Notifier<BumpState> {
   void _evaluate() {
     final now = _now;
     final r = _tracker.read(now);
-    final w = r.warmth;
-    // A twentieth is finer than the glow can show; the two ends always land,
-    // or a glow could stay lit at 0.03 after the person walked away.
+    final hex = r.closest;
+    final bumpable =
+        hex != null && ref.read(bumpDirectPeersProvider).contains(hex);
+    if (hex != null && !bumpable) _maybeDial(hex, now);
+    // The glow promises a bump. Lit for every phone in range, it shone for
+    // strangers that — before they were dialled — could never bump at all.
+    final w = bumpable || (hex != null && _dialling(hex, now)) ? r.warmth : 0.0;
+    // The two ends always land, or a glow could stay lit at 0.05 after the
+    // person walked away.
     if (w != state.warmth &&
-        ((w - state.warmth).abs() >= 0.05 || w == 0 || w == 1)) {
+        ((w - state.warmth).abs() >= _warmthStep - 1e-9 || w == 0 || w == 1)) {
       state = BumpState(warmth: w, event: state.event);
     }
     _logReading(r, now);
-    final hex = r.closest;
     if (!r.isClose || hex == null || _quiet(hex, now)) return;
-    if (!ref.read(bumpDirectPeersProvider).contains(hex)) return;
+    if (!bumpable) return;
     final sent = _sentAt[hex];
     // Held together, ours goes again every [mutualWithin], so a slow other
     // side still finds one of ours recent enough.
@@ -334,6 +422,39 @@ class BumpController extends Notifier<BumpState> {
     if (heard != null && now.difference(heard.at) <= mutualWithin) {
       _fire(hex, heard.bump, now);
     }
+  }
+
+  String? _deviceOf(String key) => key.startsWith(bumpAnonPrefix)
+      ? key.substring(bumpAnonPrefix.length)
+      : _deviceOfKey[key];
+
+  bool _dialling(String key, DateTime now) {
+    final device = _deviceOf(key);
+    final at = device == null ? null : _dialledAt[device];
+    return at != null && now.difference(at) < dialEvery;
+  }
+
+  /// Rings [key]'s phone when it is held close and nobody is talking to it —
+  /// see [bumpDialProvider].
+  void _maybeDial(String key, DateTime now) {
+    final device = _deviceOf(key);
+    if (device == null) return;
+    if (_tracker.loudSamples(key, dialRssi, now) < _dialSamples) return;
+    if (_dialling(key, now)) return;
+    _dialledAt.removeWhere((_, at) => now.difference(at) >= dialEvery);
+    _dialledAt[device] = now;
+    final named = !key.startsWith(bumpAnonPrefix);
+    DebugLog.instance.log('BUMP', 'dialling ${_short(key)}');
+    final visit = _visit;
+    unawaited(() async {
+      try {
+        final who = await ref.read(bumpDialProvider)(device, named ? key : null);
+        if (who == null || _tick == null || visit != _visit) return;
+        _identityOfDevice[device] = who;
+      } catch (e) {
+        DebugLog.instance.log('BUMP', 'dialling ${_short(key)} failed: $e');
+      }
+    }());
   }
 
   /// Never throws: a bumped offer awaits it.
@@ -483,15 +604,21 @@ class BumpController extends Notifier<BumpState> {
     return true;
   }
 
-  /// At most once a second while the page is open, and only with someone to
-  /// report. These lines are the measurement `ProximityTracker.bumpRssi` is
-  /// waiting for.
+  /// At most once a second while the page is open, and only while the glow
+  /// is lit or the closest phone (or whether it is close) has changed. These
+  /// lines are the measurement `ProximityTracker.bumpRssi` is waiting for —
+  /// but 1109 wrote one a second whenever *anyone* was in range, and
+  /// DebugLog's 200 lines were gone in three minutes of standing in a room.
   void _logReading(ProximityReading r, DateTime now) {
     final hex = r.closest;
     if (hex == null) return;
+    final changed = hex != _loggedClosest || r.isClose != _loggedClose;
+    if (state.warmth == 0 && !changed) return;
     final last = _lastLog;
     if (last != null && now.difference(last) < _logEvery) return;
     _lastLog = now;
+    _loggedClosest = hex;
+    _loggedClose = r.isClose;
     DebugLog.instance.log(
       'BUMP',
       '${_short(hex)} ${r.closestRssi} dBm, '

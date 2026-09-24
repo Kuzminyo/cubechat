@@ -55,6 +55,19 @@ class ProximityTracker {
     _readings[peerHex]!.removeWhere((reading) => reading.$1.isBefore(oldestValid));
   }
 
+  /// How many of [peerHex]'s samples inside the window read [rssi] or
+  /// louder. Held readings do not count — the same rule as [minCloseSamples].
+  int loudSamples(String peerHex, int rssi, DateTime now) {
+    final readings = _readings[peerHex];
+    if (readings == null) return 0;
+    final windowStart = now.subtract(window);
+    var n = 0;
+    for (final (at, value) in readings) {
+      if (at.isAfter(windowStart) && !at.isAfter(now) && value >= rssi) n++;
+    }
+    return n;
+  }
+
   void forget(String peerHex) {
     _readings.remove(peerHex);
   }

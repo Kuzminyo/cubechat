@@ -91,4 +91,15 @@ void main() {
     expect(p.read(at(3500)).closest, isNull);
     expect(p.trackedPeers, 0); // Evicted
   });
+
+  test('loud samples are counted inside the window only', () {
+    final p = ProximityTracker()
+      ..add('a', -45, at(0))
+      ..add('a', -60, at(500))
+      ..add('a', -48, at(1200))
+      ..add('a', -50, at(1500))
+      ..add('a', -51, at(1600));
+    expect(p.loudSamples('a', -50, at(1700)), 2);
+    expect(p.loudSamples('b', -50, at(1700)), 0);
+  });
 }
