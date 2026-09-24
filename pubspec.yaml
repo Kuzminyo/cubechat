@@ -157,6 +157,13 @@ dependency_overrides:
     path: third_party/camera_android_camerax
   camera_avfoundation:
     path: third_party/camera_avfoundation
+  # App Review rejected 1080 (guideline 2.5.1) for two private iOS APIs inside
+  # these plugins: PHAsset.filename and RPSystemBroadcastPickerView's
+  # buttonPressed:. Both are cut out; see each folder's CUBECHAT_PATCH.md.
+  photo_manager:
+    path: third_party/photo_manager
+  flutter_webrtc:
+    path: third_party/flutter_webrtc
 
 dev_dependencies:
   flutter_lints: ^4.0.0

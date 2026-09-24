@@ -622,10 +622,9 @@ packages:
   flutter_webrtc:
     dependency: "direct main"
     description:
-      name: flutter_webrtc
-      sha256: b832dc76c0d1577f14aaf35e9c38d4ed7667cbc89c492b7bf4505d8d5f62e08b
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_webrtc"
+      relative: true
+    source: path
     version: "0.12.12+hotfix.1"
   geocoding:
     dependency: "direct main"
@@ -1182,10 +1181,9 @@ packages:
   photo_manager:
     dependency: "direct main"
     description:
-      name: photo_manager
-      sha256: bf840253a7a5a48774f3a23b042a673614785e9874e0c86e2837681d576ef252
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/photo_manager"
+      relative: true
+    source: path
     version: "3.10.0"
   pigeon:
     dependency: transitive
