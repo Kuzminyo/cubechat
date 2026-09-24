@@ -73,6 +73,51 @@ void main() {
     await tx.close();
   });
 
+  test('a big file is opened in batches of about 1 MiB, still in order',
+      () async {
+    const size = 8 * 1024 * 1024 + 123;
+    final a = await source('big.bin', size, 3);
+    Uint8List? got;
+    final rxDir = await Directory('${tmp.path}/rx').create();
+    final rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'cc' * 16: size},
+      tempDir: rxDir,
+      onProgress: (_, __, ___) {},
+      onFile: (id, f) async {
+        got = await f.readAsBytes();
+        return true;
+      },
+    );
+    final tx = await WifiLaneSender.connect(
+      endpoint: NearbyWifiEndpoint(
+        address: loop.address,
+        port: rx.port,
+        key: key,
+      ),
+      transferId: tid,
+    );
+    expect(
+      await tx!.sendFile(
+        mediaIdHex: 'cc' * 16,
+        file: a,
+        size: size,
+        onProgress: (_, __, ___) {},
+        cancelled: () => false,
+      ),
+      isTrue,
+    );
+    await tx.close();
+    await rx.done.timeout(const Duration(seconds: 10));
+    expect(got, await a.readAsBytes());
+    // 129 records of 64 KiB. Opened one TCP read at a time that was well
+    // over a hundred isolate hops; in 1 MiB batches it is about nine, plus
+    // the odd short batch for hello and fileEnd.
+    expect(rx.debugOpenBatches, lessThanOrEqualTo(20));
+  });
+
   test('a connection with the wrong key is dropped, the right one still gets in',
       () async {
     final rx = await WifiLaneReceiver.start(

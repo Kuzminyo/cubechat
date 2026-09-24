@@ -143,8 +143,13 @@ class WifiLaneCipher {
         secretKey: secret,
         nonce: _nonce(dir, start + i),
       );
+      // setRange, not a list spread: a spread boxes every byte of a 64 KiB
+      // record through a growable List<int>.
+      final ct = box.cipherText;
       out.add(
-        Uint8List.fromList([...box.cipherText, ...box.mac.bytes]),
+        Uint8List(ct.length + 16)
+          ..setRange(0, ct.length, ct)
+          ..setRange(ct.length, ct.length + 16, box.mac.bytes),
       );
     }
     return out;
@@ -165,13 +170,13 @@ class WifiLaneCipher {
       try {
         final plain = await aead.decrypt(
           SecretBox(
-            s.sublist(0, s.length - 16),
+            Uint8List.sublistView(s, 0, s.length - 16),
             nonce: _nonce(dir, start + i),
-            mac: Mac(s.sublist(s.length - 16)),
+            mac: Mac(Uint8List.sublistView(s, s.length - 16)),
           ),
           secretKey: secret,
         );
-        out.add(Uint8List.fromList(plain));
+        out.add(plain is Uint8List ? plain : Uint8List.fromList(plain));
       } on SecretBoxAuthenticationError {
         throw const FormatException('wifi lane: record failed to open');
       }
@@ -181,28 +186,55 @@ class WifiLaneCipher {
 }
 
 /// Cuts a TCP byte stream into sealed records.
+///
+/// One buffer, written with `setRange` and compacted in place: each byte is
+/// copied once in and once out. 1109 rebuilt the whole pending buffer with a
+/// list spread on every TCP chunk and copied each record twice more; measured
+/// by `wifi_lane_codec_bench_test.dart` on the dev PC, that framer alone ran
+/// at ~22 MB/s on the UI isolate — slower than the ChaCha20 behind it.
 class WifiRecordFramer {
-  final BytesBuilder _buf = BytesBuilder(copy: false);
-  Uint8List _pending = Uint8List(0);
+  Uint8List _buf = Uint8List(0);
 
-  void add(Uint8List bytes) => _buf.add(bytes);
+  /// First unread byte, and one past the last written one.
+  int _start = 0;
+  int _end = 0;
+
+  void add(Uint8List bytes) {
+    if (_end + bytes.length > _buf.length) {
+      final live = _end - _start;
+      final need = live + bytes.length;
+      if (need <= _buf.length) {
+        // Room enough once what was already read is dropped.
+        _buf.setRange(0, live, _buf, _start);
+      } else {
+        final grown = Uint8List(
+          need > _buf.length * 2 ? need : _buf.length * 2,
+        )..setRange(0, live, _buf, _start);
+        _buf = grown;
+      }
+      _start = 0;
+      _end = live;
+    }
+    _buf.setRange(_end, _end + bytes.length, bytes);
+    _end += bytes.length;
+  }
 
   List<Uint8List> take() {
-    if (_buf.isNotEmpty) {
-      _pending = Uint8List.fromList([..._pending, ..._buf.takeBytes()]);
-    }
     final out = <Uint8List>[];
-    var at = 0;
-    while (_pending.length - at >= 4) {
-      final len = ByteData.sublistView(_pending, at, at + 4).getUint32(0);
+    while (_end - _start >= 4) {
+      final len = (_buf[_start] << 24) |
+          (_buf[_start + 1] << 16) |
+          (_buf[_start + 2] << 8) |
+          _buf[_start + 3];
       if (len > WifiLaneCodec.maxSealed || len < 17) {
         throw FormatException('wifi lane: record of $len bytes');
       }
-      if (_pending.length - at - 4 < len) break;
-      out.add(Uint8List.fromList(_pending.sublist(at + 4, at + 4 + len)));
-      at += 4 + len;
+      if (_end - _start - 4 < len) break;
+      // A copy, not a view: the buffer is written over by the next add().
+      out.add(_buf.sublist(_start + 4, _start + 4 + len));
+      _start += 4 + len;
     }
-    _pending = Uint8List.fromList(_pending.sublist(at));
+    if (_start == _end) _start = _end = 0;
     return out;
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/transport/nearby_offer.dart';
@@ -160,6 +161,24 @@ class WifiLaneReceiver {
   int get port => _port;
   Future<void> get done => _done.future;
 
+  /// Sealed records are opened together once this much has arrived, or once
+  /// the socket has been quiet for [_openQuiet]. Nearly every TCP read on a
+  /// phone holds a single 64 KiB record, so opening per read was one
+  /// `Isolate.run` per 64 KiB — sixteen per MiB. Records stay in arrival
+  /// order: batches go through [_queue] one after another. Measured by
+  /// `wifi_lane_codec_bench_test.dart` on the dev PC: take + open at 24 MB/s
+  /// opened per read, 29 MB/s in 1 MiB batches (512 vs 32 isolate hops for
+  /// 32 MiB).
+  static const int _openBatchBytes = 1024 * 1024;
+
+  /// Long enough to see the next read of a burst arrive, short enough that a
+  /// lone control record (hello, fileStart, fileEnd) is not held back.
+  static const Duration _openQuiet = Duration(milliseconds: 15);
+
+  /// How many batches of records have been handed to the cipher.
+  @visibleForTesting
+  int debugOpenBatches = 0;
+
   void _armIdle() {
     _idleTimer?.cancel();
     if (_closed) return;
@@ -182,7 +201,93 @@ class WifiLaneReceiver {
     final framer = WifiRecordFramer();
     var provedThisSocket = false;
 
+    // Sealed records waiting to be opened together — see [_openBatchBytes].
+    final waiting = <Uint8List>[];
+    var waitingBytes = 0;
+    Timer? quiet;
+
     late final StreamSubscription<Uint8List> sub;
+
+    void enqueue() {
+      quiet?.cancel();
+      quiet = null;
+      if (waiting.isEmpty || _closed || !_liveSockets.contains(socket)) {
+        return;
+      }
+      final sealed = List<Uint8List>.of(waiting);
+      waiting.clear();
+      waitingBytes = 0;
+      debugOpenBatches++;
+      sub.pause();
+      _queue = _queue.then((_) async {
+        if (_closed) return;
+        try {
+          List<WifiRecord> records;
+          try {
+            records = await openCipher.open(sealed);
+          } on FormatException {
+            DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
+            // A corrupt record from the proven socket ends the whole
+            // transfer right away rather than waiting for the idle timer
+            // to notice nothing more will ever arrive on it. This runs as
+            // part of the current batch, so it must use the internal
+            // close path — the public one awaits `_queue`, which is this
+            // very batch, and would deadlock.
+            if (socket == _proven) {
+              await _closeInternal();
+            } else {
+              _destroy(socket);
+            }
+            return;
+          }
+          if (!provedThisSocket) {
+            final first = records.isEmpty ? null : records.first;
+            if (first == null ||
+                first.kind != WifiRecordKind.hello ||
+                !_bytesEqual(first.body, _transferId)) {
+              DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
+              _destroy(socket);
+              return;
+            }
+            if (_proven != null) {
+              // Another socket proved itself first while this one was
+              // being opened; only the first winner stays.
+              _destroy(socket);
+              return;
+            }
+            provedThisSocket = true;
+            _proven = socket;
+            _provenSub = sub;
+            _sealCipher = sealCipher;
+            _onConnected?.call();
+            records = records.skip(1).toList();
+          }
+          await _handleRecords(socket, records);
+        } catch (e) {
+          // Anything else — a disk-full FileSystemException from
+          // writeFrom/open, or a throwing onFile/onProgress/onConnected —
+          // leaves this batch unable to finish cleanly. Uncaught, the
+          // future this batch produces would carry the error forward and
+          // nothing awaits `_queue` to ever see it — closing now is the
+          // only response that leaves nothing half-done or silently
+          // stuck. Internal path: see the comment above.
+          DebugLog.instance.log('AIRDROP', 'wifi: receive failed, closing');
+          if (socket == _proven) {
+            await _closeInternal();
+          } else {
+            _destroy(socket);
+          }
+        }
+      }).whenComplete(() {
+        // Resume only after this batch has fully run (however it ended) —
+        // that is the backpressure: a sender that races ahead just fills
+        // the TCP receive buffer instead of racing the order records are
+        // applied in. `whenComplete` (not `then`) guarantees this runs
+        // even on a batch that somehow still throws past the catch above.
+        if (!_closed) sub.resume();
+      });
+    }
+
     sub = socket.listen(
       (chunk) {
         if (_closed) return;
@@ -197,6 +302,7 @@ class WifiLaneReceiver {
           sealed = framer.take();
         } on FormatException {
           DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
+          quiet?.cancel();
           _destroy(socket);
           sub.cancel();
           // Nothing is queued for this chunk (we bailed before pausing or
@@ -208,76 +314,21 @@ class WifiLaneReceiver {
           return;
         }
         if (sealed.isEmpty) return;
-        sub.pause();
-        _queue = _queue.then((_) async {
-          if (_closed) return;
-          try {
-            List<WifiRecord> records;
-            try {
-              records = await openCipher.open(sealed);
-            } on FormatException {
-              DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
-              // A corrupt record from the proven socket ends the whole
-              // transfer right away rather than waiting for the idle timer
-              // to notice nothing more will ever arrive on it. This runs as
-              // part of the current batch, so it must use the internal
-              // close path — the public one awaits `_queue`, which is this
-              // very batch, and would deadlock.
-              if (socket == _proven) {
-                await _closeInternal();
-              } else {
-                _destroy(socket);
-              }
-              return;
-            }
-            if (!provedThisSocket) {
-              final first = records.isEmpty ? null : records.first;
-              if (first == null ||
-                  first.kind != WifiRecordKind.hello ||
-                  !_bytesEqual(first.body, _transferId)) {
-                DebugLog.instance.log('AIRDROP', 'wifi: refused a connection');
-                _destroy(socket);
-                return;
-              }
-              if (_proven != null) {
-                // Another socket proved itself first while this one was
-                // being opened; only the first winner stays.
-                _destroy(socket);
-                return;
-              }
-              provedThisSocket = true;
-              _proven = socket;
-              _provenSub = sub;
-              _sealCipher = sealCipher;
-              _onConnected?.call();
-              records = records.skip(1).toList();
-            }
-            await _handleRecords(socket, records);
-          } catch (e) {
-            // Anything else — a disk-full FileSystemException from
-            // writeFrom/open, or a throwing onFile/onProgress/onConnected —
-            // leaves this batch unable to finish cleanly. Uncaught, the
-            // future this batch produces would carry the error forward and
-            // nothing awaits `_queue` to ever see it — closing now is the
-            // only response that leaves nothing half-done or silently
-            // stuck. Internal path: see the comment above.
-            DebugLog.instance.log('AIRDROP', 'wifi: receive failed, closing');
-            if (socket == _proven) {
-              await _closeInternal();
-            } else {
-              _destroy(socket);
-            }
-          }
-        }).whenComplete(() {
-          // Resume only after this batch has fully run (however it ended) —
-          // that is the backpressure: a sender that races ahead just fills
-          // the TCP receive buffer instead of racing the order records are
-          // applied in. `whenComplete` (not `then`) guarantees this runs
-          // even on a batch that somehow still throws past the catch above.
-          if (!_closed) sub.resume();
-        });
+        for (final s in sealed) {
+          waiting.add(s);
+          waitingBytes += s.length;
+        }
+        if (waitingBytes >= _openBatchBytes) {
+          enqueue();
+        } else {
+          quiet?.cancel();
+          quiet = Timer(_openQuiet, enqueue);
+        }
       },
       onDone: () {
+        // Whatever arrived last is still opened, in order, before the close
+        // below waits on the queue.
+        enqueue();
         _liveSockets.remove(socket);
         // The proven socket hanging up means nothing more is ever coming;
         // waiting out the idle timer would just leave the port bound and
@@ -285,6 +336,7 @@ class WifiLaneReceiver {
         if (socket == _proven) close();
       },
       onError: (Object _, StackTrace __) {
+        quiet?.cancel();
         _liveSockets.remove(socket);
         if (socket == _proven) close();
       },
