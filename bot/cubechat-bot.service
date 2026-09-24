@@ -1,0 +1,24 @@
+[Unit]
+Description=cubechat moderation Telegram bot
+After=network-online.target cubechat-push.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cubechat-bot
+WorkingDirectory=/opt/cubechat-bot
+EnvironmentFile=/etc/cubechat-bot.env
+ExecStart=/usr/bin/python3 cubechat_bot.py
+Restart=always
+RestartSec=5
+
+# It reads its state file and talks to two HTTPS endpoints. Nothing else is
+# any of its business.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-bot
+
+[Install]
+WantedBy=multi-user.target

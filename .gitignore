@@ -128,3 +128,9 @@ design-previews/*/corrected-poses/
 design-previews/*/sources/
 design-previews/*/renders/
 design-previews/**/__pycache__/
+
+# bot/: stdlib-only Python service, no venv or build output to speak of —
+# just the interpreter's own cache and the runtime state file (persisted
+# report seq + Telegram update_id), which is droplet-local, not source.
+bot/__pycache__/
+bot/bot-state.json
