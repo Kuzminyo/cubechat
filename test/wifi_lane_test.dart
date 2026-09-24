@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:cubechat/core/transport/nearby_offer.dart';
 import 'package:cubechat/features/airdrop/data/wifi_lane.dart';
+import 'package:cubechat/features/airdrop/data/wifi_lane_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Uint8List _bytes(int n, [int seed = 0]) =>
@@ -431,11 +432,161 @@ void main() {
         .timeout(const Duration(seconds: 5));
     expect(ok, isFalse);
     await tx.close();
+    // The close above was not awaited, and the sender now gives up the
+    // moment its read side reports the hang-up — before the receiver has
+    // finished sweeping. `done` completes only after that sweep.
+    await rx.done.timeout(const Duration(seconds: 5));
     expect(onFileCalled, isFalse);
     expect(
       rxDir.listSync().where((e) => e.path.endsWith('.part')),
       isEmpty,
     );
+  });
+
+  test(
+      'the receiver hanging up between two slices still ends sendFile '
+      '(the socket errors while the next slice is being sealed)', () async {
+    // What CI hit after 2268cbcc: the receiver closes once a whole 1 MiB
+    // batch has landed, which is exactly when the sender is reading and
+    // sealing its next slice. The reset lands in that gap, dart:io marks the
+    // native socket closing, and the next add() + flush() never completes —
+    // a closing socket takes 0 bytes and never raises a write event. Made
+    // deterministic here: the peer is gone before slice two is written, so
+    // writing it draws a reset, and the sender sleeps at the top of slice
+    // three until that reset has certainly arrived.
+    final server = await ServerSocket.bind(loop, 0);
+    final accepted = Completer<Socket>();
+    server.listen((s) {
+      s.listen((_) {}, onError: (Object _) {}, cancelOnError: true);
+      accepted.complete(s);
+    });
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: server.port, key: key),
+      transferId: tid,
+    );
+    final peer = await accepted.future;
+    const size = 3 * 1024 * 1024 + 1;
+    final f = File('${tmp.path}/reset.bin')..writeAsBytesSync(Uint8List(size));
+    var calls = 0;
+    final ok = await tx!
+        .sendFile(
+          mediaIdHex: 'aa' * 16,
+          file: f,
+          size: size,
+          onProgress: (_, __, ___) {},
+          cancelled: () {
+            calls++;
+            if (calls == 2) {
+              peer.destroy();
+              sleep(const Duration(milliseconds: 200));
+            } else if (calls == 3) {
+              sleep(const Duration(milliseconds: 300));
+            }
+            return false;
+          },
+        )
+        .timeout(const Duration(seconds: 5));
+    expect(ok, isFalse);
+    await tx.close();
+    await server.close();
+  });
+
+  test(
+      'closing the sender while its flush waits on a receiver that stopped '
+      'reading ends sendFile', () async {
+    // The controller's stall watchdog closes a sender whose receiver went
+    // quiet — which is precisely when a flush is parked on a full socket
+    // buffer. destroy() stops the socket's writer without completing that
+    // flush, so without a bound of its own sendFile waited forever.
+    final server = await ServerSocket.bind(loop, 0);
+    final accepted = Completer<Socket>();
+    server.listen((s) {
+      // Never read: the sender's buffers fill and its flush parks.
+      s.listen((_) {}, onError: (Object _) {}, cancelOnError: true).pause();
+      accepted.complete(s);
+    });
+    final tx = await WifiLaneSender.connect(
+      endpoint:
+          NearbyWifiEndpoint(address: loop.address, port: server.port, key: key),
+      transferId: tid,
+    );
+    final peer = await accepted.future;
+    const size = 64 * 1024 * 1024;
+    final f = File('${tmp.path}/stall.bin')..writeAsBytesSync(Uint8List(size));
+    Timer? watchdog;
+    void arm() {
+      watchdog?.cancel();
+      watchdog = Timer(const Duration(milliseconds: 500), () => tx!.close());
+    }
+
+    arm();
+    final ok = await tx!
+        .sendFile(
+          mediaIdHex: 'aa' * 16,
+          file: f,
+          size: size,
+          onProgress: (_, __, ___) => arm(),
+          cancelled: () => false,
+        )
+        .timeout(const Duration(seconds: 20));
+    watchdog?.cancel();
+    expect(ok, isFalse);
+    peer.destroy();
+    await server.close();
+  });
+
+  test(
+      'close() while a partial batch waits out the quiet timer completes and '
+      'leaves nothing behind', () async {
+    // A lone fileStart and one short data record sit in the pending batch
+    // for _openQuiet; close() lands inside that window. The pending batch
+    // must simply be dropped — nothing may wait on it being opened.
+    final rxDir = await Directory('${tmp.path}/rx5').create();
+    var onFileCalled = false;
+    final connected = Completer<void>();
+    final rx = await WifiLaneReceiver.start(
+      address: loop,
+      key: key,
+      transferId: tid,
+      expected: {'aa' * 16: 1024 * 1024},
+      tempDir: rxDir,
+      onProgress: (_, __, ___) {},
+      onFile: (_, __) async {
+        onFileCalled = true;
+        return true;
+      },
+      onConnected: connected.complete,
+    );
+    final raw = await Socket.connect(loop, rx.port);
+    final seal = WifiLaneCipher(key, WifiDirection.toReceiver);
+    for (final s in await seal.seal([WifiRecord(WifiRecordKind.hello, tid)])) {
+      raw.add(WifiLaneCodec.frame(s));
+    }
+    await raw.flush();
+    await connected.future.timeout(const Duration(seconds: 5));
+    final start = Uint8List(24)..setRange(0, 16, nearbyUnhex('aa' * 16));
+    ByteData.sublistView(start).setUint64(16, 1024 * 1024);
+    for (final s in await seal.seal([
+      WifiRecord(WifiRecordKind.fileStart, start),
+      WifiRecord(WifiRecordKind.data, Uint8List(1000)),
+    ])) {
+      raw.add(WifiLaneCodec.frame(s));
+    }
+    await raw.flush();
+    // Well inside the 15 ms quiet window on any machine that delivered the
+    // bytes at all; the batch is still waiting, not yet queued.
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    await rx.close().timeout(const Duration(seconds: 5));
+    await rx.done.timeout(const Duration(seconds: 1));
+    // The quiet timer still fires after close and must find nothing to do.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(onFileCalled, isFalse);
+    expect(
+      rxDir.listSync().where((e) => e.path.endsWith('.part')),
+      isEmpty,
+    );
+    raw.destroy();
   });
 
   group('pickLanAddress', () {

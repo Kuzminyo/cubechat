@@ -104,6 +104,37 @@ Future<void> _closeRaf(RandomAccessFile raf) async {
   }
 }
 
+/// Writes out whatever [socket] has buffered, but never waits past [gone].
+///
+/// dart:io's own flush can wait forever on a socket that is already dead, in
+/// two ways, both measured:
+///
+/// - Once the socket has seen an error, its native side is "closing": a
+///   later write takes 0 bytes and no write event is ever raised, so the
+///   flush after it never completes (on Windows the second flush after a
+///   reset times out, every run). On Linux the reset arrives as an epoll
+///   error *event*, so the very first flush after it hangs — which is what
+///   CI hit after 2268cbcc: the receiver closes as soon as a whole 1 MiB
+///   batch has landed, and that is exactly when the sender is between its
+///   liveness check and the next slice's flush.
+/// - `destroy()` stops the socket's writer without completing a flush that
+///   is parked on a full buffer.
+///
+/// [gone] completes when this side learns the connection is over (its read
+/// stream errored or ended, or we closed it), so a flush is bounded by the
+/// same event that makes it pointless. Throws [SocketException] when it gave
+/// up, so callers treat it like any other failed write.
+Future<void> _flushUnless(Socket socket, Future<void> gone) async {
+  var gaveUp = false;
+  // Future.any keeps handlers on both, so the flush failing after we gave up
+  // on it is swallowed rather than reported as unhandled.
+  await Future.any<void>([
+    socket.flush(),
+    gone.then((_) => gaveUp = true),
+  ]);
+  if (gaveUp) throw const SocketException.closed();
+}
+
 /// One file being written to disk by the receiver.
 class _Incoming {
   _Incoming(this.file, this.raf, this.size);
@@ -186,6 +217,11 @@ class WifiLaneReceiver {
   Future<void> _queue = Future<void>.value();
   bool _closed = false;
   final Completer<void> _done = Completer<void>();
+
+  /// Completes the moment [_closed] is set, before any socket is torn down:
+  /// a control record's flush is raced against it so a batch can never keep
+  /// [close] waiting on `_queue` — see [_flushUnless].
+  final Completer<void> _closing = Completer<void>();
 
   /// Every socket accepted and not yet destroyed — not just the proven one.
   /// A decoy connection can still be mid-handshake when [close] runs (the
@@ -541,11 +577,14 @@ class WifiLaneReceiver {
     final seal = _sealCipher;
     if (seal == null) return;
     final sealed = await seal.seal([WifiRecord(kind, body)]);
+    // close() destroys the sockets before it waits on the batch this runs
+    // in, so this flush must not outlive it — see [_flushUnless].
+    if (_closed) return;
     for (final s in sealed) {
       socket.add(WifiLaneCodec.frame(s));
     }
     try {
-      await socket.flush();
+      await _flushUnless(socket, _closing.future);
     } on SocketException {
       // Peer already gone.
     }
@@ -597,6 +636,7 @@ class WifiLaneReceiver {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _closing.complete();
     await _teardownSockets();
     await _queue;
     await _sweepWriting();
@@ -611,6 +651,7 @@ class WifiLaneReceiver {
   Future<void> _closeInternal() async {
     if (_closed) return;
     _closed = true;
+    _closing.complete();
     await _teardownSockets();
     await _sweepWriting();
     _completeDone();
@@ -696,7 +737,7 @@ class WifiLaneSender {
       for (final s in sealed) {
         socket.add(WifiLaneCodec.frame(s));
       }
-      await socket.flush();
+      await _flushUnless(socket, sender._gone.future);
     } on SocketException {
       await sender.close();
       return null;
@@ -716,6 +757,10 @@ class WifiLaneSender {
   /// a record that failed to open. A later `sendFile` call fails fast on it
   /// instead of writing into a socket that will only ever error back out.
   bool _dead = false;
+
+  /// Completes with [_dead]: every flush is raced against it — see
+  /// [_flushUnless].
+  final Completer<void> _gone = Completer<void>();
 
   final Map<String, Completer<bool>> _pending = {};
 
@@ -765,6 +810,7 @@ class WifiLaneSender {
 
   void _failAll() {
     _dead = true;
+    if (!_gone.isCompleted) _gone.complete();
     for (final c in _pending.values) {
       if (!c.isCompleted) c.complete(false);
     }
@@ -825,10 +871,17 @@ class WifiLaneSender {
           );
         }
         final sealed = await _sealCipher.seal(records);
+        // Checked again after the awaits above: the connection can die
+        // while this slice was being read and sealed, and a dead socket is
+        // no place to start a write (see [_flushUnless]).
+        if (_closed || _dead) {
+          _pending.remove(mediaIdHex);
+          return false;
+        }
         for (final s in sealed) {
           _socket.add(WifiLaneCodec.frame(s));
         }
-        await _socket.flush();
+        await _flushUnless(_socket, _gone.future);
         sent += chunk.length;
         onProgress(mediaIdHex, sent, size);
       }
@@ -854,10 +907,11 @@ class WifiLaneSender {
 
   Future<void> _sendControl(WifiRecordKind kind, Uint8List body) async {
     final sealed = await _sealCipher.seal([WifiRecord(kind, body)]);
+    if (_closed || _dead) throw const SocketException.closed();
     for (final s in sealed) {
       _socket.add(WifiLaneCodec.frame(s));
     }
-    await _socket.flush();
+    await _flushUnless(_socket, _gone.future);
   }
 
   Future<void> close() async {
