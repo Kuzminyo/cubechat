@@ -903,6 +903,44 @@ void main() {
     });
   });
 
+  test('the BUMP line says which half of a bump is missing', () {
+    final lines = <String>[];
+    final previous = debugPrint;
+    debugPrint = (String? m, {int? wrapWidth}) {
+      if (m != null && m.startsWith('[BUMP]') && m.contains('dBm')) {
+        lines.add(m);
+      }
+    };
+    addTearDown(() => debugPrint = previous);
+
+    // Held close with a session: every loud reading counted, link ready.
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(seconds: 2));
+      // The first line lands before the window has filled.
+      expect(lines.first, matches(RegExp(r'samples [0-2]/3, link ready$')));
+      expect(
+        lines.where((l) => l.endsWith(' CLOSE')),
+        everyElement(matches(RegExp(r'samples ([3-9]|\d\d+)/3, link ready'))),
+      );
+      expect(lines.where((l) => l.endsWith(' CLOSE')), isNotEmpty);
+      c.dispose();
+    });
+
+    // The same distance with nobody to carry the bump: link waiting.
+    lines.clear();
+    fakeAsync((async) {
+      final c = make(async, _Port(), direct: const {});
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(seconds: 2));
+      expect(lines, isNotEmpty);
+      expect(lines, everyElement(contains('link waiting')));
+      c.dispose();
+    });
+  });
+
   test('a 1 dB wobble does not move the glow', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);

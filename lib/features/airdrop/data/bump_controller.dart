@@ -435,7 +435,7 @@ class BumpController extends Notifier<BumpState> {
         ((w - state.warmth).abs() >= _warmthStep - 1e-9 || w == 0 || w == 1)) {
       state = BumpState(warmth: w, event: state.event);
     }
-    _logReading(r, now);
+    _logReading(r, now, bumpable: bumpable);
     if (!r.isClose || hex == null || _quiet(hex, now)) return;
     if (!bumpable) return;
     final sent = _sentAt[hex];
@@ -474,7 +474,8 @@ class BumpController extends Notifier<BumpState> {
     final visit = _visit;
     unawaited(() async {
       try {
-        final who = await ref.read(bumpDialProvider)(device, named ? key : null);
+        final who =
+            await ref.read(bumpDialProvider)(device, named ? key : null);
         if (who == null || _tick == null || visit != _visit) return;
         _identityOfDevice[device] = who;
       } catch (e) {
@@ -492,7 +493,8 @@ class BumpController extends Notifier<BumpState> {
     try {
       final ok = await port.send(
         hex,
-        bump: NearbyBump(bumpId: _newId(), hasFiles: hasFiles, card: await card),
+        bump:
+            NearbyBump(bumpId: _newId(), hasFiles: hasFiles, card: await card),
       );
       if (!ok) DebugLog.instance.log('BUMP', 'could not reach ${_short(hex)}');
     } catch (e) {
@@ -650,7 +652,7 @@ class BumpController extends Notifier<BumpState> {
   /// lines are the measurement `ProximityTracker.bumpRssi` is waiting for —
   /// but 1109 wrote one a second whenever *anyone* was in range, and
   /// DebugLog's 200 lines were gone in three minutes of standing in a room.
-  void _logReading(ProximityReading r, DateTime now) {
+  void _logReading(ProximityReading r, DateTime now, {required bool bumpable}) {
     final hex = r.closest;
     if (hex == null) return;
     final changed = hex != _loggedClosest || r.isClose != _loggedClose;
@@ -660,10 +662,18 @@ class BumpController extends Notifier<BumpState> {
     _lastLog = now;
     _loggedClosest = hex;
     _loggedClose = r.isClose;
+    // Samples and link say what is missing when a bump does not fire: too few
+    // readings in the window at the tracker's own close threshold (a hint —
+    // `isClose` itself goes by the window's median and count), or no direct
+    // session yet to carry the bump. Adds nothing to how often this is
+    // written.
+    final loud = _tracker.loudSamples(hex, _tracker.closeRssi, now);
     DebugLog.instance.log(
       'BUMP',
       '${_short(hex)} ${r.closestRssi} dBm, '
-          'next ${r.runnerUpRssi ?? '-'}${r.isClose ? ' CLOSE' : ''}',
+          'next ${r.runnerUpRssi ?? '-'}, '
+          'samples $loud/${ProximityTracker.minCloseSamples}, '
+          'link ${bumpable ? 'ready' : 'waiting'}${r.isClose ? ' CLOSE' : ''}',
     );
   }
 
