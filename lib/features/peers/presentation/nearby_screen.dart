@@ -11,7 +11,6 @@ import '../../../core/widgets/section_switch.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_navigation.dart';
 import '../../airdrop/presentation/airdrop_page.dart';
-import '../../files/data/file_transfer_controller.dart';
 import '../../files/presentation/file_transfer_center_screen.dart';
 import 'peers_screen.dart';
 
@@ -171,6 +170,11 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final subtitle = switch (_page) {
+      1 => t.nearbyAirDropSubtitle,
+      2 => t.nearbyFilesSubtitle,
+      _ => t.peersSubtitle,
+    };
     ref.listen<int?>(nearbyPageRequestProvider, (_, next) {
       if (next != null) _take(next);
     });
@@ -207,7 +211,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  t.peersSubtitle,
+                  subtitle,
                   key: const Key('nearby-section-subtitle'),
                   style:
                       TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
@@ -281,48 +285,13 @@ class _PageSlide extends StatelessWidget {
   }
 }
 
-class _FilesPage extends ConsumerWidget {
+class _FilesPage extends StatelessWidget {
   const _FilesPage();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final finished = ref.watch(
-      fileTransferControllerProvider
-          .select((tasks) => tasks.values.any((task) => !task.active)),
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // No display title here any more — the section header above the
-        // switch already names this tab. Only the clear-finished action, kept
-        // right-aligned on a slim row so it isn't buried behind a menu.
-        if (finished)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  tooltip: t.fileTransfersClear,
-                  onPressed: () => unawaited(
-                    ref
-                        .read(fileTransferControllerProvider.notifier)
-                        .clearFinished(),
-                  ),
-                  icon: const Icon(Icons.cleaning_services_rounded),
-                  color: AppColors.textOnGlass,
-                ),
-              ],
-            ),
-          ),
-        // The list's own leading gap is dropped too — NearbyScreen's header
-        // padding is what puts space under the switch now (see the Peers and
-        // AirDrop pages, which do the same).
-        const Expanded(
-          child: FileTransferList(bottomPadding: 140, topPadding: 0),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => const FileTransferList(
+        bottomPadding: 140,
+        topPadding: 0,
+        showClearHistory: true,
+      );
 }

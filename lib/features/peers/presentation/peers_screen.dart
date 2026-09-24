@@ -443,7 +443,10 @@ class _StatusCard extends StatelessWidget {
             Text(
               hint,
               style: TextStyle(
-                  color: AppColors.textOnGlassDim, fontSize: 13, height: 1.4),
+                color: AppColors.textOnGlassDim,
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 14),
@@ -579,8 +582,11 @@ class _RadarPainter extends CustomPainter {
       ..strokeWidth = 1.2
       ..color = AppColors.brandPrimary.withValues(alpha: 0.25);
     canvas.drawCircle(c, maxR - 1, ring);
-    canvas.drawCircle(c, maxR * 0.6,
-        ring..color = AppColors.brandPrimary.withValues(alpha: 0.18));
+    canvas.drawCircle(
+      c,
+      maxR * 0.6,
+      ring..color = AppColors.brandPrimary.withValues(alpha: 0.18),
+    );
 
     // Expanding pulse
     final pulseR = maxR * p;
@@ -614,7 +620,8 @@ Future<void> _connectAndOpen(
   // connect/handshake happens in the background and Riverpod will repaint
   // the chat screen as the session progresses.
   context.push(
-      '/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}');
+    '/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}',
+  );
 
   await _connectWithFeedback(context, ref, peer, label, t);
 }

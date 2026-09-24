@@ -61,6 +61,7 @@ class FileTransferList extends ConsumerWidget {
     super.key,
     this.bottomPadding = 40,
     this.topPadding = 8,
+    this.showClearHistory = false,
   });
 
   /// 40 as a screen of its own; 140 inside a tab, above the floating bar.
@@ -70,6 +71,10 @@ class FileTransferList extends ConsumerWidget {
   /// Files page, which already gets its leading gap from the shared header
   /// above the switch (see nearby_screen.dart's `_FilesPage`).
   final double topPadding;
+
+  /// The Nearby tab has no AppBar action, so keep this action next to the
+  /// history it clears rather than leaving a lone broom row above the list.
+  final bool showClearHistory;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -90,7 +95,22 @@ class FileTransferList extends ConsumerWidget {
           ],
         ],
         if (history.isNotEmpty) ...[
-          _SectionLabel(t.fileTransfersHistory),
+          if (showClearHistory)
+            Row(
+              children: [
+                Expanded(child: _SectionLabel(t.fileTransfersHistory)),
+                TextButton(
+                  onPressed: () => unawaited(
+                    ref
+                        .read(fileTransferControllerProvider.notifier)
+                        .clearFinished(),
+                  ),
+                  child: Text(t.fileTransfersClear),
+                ),
+              ],
+            )
+          else
+            _SectionLabel(t.fileTransfersHistory),
           for (final task in history) ...[
             _TransferCard(task: task),
             const SizedBox(height: 10),

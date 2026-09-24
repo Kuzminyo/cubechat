@@ -6,6 +6,8 @@ import 'package:cubechat/features/airdrop/data/airdrop_lane_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_navigation.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
+import 'package:cubechat/features/peers/data/peer_discovery_controller.dart';
+import 'package:cubechat/features/peers/models/discovered_peer.dart';
 import 'package:cubechat/features/peers/presentation/nearby_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +38,58 @@ class _DefaultReceive extends AirDropReceiveController {
 class _DefaultLane extends AirDropLaneController {
   @override
   AirDropLane build() => AirDropLane.auto;
+}
+
+class _NearbyPeer extends PeerDiscoveryController {
+  @override
+  PeerDiscoveryState build() => PeerDiscoveryState(
+        status: PeerDiscoveryStatus.scanning,
+        peers: [
+          DiscoveredPeer(
+            id: 'AA:BB:CC:DD:EE:FF',
+            advertisedName: 'xoxoxo',
+            rssi: -55,
+            lastSeen: DateTime(2026, 9, 24),
+          ),
+        ],
+      );
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> retuneScan() async {}
+}
+
+class _FinishedTransfers extends FileTransferController {
+  var cleared = 0;
+
+  @override
+  Future<void> clearFinished() async {
+    cleared++;
+  }
+
+
+  @override
+  Map<String, FileTransferTask> build() {
+    final at = DateTime(2026, 9, 24);
+    return {
+      'file': FileTransferTask(
+        id: 'file',
+        chatId: '',
+        fileName: 'photo.jpg',
+        filePath: '',
+        mime: 'image/jpeg',
+        bytesTotal: 24,
+        completedUnits: 1,
+        totalUnits: 1,
+        direction: FileTransferDirection.incoming,
+        status: FileTransferStatus.completed,
+        createdAt: at,
+        updatedAt: at,
+      ),
+    };
+  }
 }
 
 class _EmptyTransfers extends FileTransferController {
@@ -91,6 +145,61 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('subtitle follows the selected Nearby section', (tester) async {
+    await pump(tester);
+    const subtitle = Key('nearby-section-subtitle');
+    String shown() => tester.widget<Text>(find.byKey(subtitle)).data!;
+    expect(shown(), '\u041f\u0440\u0438\u0441\u0442\u0440\u043e\u0457 \u0443 \u0440\u0430\u0434\u0456\u0443\u0441\u0456 Bluetooth');
+    await tester.tap(find.text('AirDrop'));
+    await tester.pumpAndSettle();
+    expect(shown(), '\u041e\u0431\u043c\u0456\u043d \u0444\u0430\u0439\u043b\u0430\u043c\u0438 \u0437 \u043b\u044e\u0434\u044c\u043c\u0438 \u043f\u043e\u0431\u043b\u0438\u0437\u0443');
+    await tester.tap(find.text('\u0424\u0430\u0439\u043b\u0438'));
+    await tester.pumpAndSettle();
+    expect(shown(), '\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u043d\u0456 \u0439 \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u0456 \u0444\u0430\u0439\u043b\u0438');
+    // And back: the subtitle is the selected page's, not the last one seen.
+    await tester.tap(find.text('\u041f\u043e\u0431\u043b\u0438\u0437\u0443').last);
+    await tester.pumpAndSettle();
+    expect(shown(), '\u041f\u0440\u0438\u0441\u0442\u0440\u043e\u0457 \u0443 \u0440\u0430\u0434\u0456\u0443\u0441\u0456 Bluetooth');
+  });
+
+  testWidgets('clear history sits beside History instead of a detached row',
+      (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          airdropControllerProvider.overrideWith(_EmptyAirDrop.new),
+          airdropHistoryProvider.overrideWith(_EmptyHistory.new),
+          airdropReceiveProvider.overrideWith(_DefaultReceive.new),
+          airdropLaneProvider.overrideWith(_DefaultLane.new),
+          fileTransferControllerProvider.overrideWith(_FinishedTransfers.new),
+          peerDiscoveryControllerProvider.overrideWith(_NearbyPeer.new),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('uk'),
+          home: Scaffold(body: NearbyScreen()),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Файли'));
+    await tester.pump(const Duration(milliseconds: 300));
+    final historyTop = tester.getTopLeft(find.text('ІСТОРІЯ')).dy;
+    final clearTop = tester.getTopLeft(find.text('Очистити історію')).dy;
+    expect((historyTop - clearTop).abs(), lessThan(20));
+    expect(find.byIcon(Icons.cleaning_services_rounded), findsNothing);
+
+    // Still the same action it was as a broom: it clears finished transfers.
+    final files = ProviderScope.containerOf(
+      tester.element(find.text('ІСТОРІЯ')),
+    ).read(fileTransferControllerProvider.notifier) as _FinishedTransfers;
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Очистити історію'));
+    await tester.pump();
+    expect(files.cleared, 1);
+  });
 
   testWidgets(
       'the section header sits above the switch, once, the way Contacts does '
@@ -186,8 +295,7 @@ void main() {
 
     // A glance at the notification shade is not leaving — only paused/hidden
     // and resumed are meant to move the flag.
-    tester.binding
-        .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     expect(c.read(airdropPageOnScreenProvider), isTrue);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);

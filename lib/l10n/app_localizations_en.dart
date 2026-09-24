@@ -3185,6 +3185,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get heldMediaDownload => 'Download';
 
   @override
+  String get nearbyAirDropSubtitle => 'Share files with people nearby';
+
+  @override
+  String get nearbyFilesSubtitle => 'Sent and received files';
+
+  @override
   String get airdropTab => 'AirDrop';
 
   @override

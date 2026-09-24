@@ -1154,6 +1154,8 @@
   "customizeDeferMediaHint": "Через мобільний інтернет повідомлення й дзвінки працюють як завжди, а фото, голосові, кружки й файли чекають Wi-Fi на сервері — до двох тижнів. Рядок над чатами показує, що чекає, і завантажує це одразу.",
   "heldMediaCount": "{count, plural, =1{1 медіа чекає Wi-Fi} few{{count} медіа чекають Wi-Fi} many{{count} медіа чекають Wi-Fi} other{{count} медіа чекають Wi-Fi}}",
   "heldMediaDownload": "Завантажити",
+  "nearbyAirDropSubtitle": "Обмін файлами з людьми поблизу",
+  "nearbyFilesSubtitle": "Надіслані й отримані файли",
   "airdropTab": "AirDrop",
   "nearbyTabFiles": "Файли",
   "airdropReceiveHint": "Хто може надсилати вам файли",

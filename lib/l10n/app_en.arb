@@ -1573,6 +1573,8 @@
   "@heldMediaDownload": {
     "description": "Button on the waiting-media row: fetch everything held, over the current mobile connection."
   },
+  "nearbyAirDropSubtitle": "Share files with people nearby",
+  "nearbyFilesSubtitle": "Sent and received files",
   "airdropTab": "AirDrop",
   "nearbyTabFiles": "Files",
   "airdropReceiveHint": "Who can send you files",

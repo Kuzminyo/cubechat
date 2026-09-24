@@ -5552,6 +5552,18 @@ abstract class AppLocalizations {
   /// **'Download'**
   String get heldMediaDownload;
 
+  /// No description provided for @nearbyAirDropSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share files with people nearby'**
+  String get nearbyAirDropSubtitle;
+
+  /// No description provided for @nearbyFilesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent and received files'**
+  String get nearbyFilesSubtitle;
+
   /// No description provided for @airdropTab.
   ///
   /// In en, this message translates to:

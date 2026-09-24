@@ -3223,6 +3223,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get heldMediaDownload => 'Завантажити';
 
   @override
+  String get nearbyAirDropSubtitle => 'Обмін файлами з людьми поблизу';
+
+  @override
+  String get nearbyFilesSubtitle => 'Надіслані й отримані файли';
+
+  @override
   String get airdropTab => 'AirDrop';
 
   @override
