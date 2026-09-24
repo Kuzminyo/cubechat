@@ -471,6 +471,29 @@ void main() {
     });
   });
 
+  test('a wipe takes the card off the screen and forgets the gesture', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      final ctl = c.read(bumpControllerProvider.notifier);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(48, hasFiles: true));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpReceivingFiles>());
+
+      ctl.wipe();
+      expect(event(c), isNull);
+      expect(c.read(bumpControllerProvider).warmth, 0);
+      // Nor is the five-second pause kept: that is a record of who was
+      // here, and a fresh install has none.
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(49));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>());
+      c.dispose();
+    });
+  });
+
   test('an offer that did not go keeps the staging', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);

@@ -377,6 +377,29 @@ class BumpController extends Notifier<BumpState> {
     if (state.event != null) state = BumpState(warmth: state.warmth);
   }
 
+  /// Emergency wipe: the card on screen goes, and so does everything the
+  /// gesture remembers about who was near — pauses, heard bumps, dialled
+  /// devices and the identities found behind them. A page still open keeps
+  /// running, as from a fresh visit.
+  void wipe() {
+    _quietUntil.clear();
+    _seenIds.clear();
+    _dialledAt.clear();
+    _tracker.clear();
+    _fed.clear();
+    _keyOfDevice.clear();
+    _deviceOfKey.clear();
+    _identityOfDevice.clear();
+    _sentAt.clear();
+    _heard.clear();
+    _sending.clear();
+    _loggedClosest = null;
+    _loggedClose = false;
+    _ownCard = null;
+    _visit++;
+    state = const BumpState();
+  }
+
   /// Adds the card of the current [BumpContact]; the pubkey hex, or null
   /// when there is no such card or it could not be added.
   Future<String?> addContact() async {

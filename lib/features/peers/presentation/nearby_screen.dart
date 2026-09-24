@@ -64,9 +64,15 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   /// resume, and [WidgetsBinding.lifecycleState] can read null that early.
   bool _resumed = true;
 
+  /// Captured up front so [dispose] can say the page is gone without reading
+  /// `ref` — which it may not do once the element is being torn down.
+  late final StateController<bool> _pageOnScreen;
+
   @override
   void initState() {
     super.initState();
+    _pageOnScreen = ref.read(airdropPageOnScreenProvider.notifier);
+    _live++;
     WidgetsBinding.instance.addObserver(this);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
@@ -109,8 +115,23 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _slide.dispose();
+    // Nothing else would ever turn it off once this screen is gone, and the
+    // proximity scan and the stranger-visibility window follow it. Riverpod
+    // refuses a provider write from inside dispose, so it goes just after —
+    // unless another NearbyScreen has taken over by then, which publishes
+    // for itself.
+    _live--;
+    final pageOnScreen = _pageOnScreen;
+    scheduleMicrotask(() {
+      if (_live == 0 && pageOnScreen.mounted && pageOnScreen.state) {
+        pageOnScreen.state = false;
+      }
+    });
     super.dispose();
   }
+
+  /// NearbyScreens mounted right now — see [dispose].
+  static int _live = 0;
 
   void _publish() {
     if (!mounted) return;
@@ -123,8 +144,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         step: (delta) => _select(_page + delta),
       ),
     );
-    ref.read(airdropPageOnScreenProvider.notifier).state =
-        _page == kAirDropPage && _visible && _resumed;
+    _pageOnScreen.state = _page == kAirDropPage && _visible && _resumed;
   }
 
   void _take(int page) {

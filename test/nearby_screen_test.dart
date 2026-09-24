@@ -196,4 +196,24 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     expect(c.read(airdropPageOnScreenProvider), isTrue);
   });
+
+  testWidgets('the screen going away turns the AirDrop page off',
+      (tester) async {
+    final c = await pump(tester);
+    await tester.tap(find.text('AirDrop'));
+    await tester.pumpAndSettle();
+    expect(c.read(airdropPageOnScreenProvider), isTrue);
+
+    // Signing out, a wipe, or the shell rebuilding without this branch:
+    // nothing else would ever say the page is gone, and the proximity scan
+    // and the stranger-visibility window would run on.
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: SizedBox()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(c.read(airdropPageOnScreenProvider), isFalse);
+  });
 }

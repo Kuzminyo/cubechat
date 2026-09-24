@@ -10,7 +10,10 @@ import '../../features/airdrop/data/airdrop_history_controller.dart';
 import '../../features/airdrop/data/airdrop_lane_controller.dart';
 import '../../features/airdrop/data/airdrop_receive_controller.dart';
 import '../../features/airdrop/data/airdrop_spam_store.dart';
+import '../../features/airdrop/data/airdrop_staged.dart';
 import '../../features/airdrop/data/airdrop_storage.dart';
+import '../../features/airdrop/data/bump_controller.dart';
+import '../../features/airdrop/data/bump_ledger.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
@@ -116,6 +119,15 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(airdropSpamProvider.notifier).clear();
   await ref.read(airdropReceiveProvider.notifier).reset();
   await ref.read(airdropLaneProvider.notifier).reset();
+  // The bump gesture: who was just held against this phone (the door for
+  // their offer), the files picked for the next bump, and a card still on
+  // screen. Only if the gesture was ever started — building it here would
+  // subscribe it to the transport mid-wipe.
+  ref.read(bumpLedgerProvider).clear();
+  ref.read(airdropStagedProvider.notifier).state = const [];
+  if (ref.exists(bumpControllerProvider)) {
+    ref.read(bumpControllerProvider.notifier).wipe();
+  }
   await deleteAirdropDirectory();
   ref.read(presenceControllerProvider.notifier).clear();
   ref.read(typingControllerProvider.notifier).clearAll();
