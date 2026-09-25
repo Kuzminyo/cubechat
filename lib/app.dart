@@ -693,6 +693,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           // Outside the pointer listener and the voice bar: while the app is
           // locked nothing behind it should be touchable, and the bar is one of
           // the things being covered.
+          //
+          // CallHost stays under the terms gate on purpose (A1 ruling,
+          // 2026-09-25): an in-app call screen cannot be answered before the
+          // rules are accepted. The native surfaces — CallKit on iOS, the
+          // full-screen notification on Android — ring regardless, and a
+          // fresh install that has not accepted yet has no contacts to call it.
           child: TermsGate(
             child: AppLockGate(
               child: Listener(

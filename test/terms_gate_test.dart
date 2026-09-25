@@ -2,6 +2,7 @@ import 'package:cubechat/features/moderation/data/terms_controller.dart';
 import 'package:cubechat/features/moderation/presentation/terms_gate.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,12 +90,73 @@ void main() {
     expect(tapped, isFalse);
     expect(tester.takeException(), isNull);
     expect(find.text('cubechat rules'), findsOneWidget);
+  });
 
-    // Hardware back does nothing: `PopScope(canPop: false)` refuses the pop,
-    // so the route is never actually left and the gate is still there after.
+  // The mount that ships: `app.dart` puts the gate in `MaterialApp.builder`,
+  // above the router's Navigator, not in `home:`. The review of A1 found the
+  // old test proving back-does-nothing with a `home:` mount that the app never
+  // uses — at the real mount the PopScope had no route to guard. What has to
+  // hold there is that nothing underneath can be reached: no tap fires and
+  // nothing of it is in the semantics tree. Back leaves the app like any root
+  // (the ruling of 2026-09-25), so the platform is asked to pop.
+  testWidgets('at the real builder mount the app underneath is unreachable',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    var tapped = false;
+    final platformCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        platformCalls.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [termsControllerProvider.overrideWith(() => _FakeTerms(0))],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) => TermsGate(child: child!),
+          home: Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => tapped = true,
+                child: const Text('underneath'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('cubechat rules'), findsOneWidget);
+
+    await tester.tap(find.text('underneath'), warnIfMissed: false);
+    await tester.pump();
+    expect(tapped, isFalse);
+
+    expect(find.bySemanticsLabel('underneath'), findsNothing);
+    expect(find.bySemanticsLabel('I agree'), findsOneWidget);
+
     await tester.binding.handlePopRoute();
     await tester.pump();
-    expect(find.text('cubechat rules'), findsOneWidget);
+    expect(platformCalls, contains('SystemNavigator.pop'));
+
+    semantics.dispose();
   });
 
   testWidgets('accepted == currentTermsVersion shows the child immediately',

@@ -5933,7 +5933,7 @@ abstract class AppLocalizations {
   /// No description provided for @termsBody.
   ///
   /// In en, this message translates to:
-  /// **'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer for review, and offenders can be banned.'**
+  /// **'cubechat has zero tolerance for objectionable content and abusive users. By continuing you agree not to send harassment, threats, sexual content involving minors, spam or anything illegal. Anyone can report a message or a person; reports reach the developer and are acted on within 24 hours, and offenders are banned.'**
   String get termsBody;
 
   /// No description provided for @termsReadFull.

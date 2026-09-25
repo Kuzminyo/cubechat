@@ -15,8 +15,14 @@ import 'legal_links.dart';
 ///
 /// Mounted beside [AppLockGate] in `app.dart`, same technique: the app
 /// underneath is built and running, not routed away from, and this covers it
-/// with an opaque screen so nothing behind is reachable — no tap, and (via the
-/// `PopScope`) no hardware back either.
+/// with an opaque screen so nothing behind is reachable — no tap lands on it
+/// and it is out of the semantics tree.
+///
+/// Hardware back is left alone on purpose. The gate sits in
+/// `MaterialApp.builder`, above the router's Navigator, so a `PopScope` here
+/// had no route to guard and did nothing (review of A1, 2026-09-25). Back on
+/// the rules screen therefore leaves the app, as it does on any root screen —
+/// which reveals nothing, since the next launch meets the gate again.
 ///
 /// Unlike the lock gate, this one has a third state to draw: while the
 /// accepted-version read from disk is still in flight there is nothing
@@ -63,15 +69,7 @@ class _TermsGateState extends ConsumerState<TermsGate> {
         // that had to be agreed to on every rebuild would be a gate agreed to
         // once and then rebuilt away.
         ExcludeSemantics(child: widget.child),
-        Positioned.fill(
-          child: PopScope<void>(
-            // Nobody gets to the app behind this by pressing back — there is
-            // nowhere for back to send them, since they have not agreed to
-            // anything yet.
-            canPop: false,
-            child: const _TermsScreen(),
-          ),
-        ),
+        const Positioned.fill(child: _TermsScreen()),
       ],
     );
   }
