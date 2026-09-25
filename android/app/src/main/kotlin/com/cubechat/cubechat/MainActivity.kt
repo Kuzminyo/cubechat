@@ -116,19 +116,6 @@ class MainActivity : FlutterActivity() {
                         null
                     },
                 )
-                // Every alias the phone has enabled, as the phone has it — not
-                // the pending pick. The cold-start reconcile asks this: one
-                // entry that matches the saved palette is the only state it
-                // leaves alone; two (a switch cut off halfway) or the wrong one
-                // is queued for the next time the user leaves.
-                "enabledIcons" -> result.success(
-                    try {
-                        LAUNCHER_ICONS.keys.filter { isAliasEnabled(it) }
-                    } catch (error: Exception) {
-                        android.util.Log.w(TAG, "launcher icon read failed", error)
-                        null
-                    },
-                )
                 "setIcon" -> {
                     val icon = call.argument<String>("icon")
                     if (icon == null || icon !in LAUNCHER_ICONS) {
@@ -202,7 +189,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        ensureLauncherEntry()
         answerFromIntent(intent)
         shareFromIntent(intent)
     }
@@ -515,16 +501,6 @@ class MainActivity : FlutterActivity() {
      * or document screen stops this Activity too, while running inside our
      * task, and removing the task then would throw away the picker and the
      * result it was about to return. The incoming-call screen, likewise.
-     *
-     * What this cannot fix: every home-screen shortcut made before the first
-     * switch points at ThemeIconEmerald, and the switch disables it. Stock
-     * Launcher3 re-points or replaces such a shortcut on PACKAGE_CHANGED; a
-     * launcher that keeps its cached item (reported on Xiaomi after a switch
-     * made from recents, then a swipe) answers "app is disabled" until its
-     * model reloads — a reboot. Keeping Emerald enabled instead would mean two
-     * cubechats in the drawer for every other theme, and a LAUNCHER entry
-     * cannot be hidden any other way: LauncherApps refuses to start a
-     * component without the category, so a pin to one would break everywhere.
      */
     override fun onStop() {
         super.onStop()
@@ -569,86 +545,27 @@ class MainActivity : FlutterActivity() {
         LAUNCHER_ICONS.keys.firstOrNull { isAliasEnabled(it) }
 
     /**
-     * Enables the wanted alias and disables the rest, toggling only what
-     * differs — a component re-enabled for nothing is one some launchers treat
-     * as a new app, dropping the home-screen shortcut.
-     *
-     * On Android 13+ it is one setComponentEnabledSettings call: the package
-     * manager applies the list under a single lock and sends one
-     * PACKAGE_CHANGED for all of it, so no launcher ever sees the old entry
-     * gone before the new one exists, and a process killed mid-switch (MIUI
-     * kills on a swipe from recents, which is exactly when this runs) cannot
-     * leave half of it done. Below 13 there is no batch; the new alias is
-     * enabled first, so a death between the calls leaves two entries (fixed on
-     * the next start, see the Dart reconcile) and never none.
+     * Enables the wanted alias before disabling the old one, so there is never
+     * a moment with no launcher entry at all, and toggles only what differs —
+     * a component re-enabled for nothing is one some launchers treat as a new
+     * app, dropping the home-screen shortcut.
      */
     private fun applyLauncherIcon(icon: String) {
-        val enable = if (isAliasEnabled(icon)) null else aliasComponent(icon)
-        val disable = LAUNCHER_ICONS.keys
-            .filter { it != icon && isAliasEnabled(it) }
-            .map { aliasComponent(it) }
-        if (enable == null && disable.isEmpty()) return
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            val changes = buildList {
-                if (enable != null) {
-                    add(
-                        PackageManager.ComponentEnabledSetting(
-                            enable,
-                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            PackageManager.DONT_KILL_APP,
-                        ),
-                    )
-                }
-                for (component in disable) {
-                    add(
-                        PackageManager.ComponentEnabledSetting(
-                            component,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        ),
-                    )
-                }
-            }
-            packageManager.setComponentEnabledSettings(changes)
-        } else {
-            if (enable != null) {
+        if (!isAliasEnabled(icon)) {
+            packageManager.setComponentEnabledSetting(
+                aliasComponent(icon),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+        for (other in LAUNCHER_ICONS.keys) {
+            if (other != icon && isAliasEnabled(other)) {
                 packageManager.setComponentEnabledSetting(
-                    enable,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-            }
-            for (component in disable) {
-                packageManager.setComponentEnabledSetting(
-                    component,
+                    aliasComponent(other),
                     PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                     PackageManager.DONT_KILL_APP,
                 )
             }
-        }
-    }
-
-    /**
-     * A launcher entry exists before anything else runs. With every alias
-     * disabled the app has no icon at all and can only be reached from a
-     * notification or the share sheet — which is how this gets to run — so the
-     * default is enabled on the spot. Enabling touches no task, so unlike a
-     * disable it is safe while the user is looking. Anything subtler (two
-     * enabled, the wrong one) is left to the Dart reconcile, which queues it
-     * for onStop like any other switch.
-     */
-    private fun ensureLauncherEntry() {
-        try {
-            if (LAUNCHER_ICONS.keys.none { isAliasEnabled(it) }) {
-                android.util.Log.w(TAG, "no launcher alias enabled; restoring the default")
-                packageManager.setComponentEnabledSetting(
-                    aliasComponent(DEFAULT_LAUNCHER_ICON),
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-            }
-        } catch (error: Exception) {
-            android.util.Log.w(TAG, "launcher entry check failed", error)
         }
     }
 

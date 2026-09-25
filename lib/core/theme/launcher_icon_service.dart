@@ -91,38 +91,6 @@ abstract final class LauncherIconService {
     }
   }
 
-  /// Every icon the launcher has enabled, or null when the platform cannot
-  /// say. Android answers from its aliases, and can name none or several: a
-  /// switch cut off between its two calls below API 33 leaves two. iOS has no
-  /// such state and no `enabledIcons`, so its single current icon stands in.
-  static Future<Set<String>?> enabled() async {
-    if (!supported) return null;
-    try {
-      final list = await _channel.invokeListMethod<String>('enabledIcons');
-      if (list == null) return null;
-      return {
-        for (final icon in list)
-          if (icons.contains(icon)) icon,
-      };
-    } on MissingPluginException {
-      final icon = await current();
-      return icon == null ? null : {icon};
-    } catch (e) {
-      DebugLog.instance.log('theme', 'launcher icons read failed: $e');
-      return null;
-    }
-  }
-
-  /// Whether a launcher showing [enabled] has to be switched to show [want].
-  ///
-  /// Only exactly one entry, and the right one, is left alone. Null — the
-  /// platform could not say — is left alone too: guessing at a launcher is how
-  /// shortcuts get dropped.
-  static bool needsSwitch(Set<String>? enabled, String want) {
-    if (enabled == null) return false;
-    return !(enabled.length == 1 && enabled.contains(want));
-  }
-
   /// Asks the platform to show [icon]. True when the platform confirmed it.
   static Future<bool> apply(String icon) async {
     if (!supported) return false;
