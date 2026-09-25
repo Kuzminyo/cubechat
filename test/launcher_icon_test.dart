@@ -61,17 +61,41 @@ void main() {
     });
   });
 
+  group('when the launcher has to be switched', () {
+    const needs = LauncherIconService.needsSwitch;
+
+    test('exactly the wanted entry is left alone', () {
+      expect(needs({'rose'}, 'rose'), isFalse);
+    });
+
+    test('the wrong entry, none, or two are all switched', () {
+      expect(needs({'emerald'}, 'rose'), isTrue);
+      expect(needs(<String>{}, 'emerald'), isTrue);
+      expect(needs({'emerald', 'rose'}, 'rose'), isTrue);
+      expect(needs({'emerald', 'rose'}, 'emerald'), isTrue);
+    });
+
+    test('a platform that cannot say is not guessed at', () {
+      expect(needs(null, 'rose'), isFalse);
+    });
+  });
+
   group('ThemeController and the launcher', () {
     late Directory tempDir;
     late ProviderContainer container;
     late List<MethodCall> calls;
     late String shown;
 
+    /// What the phone has enabled when that is not simply [shown]: none, or
+    /// two after a switch cut off between its calls.
+    List<String>? enabled;
+
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('cubechat_icon_test_');
       Hive.init(tempDir.path);
       calls = [];
       shown = 'emerald';
+      enabled = null;
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       ThemeController.launcherIconSettle = const Duration(milliseconds: 20);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -80,8 +104,11 @@ void main() {
         switch (call.method) {
           case 'currentIcon':
             return shown;
+          case 'enabledIcons':
+            return enabled ?? [shown];
           case 'setIcon':
             shown = (call.arguments as Map<Object?, Object?>)['icon']! as String;
+            enabled = null;
             return true;
         }
         return null;
@@ -131,7 +158,7 @@ void main() {
       await pick(AppPalette.emerald);
       expect(sets(), ['rose', 'ocean', 'emerald']);
       // The platform is asked what it shows once, not before every switch.
-      expect(calls.where((c) => c.method == 'currentIcon'), hasLength(1));
+      expect(calls.where((c) => c.method == 'enabledIcons'), hasLength(1));
     });
 
     test('a palette whose icon is already shown touches nothing', () async {
@@ -164,13 +191,73 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
-        if (call.method == 'currentIcon') return shown;
+        if (call.method == 'enabledIcons') return [shown];
         throw PlatformException(code: 'nope');
       });
       await pick(AppPalette.amber);
       await pick(AppPalette.slate);
-      expect(calls.where((c) => c.method == 'currentIcon'), hasLength(2));
+      expect(calls.where((c) => c.method == 'enabledIcons'), hasLength(2));
       expect(sets(), ['amber', 'slate']);
+    });
+
+    test('a cold start with Emerald saved puts a stale icon right', () async {
+      // A switch back to Emerald that died with the process: the phone still
+      // shows Rose, and Emerald's start goes through no select.
+      shown = 'rose';
+      container.dispose();
+      container = ProviderContainer();
+      await theme().loaded;
+      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
+      await theme().launcherIconSettled;
+      expect(sets(), ['emerald']);
+    });
+
+    test('a cold start that finds the launcher right touches nothing',
+        () async {
+      container.dispose();
+      container = ProviderContainer();
+      await theme().loaded;
+      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
+      await theme().launcherIconSettled;
+      expect(sets(), isEmpty);
+      expect(calls.where((c) => c.method == 'enabledIcons'), isNotEmpty);
+    });
+
+    test('a switch cut off halfway, two entries enabled, is finished',
+        () async {
+      // Below API 33: Rose was enabled, then the process died before
+      // Emerald was disabled.
+      shown = 'rose';
+      enabled = ['emerald', 'rose'];
+      await pick(AppPalette.rose);
+      expect(sets(), ['rose']);
+    });
+
+    test('no entry enabled at all asks for the wanted one', () async {
+      enabled = [];
+      await pick(AppPalette.ocean);
+      expect(sets(), ['ocean']);
+    });
+
+    test('a platform without enabledIcons falls back to currentIcon',
+        () async {
+      // iOS answers notImplemented to the new method.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        switch (call.method) {
+          case 'currentIcon':
+            return shown;
+          case 'setIcon':
+            shown = (call.arguments as Map<Object?, Object?>)['icon']! as String;
+            return true;
+        }
+        throw MissingPluginException();
+      });
+      await pick(AppPalette.amber);
+      await pick(AppPalette.amber);
+      expect(sets(), ['amber']);
+      expect(calls.where((c) => c.method == 'currentIcon'), hasLength(1));
     });
 
     test('desktop builds never call the channel', () async {

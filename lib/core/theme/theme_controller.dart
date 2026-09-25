@@ -232,7 +232,15 @@ class ThemeController extends Notifier<AppPalette> {
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
       final saved = AppPalette.byId(box.get(_key) as String?);
-      if (saved.id != state.id) select(saved);
+      if (saved.id != state.id) {
+        select(saved);
+      } else {
+        // Emerald saved goes through no select, and so used to skip the
+        // launcher entirely: a switch back to Emerald that died with the
+        // process (MIUI kills on a swipe from recents, before onStop could
+        // apply it) left the old icon up for good. Every cold start reconciles.
+        _scheduleLauncherIcon(saved);
+      }
     } catch (e) {
       debugPrint('ThemeController load failed: $e');
     }
@@ -278,25 +286,25 @@ class ThemeController extends Notifier<AppPalette> {
 
   Future<void> _iconSync = Future<void>.value();
 
-  /// The icon the launcher shows, as the platform last reported or confirmed
-  /// it. Asked of the platform rather than stored in Hive: a phone transfer or
-  /// a restored backup brings the old phone's settings but not its launcher,
-  /// and a stored answer would then be wrong in exactly the case that matters.
-  String? _shownIcon;
+  /// The icons the launcher has enabled, as the platform last reported or
+  /// confirmed them. Asked of the platform rather than stored in Hive: a phone
+  /// transfer or a restored backup brings the old phone's settings but not its
+  /// launcher, and a stored answer would then be wrong in exactly the case
+  /// that matters.
+  Set<String>? _shownIcons;
 
-  /// Start-up re-selects the saved palette through [select], so this runs on
-  /// every launch with a non-default palette — and only *reads* there. The
-  /// launcher is touched only when the icon it shows differs from the one
-  /// wanted: on Android every switch toggles components, and some launchers
-  /// drop a pinned home-screen shortcut whose component was toggled.
+  /// Runs on every cold start (see [_load]) and after every pick — and only
+  /// *reads* unless the launcher is off: not exactly one entry, or not the one
+  /// the saved palette wants. On Android every switch toggles components, and
+  /// some launchers drop a pinned home-screen shortcut whose component was
+  /// toggled, so a launcher that already matches is never touched.
   Future<void> _syncLauncherIcon(AppPalette palette) async {
     if (!LauncherIconService.supported) return;
     final want = LauncherIconService.iconFor(palette.id);
-    final shown = _shownIcon ??= await LauncherIconService.current();
-    // Null: the platform could not say, so do not guess at its launcher.
-    if (shown == null || shown == want) return;
+    final shown = _shownIcons ??= await LauncherIconService.enabled();
+    if (!LauncherIconService.needsSwitch(shown, want)) return;
     // A failed switch may have got halfway; ask again next time.
-    _shownIcon = await LauncherIconService.apply(want) ? want : null;
+    _shownIcons = await LauncherIconService.apply(want) ? {want} : null;
   }
 
   /// Mark every element in the tree dirty, const subtrees included.
