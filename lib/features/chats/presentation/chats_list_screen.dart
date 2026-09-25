@@ -47,7 +47,6 @@ import '../../moderation/domain/profanity.dart';
 import '../../moderation/data/filter_settings.dart';
 import '../../moderation/data/ban_list_controller.dart';
 import '../../moderation/data/hidden_authors.dart';
-import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -214,6 +213,8 @@ typedef _RowKey = (
   int,
   bool,
   Locale,
+  // Whether the offensive-content filter is on.
+  bool,
 );
 
 class _CachedRow {
@@ -277,7 +278,6 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final filterEnabled = ref.watch(filterEnabledProvider);
   final bans = ref.watch(banListProvider);
   final hiddenAuthors = ref.watch(hiddenAuthorsProvider);
-  final removedContacts = ref.watch(removedContactsControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
   final channels = ref.watch(channelControllerProvider);
@@ -370,6 +370,9 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       settings[peer.pubkeyHex]?.autoDelete.seconds ?? 0,
       isReachableViaMesh,
       locale,
+      // The preview folds a rude line from a stranger; flipping the filter
+      // has to redraw the rows it already cached.
+      filterEnabled,
     );
     final cached = _rowCache[peer];
     if (cached != null && cached.key == key) return cached.chat;
@@ -388,10 +391,12 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
               : messagePreview(
                   last,
                   t,
+                  // Same stranger rule as the bubble — see [hasWrittenIn].
+                  // History not loaded yet counts as a stranger's.
                   hideOffensive: shouldFilter(
                     message: last,
                     isChannel: false,
-                    fromContact: !removedContacts.contains(peer.pubkeyHex),
+                    fromContact: hasWrittenIn(msgs),
                     enabled: filterEnabled,
                   ),
                 )),
@@ -429,12 +434,17 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
             (member.isOwner || member.isAdmin) &&
             bans.isBannedFingerprint(member.id)) ??
         false) continue;
-    final msgs = (messagesByChat[ch.name] ?? const <Message>[])
-        .where((message) =>
-            message.authorId == null ||
-            (!bans.isBannedFingerprint(message.authorId!) &&
-                !hiddenAuthors.contains(message.authorId!.toLowerCase())))
-        .toList();
+    final allMsgs = messagesByChat[ch.name] ?? const <Message>[];
+    // This provider recomputes on every message; copy a room's history only
+    // when somebody in it is actually banned or hidden.
+    bool suppressed(Message message) =>
+        message.authorId != null &&
+        (bans.isBannedFingerprint(message.authorId!) ||
+            hiddenAuthors.contains(message.authorId!.toLowerCase()));
+    final msgs = (bans.fingerprints.isEmpty && hiddenAuthors.isEmpty) ||
+            !allMsgs.any(suppressed)
+        ? allMsgs
+        : allMsgs.where((message) => !suppressed(message)).toList();
     final last = msgs.isNotEmpty ? msgs.last : null;
     final unread = unreadMessageCount(msgs, readMarkers[ch.name]);
     final draft = drafts[ch.name];

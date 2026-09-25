@@ -36,7 +36,6 @@ import '../../../moderation/domain/report.dart';
 import '../../../moderation/presentation/report_sheet.dart';
 import '../../../moderation/domain/profanity.dart';
 import '../../../moderation/data/filter_settings.dart';
-import '../../../peers/data/removed_contacts_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../airdrop/data/airdrop_source.dart';
@@ -1632,16 +1631,22 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final message = widget.message;
     final mine = message.isMine;
     final isChannel = widget.chatId.startsWith('#');
-    final fromContact = ref.watch(knownPeersControllerProvider)
-            .containsKey(widget.chatId) &&
-        !ref.watch(removedContactsControllerProvider)
-            .contains(widget.chatId);
-    final filtered = shouldFilter(
+    // Only a rude message pays for the stranger check, which walks the
+    // conversation — see [hasWrittenIn] for why "stranger" is "somebody you
+    // have not written to" and not "somebody in knownPeers".
+    final rude = shouldFilter(
       message: message,
-      isChannel: isChannel,
-      fromContact: fromContact,
+      isChannel: true,
+      fromContact: false,
       enabled: ref.watch(filterEnabledProvider),
     );
+    final filtered = rude &&
+        (isChannel ||
+            !ref.watch(
+              messagesControllerProvider.select(
+                (all) => hasWrittenIn(all[widget.chatId]),
+              ),
+            ));
     if (filtered && !_revealedFiltered) {
       final t = AppLocalizations.of(context);
       return Align(

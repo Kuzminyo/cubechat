@@ -11989,8 +11989,10 @@ class MessagingService {
       hideOffensive: shouldFilter(
         message: message,
         isChannel: false,
-        fromContact: known != null &&
-            !_ref.read(removedContactsControllerProvider).contains(canonicalId),
+        // The bubble's and the chat list's stranger rule — see [hasWrittenIn].
+        fromContact: hasWrittenIn(
+          _ref.read(messagesControllerProvider)[canonicalId],
+        ),
         enabled: _ref.read(filterEnabledProvider),
       ),
     );
