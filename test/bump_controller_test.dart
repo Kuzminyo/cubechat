@@ -194,7 +194,8 @@ void main() {
       ProviderContainer(
         overrides: [
           bumpScanAdvertsProvider.overrideWithValue(adverts ?? () => 0),
-          bumpDialProvider.overrideWithValue(dial ?? (device, hex) async => null),
+          bumpDialProvider
+              .overrideWithValue(dial ?? (device, hex) async => null),
           airdropClockProvider.overrideWithValue(
             () => DateTime(2026, 9, 23, 12).add(async.elapsed),
           ),
@@ -415,7 +416,8 @@ void main() {
     });
   });
 
-  test('sixty staged files: the offer carries the first fifty, without '
+  test(
+      'sixty staged files: the offer carries the first fifty, without '
       'throwing', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
@@ -1019,12 +1021,15 @@ void main() {
           },
         );
         c.read(bumpControllerProvider);
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
         expect(dials, [('AA', null)]);
         // Still held there: no second dial inside the ten seconds.
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 80);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 80);
         expect(dials, hasLength(1));
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 95, n: 15);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 95, n: 15);
         expect(dials, hasLength(2));
         c.dispose();
       });
@@ -1113,7 +1118,8 @@ void main() {
           dial: (device, hex) => connected.future,
         );
         c.read(bumpControllerProvider);
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 15);
         expect(
           c.read(bumpControllerProvider).warmth,
           1,
@@ -1125,7 +1131,8 @@ void main() {
         // name him yet.
         connected.complete(_bob);
         async.flushMicrotasks();
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 15);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 15, n: 15);
         expect(port.bumpsTo(_bob), hasLength(1));
         c.dispose();
       });
@@ -1145,17 +1152,20 @@ void main() {
           },
         );
         c.read(bumpControllerProvider);
-        readings(async, c, hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 115);
+        readings(async, c,
+            hex: '${bumpAnonPrefix}AA', device: 'AA', from: 0, n: 115);
         expect(dials, 2);
         c.dispose();
       });
     });
   });
 
-  test('two phones: the one with files feels it second, the stranger\'s '
+  test(
+      'two phones: the one with files feels it second, the stranger\'s '
       'offer is still taken without asking', () {
     fakeAsync((async) {
-      const alice = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
+      const alice =
+          'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
       final aPort = _Port()
         ..me = alice
         ..direct.add(_bob);
@@ -1207,6 +1217,88 @@ void main() {
     });
   });
 
+  test('a phone reading -50 dBm answers the touching phone and sends its file',
+      () {
+    fakeAsync((async) {
+      const alice =
+          'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
+      final aPort = _Port()
+        ..me = alice
+        ..direct.add(_bob);
+      final bPort = _Port()
+        ..me = _bob
+        ..direct.add(alice);
+      aPort.other = bPort;
+      bPort.other = aPort;
+      final a = make(async, aPort, direct: {_bob});
+      final b = make(async, bPort, direct: {alice});
+      a.read(bumpControllerProvider);
+      b.read(bumpControllerProvider);
+      b.read(airdropControllerProvider);
+      a.read(airdropStagedProvider.notifier).state = [_src()];
+
+      // The September 25 phone logs: Alice heard -48..-55 while Bob briefly
+      // got three -40 readings. Alice never reached CLOSE, despite a ready link.
+      feed(async, a, _bob, const Duration(milliseconds: 600), rssi: -50);
+      expect(aPort.bumpsTo(_bob), isEmpty);
+      feed(async, b, alice, const Duration(milliseconds: 500), rssi: -35);
+      async.flushMicrotasks();
+
+      expect(aPort.bumpsTo(_bob), hasLength(1));
+      expect(a.read(bumpControllerProvider).event, isA<BumpSentFiles>());
+      expect(b.read(bumpControllerProvider).event, isA<BumpReceivingFiles>());
+      expect(aPort.offersTo(_bob), hasLength(1));
+      a.dispose();
+      b.dispose();
+    });
+  });
+
+  test('a touching phone cannot wake a peer with only a held weak reading', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -50);
+      async.elapse(const Duration(seconds: 2));
+      port.deliver(_bob, bump: _bump(72, hasFiles: true));
+      async.flushMicrotasks();
+      expect(port.bumpsTo(_bob), isEmpty);
+      expect(event(c), isNull);
+      c.dispose();
+    });
+  });
+  test(
+      'a fresh weak reading can complete a bump received before enough samples',
+      () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      c.read(bumpLedgerProvider);
+      c.read(bumpControllerProvider.notifier).sample(_bob, -50);
+      port.deliver(_bob, bump: _bump(73, hasFiles: true));
+      expect(port.bumpsTo(_bob), isEmpty);
+      feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -50);
+      async.flushMicrotasks();
+      expect(port.bumpsTo(_bob), hasLength(1));
+      expect(event(c), isA<BumpReceivingFiles>());
+      c.dispose();
+    });
+  });
+
+  test('an authenticated bump does not trigger a reply at -60 dBm', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      c.read(bumpControllerProvider);
+      feed(async, c, _bob, const Duration(milliseconds: 700), rssi: -60);
+      port.deliver(_bob, bump: _bump(74, hasFiles: true));
+      async.flushMicrotasks();
+      expect(port.bumpsTo(_bob), isEmpty);
+      expect(event(c), isNull);
+      c.dispose();
+    });
+  });
   test('the scan\'s readings: named by identity, the rest as anon', () {
     final seen = DateTime(2026, 9, 23, 12);
     final c = ProviderContainer(

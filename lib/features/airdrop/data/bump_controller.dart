@@ -206,6 +206,12 @@ class BumpController extends Notifier<BumpState> {
   /// [dialEvery] is also how long a dialled phone counts for the glow.
   static const int dialRssi = -50;
   static const int _dialSamples = ProximityTracker.minCloseSamples;
+
+  /// The September 25 owner logs showed one touching phone at -40 dBm and
+  /// the other at -47..-56 dBm. Keep -40 for an unsolicited bump; a phone may
+  /// answer a bump over an authenticated direct link at -55 only after three fresh
+  /// readings and the same 15 dB separation from other peers.
+  static const int _replyRssi = -55;
   static const Duration dialEvery = Duration(seconds: 10);
 
   /// Smallest warmth step the glow is moved by. The warmth spans the 20 dB
@@ -435,6 +441,9 @@ class BumpController extends Notifier<BumpState> {
       state = BumpState(warmth: w, event: state.event);
     }
     _logReading(r, now, bumpable: bumpable);
+    // The other phone may have reached the touching threshold first. Its
+    // authenticated bump can arrive before this phone collects three fresh samples.
+    if (!r.isClose && hex != null && _replyIfNear(hex, r, now)) return;
     if (!r.isClose || hex == null || _quiet(hex, now)) return;
     if (!bumpable) return;
     final sent = _sentAt[hex];
@@ -524,7 +533,33 @@ class BumpController extends Notifier<BumpState> {
     final sent = _sentAt[hex];
     if (sent != null && at.difference(sent) <= mutualWithin) {
       _fire(hex, bump, at);
+    } else {
+      _replyIfNear(hex, _tracker.read(at), at);
     }
+  }
+
+  bool _replyIfNear(String hex, ProximityReading r, DateTime now) {
+    final heard = _heard[hex];
+    if (heard == null || now.difference(heard.at) > mutualWithin) return false;
+    if (_quiet(hex, now) ||
+        !ref.read(bumpDirectPeersProvider).contains(hex) ||
+        r.closest != hex ||
+        r.closestRssi == null ||
+        r.closestRssi! < _replyRssi ||
+        (r.runnerUpRssi != null &&
+            r.closestRssi! - r.runnerUpRssi! < ProximityTracker.bumpMargin) ||
+        _tracker.loudSamples(hex, _replyRssi, now) <
+            ProximityTracker.minCloseSamples) {
+      return false;
+    }
+    DebugLog.instance.log(
+      'BUMP',
+      'answering ${_short(hex)} at ${r.closestRssi} dBm',
+    );
+    _sentAt[hex] = now;
+    _sending[hex] = _sendBump(hex);
+    _fire(hex, heard.bump, now);
+    return true;
   }
 
   void _fire(String hex, NearbyBump theirs, DateTime now) {
