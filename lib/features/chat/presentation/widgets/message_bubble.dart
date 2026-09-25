@@ -479,22 +479,18 @@ class MessageBubble extends ConsumerStatefulWidget {
 class _MessageBubbleState extends ConsumerState<MessageBubble>
     with TickerProviderStateMixin {
   bool _revealedFiltered = false;
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 360),
-    value: widget.animateEntry ? 0 : 1,
-  );
+
+  /// Created in [initState], not lazily at first use. The filter's folded
+  /// row returns from [build] before anything touches these, and a lazy
+  /// controller first created in [dispose] looks up TickerMode on a
+  /// deactivated element — an assertion every time a folded bubble scrolled
+  /// away (review of the Codex handoff, 2026-09-25). Every bubble that is
+  /// not folded created both in its first build anyway.
+  late final AnimationController _c;
 
   /// Drives the spring back to rest after a swipe-to-reply, whether or not the
   /// gesture crossed the threshold.
-  late final AnimationController _swipe = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 220),
-  )..addListener(() {
-      if (_swipeFrom == 0) return;
-      _dragX.value =
-          _swipeFrom * (1 - Curves.easeOutCubic.transform(_swipe.value));
-    });
+  late final AnimationController _swipe;
 
   /// Current horizontal offset of the bubble; never positive (this gesture only
   /// goes left) and never past [_swipeMax].
@@ -541,6 +537,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   @override
   void initState() {
     super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+      value: widget.animateEntry ? 0 : 1,
+    );
+    _swipe = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(() {
+        if (_swipeFrom == 0) return;
+        _dragX.value =
+            _swipeFrom * (1 - Curves.easeOutCubic.transform(_swipe.value));
+      });
     if (widget.animateEntry) _c.forward();
   }
 
