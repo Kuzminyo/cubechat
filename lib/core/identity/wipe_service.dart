@@ -35,6 +35,10 @@ import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/peers/data/contact_aliases_controller.dart';
 import '../../features/peers/data/contact_tags_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
+import '../../features/moderation/data/ban_list_controller.dart';
+import '../../features/moderation/data/filter_settings.dart';
+import '../../features/moderation/data/hidden_authors.dart';
+import '../../features/moderation/data/report_client.dart';
 import '../../features/moderation/data/terms_controller.dart';
 import '../../features/onboarding/data/onboarding_controller.dart';
 import '../../features/peers/data/typing_controller.dart';
@@ -137,6 +141,14 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(onboardingControllerProvider.notifier).reset();
   // Nor agreed to the rules — a fresh install meets the terms gate again.
   await ref.read(termsControllerProvider.notifier).reset();
+  // Moderation: a report still queued names somebody and quotes them, the
+  // channel authors hidden are a list of people avoided, and switching the
+  // filter off is a choice a fresh install has not made. The ban list is
+  // public and is fetched again at the next start; only its box handle has
+  // to go, below.
+  await ref.read(reportClientProvider).clear();
+  await ref.read(hiddenAuthorsProvider.notifier).clear();
+  await ref.read(filterEnabledProvider.notifier).reset();
   await ref.read(nicknameControllerProvider.notifier).reset();
   // Switches the internet fallback off and forgets any custom relay list, so
   // the next launch talks to nobody until the user opts in again.
@@ -224,6 +236,11 @@ Future<void> emergencyWipe(WidgetRef ref) async {
     draftsControllerProvider,
     readMarkersControllerProvider,
     conversationSettingsControllerProvider,
+    termsControllerProvider,
+    filterEnabledProvider,
+    hiddenAuthorsProvider,
+    banListProvider,
+    reportClientProvider,
   ]) {
     ref.invalidate(provider);
   }

@@ -223,6 +223,13 @@ class ReportClient {
     }
   }
 
+  /// Emergency wipe: forget every report still waiting to be sent. A queued
+  /// report names the person reported and quotes what they wrote, which is
+  /// exactly the kind of trace a wipe promises to leave nowhere. Chained on
+  /// the queue like every other write, so a send finishing mid-wipe cannot
+  /// write the list back afterwards.
+  Future<void> clear() => _withQueue((box) => box.delete(storageKey));
+
   /// Sign [entry]'s payload fresh and try each endpoint in turn until one
   /// gives a definite answer (200, 400 or 401). A network failure or a
   /// 429/5xx moves on to the next endpoint rather than stopping — the same

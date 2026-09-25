@@ -60,7 +60,9 @@ class ModerationReport {
   final String? messageText;
   final ReportedKind? messageKind;
 
-  /// Unix seconds the reported message was sent.
+  /// Unix milliseconds the reported message was sent — spec §3 says `ms`.
+  /// The server accepts any non-negative safe integer, so seconds would have
+  /// passed validation silently and read as January 1970 to the moderator.
   final int? messageSentAt;
 
   static const int noteMaxChars = 500;

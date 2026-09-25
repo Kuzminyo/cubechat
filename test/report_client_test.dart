@@ -42,6 +42,8 @@ void _expectServerAcceptable(Map<String, Object?> json) {
 
   expect(reasons.contains(json['reason']), isTrue);
   expect(contexts.contains(json['context']), isTrue);
+  // `context === 'direct' && typeof target !== 'string'` → 400.
+  if (json['context'] == 'direct') expect(json['target'], isA<String>());
   if (json.containsKey('note')) {
     final note = json['note'];
     expect(note, isA<String>());
@@ -461,6 +463,36 @@ void main() {
       );
       await client.flush();
       expect(postCalls, 0);
+    });
+
+    test('clear() forgets every queued report, as the emergency wipe needs',
+        () async {
+      var postCalls = 0;
+      final client = makeClient(
+        post: (uri, body) async {
+          postCalls++;
+          return -1;
+        },
+      );
+      expect(await client.send(report), isFalse);
+      expect(await queueOnDisk(), hasLength(1));
+
+      await client.clear();
+      expect(await queueOnDisk(), isEmpty);
+
+      final before = postCalls;
+      await client.flush();
+      expect(postCalls, before);
+    });
+
+    test('a channel report may name the author by the 16-hex fingerprint', () {
+      final json = ModerationReport(
+        reason: ReportReason.abuse,
+        context: ReportContext.channel,
+        target: 'ab' * 8,
+        channelId: '#room',
+      ).toJson();
+      _expectServerAcceptable(json);
     });
   });
 }
