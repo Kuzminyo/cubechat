@@ -28,6 +28,10 @@ Future<bool> showReportSheet(
 }) async {
   final result = await showGlassSheet<bool>(
     context: context,
+    // Over the whole app, not inside the tab's navigator: opened from
+    // Profile → About, the tab's own navigator put the sheet under the bottom
+    // bar, which covered the reasons below "Інше" and the Send button.
+    useRootNavigator: true,
     builder: (_) => _ReportSheet(
       reportContext: reportContext,
       targetHex: targetHex,
