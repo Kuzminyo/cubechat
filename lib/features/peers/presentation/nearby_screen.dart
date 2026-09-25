@@ -12,6 +12,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_navigation.dart';
 import '../../airdrop/presentation/airdrop_page.dart';
 import '../../files/presentation/file_transfer_center_screen.dart';
+import '../data/peer_discovery_controller.dart';
 import 'peers_screen.dart';
 
 /// The Nearby tab: people in Bluetooth range, AirDrop, and every file the app
@@ -175,6 +176,13 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       2 => t.nearbyFilesSubtitle,
       _ => t.peersSubtitle,
     };
+    // Shown here rather than on the Поблизу page itself so it reads above
+    // the switch, roughly over the "Файли" segment, instead of pushing the
+    // peer cards down — only while that page is selected and a scan is
+    // actually running.
+    final scanning = _page == 0 &&
+        ref.watch(peerDiscoveryControllerProvider).status ==
+            PeerDiscoveryStatus.scanning;
     ref.listen<int?>(nearbyPageRequestProvider, (_, next) {
       if (next != null) _take(next);
     });
@@ -210,11 +218,24 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  key: const Key('nearby-section-subtitle'),
-                  style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        subtitle,
+                        key: const Key('nearby-section-subtitle'),
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    if (scanning) ...[
+                      const SizedBox(width: 10),
+                      ScanningPulse(label: t.bleScanning),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 14),
                 SectionSwitch(

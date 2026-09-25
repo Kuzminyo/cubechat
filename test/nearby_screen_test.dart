@@ -1,4 +1,5 @@
 import 'package:cubechat/core/routing/branch_pager.dart';
+import 'package:cubechat/core/widgets/glass_card.dart';
 import 'package:cubechat/core/widgets/section_switch.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_history_controller.dart';
@@ -7,8 +8,10 @@ import 'package:cubechat/features/airdrop/data/airdrop_receive_controller.dart';
 import 'package:cubechat/features/airdrop/presentation/airdrop_navigation.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
 import 'package:cubechat/features/peers/data/peer_discovery_controller.dart';
+import 'package:cubechat/features/peers/data/peripheral_controller.dart';
 import 'package:cubechat/features/peers/models/discovered_peer.dart';
 import 'package:cubechat/features/peers/presentation/nearby_screen.dart';
+import 'package:cubechat/features/peers/presentation/peers_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,6 +62,44 @@ class _NearbyPeer extends PeerDiscoveryController {
 
   @override
   Future<void> retuneScan() async {}
+}
+
+/// Not scanning, but still showing the same peer card — status idle with a
+/// peer already found (as if the scan had already run once and stopped),
+/// so the "not scanning" case doesn't fall into the empty-scanning radar's
+/// own ~30fps timer, which never lets pumpAndSettle finish.
+class _IdleWithPeer extends PeerDiscoveryController {
+  @override
+  PeerDiscoveryState build() => PeerDiscoveryState(
+        status: PeerDiscoveryStatus.idle,
+        peers: [
+          DiscoveredPeer(
+            id: 'AA:BB:CC:DD:EE:FF',
+            advertisedName: 'xoxoxo',
+            rssi: -55,
+            lastSeen: DateTime(2026, 9, 24),
+          ),
+        ],
+      );
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> retuneScan() async {}
+}
+
+class _Broadcasting extends PeripheralController {
+  @override
+  PeripheralState build() => const PeripheralState(
+        status: PeripheralStatus.broadcasting,
+        connectedCentralIds: {'central-1'},
+      );
+}
+
+class _NotBroadcasting extends PeripheralController {
+  @override
+  PeripheralState build() => PeripheralState.initial;
 }
 
 class _FinishedTransfers extends FileTransferController {
@@ -125,7 +166,15 @@ void main() {
   // The real three pages, for the layout question the stand-ins above can't
   // answer: whether a page still draws its own display title next to the
   // shell's.
-  Future<void> pumpReal(WidgetTester tester) async {
+  // The scanning pulse repeats its glow animation forever while a scan is
+  // running (parked only once UiActivity goes quiet, which the suite-wide
+  // config disables), so pumpAndSettle never returns for it — same reason
+  // "clear history..." below settles with a fixed pump instead.
+  Future<void> pumpReal(
+    WidgetTester tester, {
+    List<Override> extraOverrides = const [],
+    bool settle = true,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -134,6 +183,7 @@ void main() {
           airdropReceiveProvider.overrideWith(_DefaultReceive.new),
           airdropLaneProvider.overrideWith(_DefaultLane.new),
           fileTransferControllerProvider.overrideWith(_EmptyTransfers.new),
+          ...extraOverrides,
         ],
         child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -143,7 +193,11 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
   }
 
   testWidgets('subtitle follows the selected Nearby section', (tester) async {
@@ -323,5 +377,113 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(c.read(airdropPageOnScreenProvider), isFalse);
+  });
+
+  testWidgets('the scanning chip sits above the switch while scanning',
+      (tester) async {
+    await pumpReal(
+      tester,
+      extraOverrides: [
+        peerDiscoveryControllerProvider.overrideWith(_NearbyPeer.new),
+      ],
+      settle: false,
+    );
+
+    expect(find.byType(ScanningPulse), findsOneWidget);
+    final chipTop = tester.getTopLeft(find.byType(ScanningPulse)).dy;
+    final switchTop = tester.getTopLeft(find.byType(SectionSwitch)).dy;
+    expect(chipTop, lessThan(switchTop));
+  });
+
+  testWidgets(
+      'the scanning chip is gone, not just invisible, once scanning stops',
+      (tester) async {
+    await pumpReal(
+      tester,
+      extraOverrides: [
+        peerDiscoveryControllerProvider.overrideWith(_IdleWithPeer.new),
+      ],
+      // The peer card's online dot pulses off UiActivity too (see
+      // "clear history..." above for the same reason), so this never
+      // reaches pumpAndSettle's quiet frame.
+      settle: false,
+    );
+    expect(find.byType(ScanningPulse), findsNothing);
+  });
+
+  testWidgets('the broadcast chip stretches to the width of the peer cards',
+      (tester) async {
+    await pumpReal(
+      tester,
+      extraOverrides: [
+        peerDiscoveryControllerProvider.overrideWith(_NearbyPeer.new),
+        peripheralControllerProvider.overrideWith(_Broadcasting.new),
+      ],
+      settle: false,
+    );
+
+    final chipWidth =
+        tester.getSize(find.byKey(const ValueKey('broadcast-on'))).width;
+    // Scoped to PeersScreen: the AirDrop and Files pages stay mounted
+    // offstage and use GlassCard too, so an unscoped byType(GlassCard)
+    // can pick up one of theirs instead of the peer card.
+    final cardWidth = tester
+        .getSize(
+          find.descendant(
+            of: find.byType(PeersScreen),
+            matching: find.byType(GlassCard),
+          ).first,
+        )
+        .width;
+    expect(chipWidth, closeTo(cardWidth, 0.5));
+  });
+
+  testWidgets(
+      'switch to first content is 16px when there is no broadcast chip',
+      (tester) async {
+    // The scanning chip has left the page, so with nothing broadcasting the
+    // switch sits 16px above the peer cards directly (commit b375a11b's
+    // fix, now with the broadcast chip as the only other thing that could
+    // occupy that gap).
+    await pumpReal(
+      tester,
+      extraOverrides: [
+        peerDiscoveryControllerProvider.overrideWith(_NearbyPeer.new),
+        peripheralControllerProvider.overrideWith(_NotBroadcasting.new),
+      ],
+      settle: false,
+    );
+    final peerCard = find.descendant(
+      of: find.byType(PeersScreen),
+      matching: find.byType(GlassCard),
+    );
+    final switchBottom = tester.getBottomLeft(find.byType(SectionSwitch)).dy;
+    final cardTop = tester.getTopLeft(peerCard.first).dy;
+    expect(cardTop - switchBottom, closeTo(16, 1));
+  });
+
+  testWidgets(
+      'switch to broadcast chip is 16px, and chip to cards is 10-12px',
+      (tester) async {
+    await pumpReal(
+      tester,
+      extraOverrides: [
+        peerDiscoveryControllerProvider.overrideWith(_NearbyPeer.new),
+        peripheralControllerProvider.overrideWith(_Broadcasting.new),
+      ],
+      settle: false,
+    );
+    final peerCard = find.descendant(
+      of: find.byType(PeersScreen),
+      matching: find.byType(GlassCard),
+    );
+    final switchBottom = tester.getBottomLeft(find.byType(SectionSwitch)).dy;
+    final chipTop =
+        tester.getTopLeft(find.byKey(const ValueKey('broadcast-on'))).dy;
+    expect(chipTop - switchBottom, closeTo(16, 1));
+    final chipBottom =
+        tester.getBottomLeft(find.byKey(const ValueKey('broadcast-on'))).dy;
+    final cardTop = tester.getTopLeft(peerCard.first).dy;
+    expect(cardTop - chipBottom, inInclusiveRange(9.5, 12.5));
   });
 }

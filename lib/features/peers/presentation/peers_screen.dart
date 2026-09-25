@@ -78,19 +78,18 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
     final peripheral = ref.watch(peripheralControllerProvider);
     final controller = ref.read(peerDiscoveryControllerProvider.notifier);
     // NearbyScreen's shared header already pads the switch away from the
-    // page below it (see nearby_screen.dart's header Padding). This screen's
-    // own top padding and the fixed gap after _Header used to add on top of
-    // that unconditionally, leaving ~40px of dead air under the switch
-    // whenever _Header had nothing to show. Only the scanning pulse and the
-    // broadcast chip need room of their own.
-    final headerHasContent = state.status == PeerDiscoveryStatus.scanning ||
-        peripheral.status == PeripheralStatus.broadcasting;
+    // page below it (see nearby_screen.dart's header Padding), and now also
+    // draws the scanning pulse itself. This screen's own header holds only
+    // the broadcast chip, so the switch → first content gap comes solely
+    // from that shared 16px padding (commit b375a11b) — no extra top padding
+    // here — and only the chip → cards gap still needs room of its own.
+    final headerHasContent = peripheral.status == PeripheralStatus.broadcasting;
 
     return SafeArea(
       child: ListView(
-        padding: EdgeInsets.fromLTRB(16, headerHasContent ? 12 : 0, 16, 140),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
         children: [
-          _Header(state: state, peripheral: peripheral),
+          _Header(peripheral: peripheral),
           if (headerHasContent) const SizedBox(height: 12),
           ..._buildBody(context, t, state, controller),
         ],
@@ -196,58 +195,43 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
 }
 
 /// What is left of this screen's own header now that NearbyScreen draws the
-/// shared title and subtitle above the switch: just the state that changes
-/// while the page sits open — the scanning pulse and the broadcasting chip.
+/// shared title, subtitle and scanning pulse above the switch: just the
+/// broadcasting chip, the one piece of state that changes while this page
+/// sits open.
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.state,
-    required this.peripheral,
-  });
+  const _Header({required this.peripheral});
 
-  final PeerDiscoveryState state;
   final PeripheralState peripheral;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final scanning = state.status == PeerDiscoveryStatus.scanning;
     final broadcasting = peripheral.status == PeripheralStatus.broadcasting;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Its own row, right-aligned: with the title gone there is no
-          // baseline left to sit beside, and a scan can start after the page
-          // has already been sitting open a while.
-          if (scanning)
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: _ScanningPulse(label: t.bleScanning),
-            ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 240),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: SizeTransition(sizeFactor: anim, child: child),
-            ),
-            child: broadcasting
-                ? Padding(
-                    key: const ValueKey('broadcast-on'),
-                    padding: EdgeInsets.only(top: scanning ? 10 : 0),
-                    child: _BroadcastChip(
-                      label: t.bleBroadcasting,
-                      detail: t.bleConnectedCount(peripheral.connectedCount),
-                    ),
-                  )
-                : const SizedBox.shrink(key: ValueKey('broadcast-off')),
-          ),
-        ],
+    // No horizontal inset here — the chip stretches to the same width as
+    // the peer cards below it, which sit directly in the ListView with none
+    // of their own either.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: SizeTransition(sizeFactor: anim, child: child),
       ),
+      child: broadcasting
+          ? SizedBox(
+              key: const ValueKey('broadcast-on'),
+              width: double.infinity,
+              child: _BroadcastChip(
+                label: t.bleBroadcasting,
+                detail: t.bleConnectedCount(peripheral.connectedCount),
+              ),
+            )
+          : const SizedBox.shrink(key: ValueKey('broadcast-off')),
     );
   }
 }
 
+/// Stretched to the full content width — the same width as the peer cards
+/// below it — rather than sized to its own text.
 class _BroadcastChip extends StatelessWidget {
   const _BroadcastChip({required this.label, required this.detail});
 
@@ -265,7 +249,6 @@ class _BroadcastChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.radar_rounded, color: AppColors.brandPrimary, size: 14),
           const SizedBox(width: 8),
@@ -281,9 +264,18 @@ class _BroadcastChip extends StatelessWidget {
             '  ·  ',
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
-          Text(
-            detail,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          // Flexible, not a bare Text: stretched full-width the chip has
+          // plenty of room most of the time, but the connected-count string
+          // is plural-formed and open-ended ("N центральних пристроїв"), and
+          // an unconstrained Row overflowed on a narrow phone once this chip
+          // stopped hugging its own content.
+          Expanded(
+            child: Text(
+              detail,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -291,16 +283,20 @@ class _BroadcastChip extends StatelessWidget {
   }
 }
 
-class _ScanningPulse extends StatefulWidget {
-  const _ScanningPulse({required this.label});
+/// The "● Сканування…" chip. Defined here alongside the rest of the peers
+/// UI, but built by NearbyScreen now — it sits in the shared header above
+/// the SectionSwitch rather than on this page, so it still shows only while
+/// the Поблизу page is selected and a scan is running.
+class ScanningPulse extends StatefulWidget {
+  const ScanningPulse({super.key, required this.label});
 
   final String label;
 
   @override
-  State<_ScanningPulse> createState() => _ScanningPulseState();
+  State<ScanningPulse> createState() => _ScanningPulseState();
 }
 
-class _ScanningPulseState extends State<_ScanningPulse>
+class _ScanningPulseState extends State<ScanningPulse>
     with SingleTickerProviderStateMixin {
   late final _c = AnimationController(
     vsync: this,
