@@ -47,7 +47,10 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 5),
             Center(
               child: Text(
-                '${t.profileVersion(appVersion)} · $appBuildStamp',
+                // The version only. The build stamp is for testers and lives
+                // in Diagnostics and the log header; the owner asked for a
+                // plain "Версія 1.0.0" here.
+                t.profileVersion(appVersion),
                 style: TextStyle(color: AppColors.textOnGlassDim),
               ),
             ),
