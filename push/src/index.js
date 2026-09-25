@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-24-moderation';
+const VERSION = '2026-09-25-channel-report-fingerprint';
 
 const RECIPIENT_TAG = 'p';
 
