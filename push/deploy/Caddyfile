@@ -38,3 +38,35 @@ push.cubechat.tech {
 
 	reverse_proxy 127.0.0.1:8080
 }
+
+# Our own Nostr relay (strfry, see relay/), which carries the media lane.
+#
+# **This block must live in this file.** It used to be appended to the live
+# /etc/caddy/Caddyfile by hand and existed nowhere in the repo, so the moderation
+# deploy on 2026-09-24 copied this file over the live one — as the deploy README
+# says to — and relay.cubechat.tech lost its certificate: every phone's relay
+# connection failed with TLSV1_ALERT_INTERNAL_ERROR until it was restored the
+# next morning. This file is the whole live config; keep it that way.
+#
+# A relay is a WebSocket and Caddy's reverse_proxy upgrades one without being
+# told to, so there is nothing here about Connection or Upgrade headers.
+#
+# **keepalive off, and that is not a preference.** strfry's HTTP side is the
+# small server built into uWebSockets, and it does not hold a connection the
+# way Caddy's pool expects. With keep-alive on, every plain HTTP request came
+# back to Caddy as an "Unsolicited response received on idle HTTP channel" and
+# was thrown away — so `curl https://relay.cubechat.tech` returned nothing at
+# all while the relay behind it was answering perfectly. The WebSocket upgrade
+# is a fresh connection either way, so nothing about the actual traffic pays
+# for this.
+#
+# X-Forwarded-For is not set here either: Caddy passes it by default and says
+# so out loud when told to do it twice.
+relay.cubechat.tech {
+	reverse_proxy 127.0.0.1:8081 {
+		transport http {
+			versions 1.1
+			keepalive off
+		}
+	}
+}
