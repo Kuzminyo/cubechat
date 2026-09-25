@@ -57,6 +57,12 @@ class ScanStartBudget {
     _starts.add(at);
   }
 
+  /// Starts recorded in the [per] before [now].
+  int startsIn(DateTime now) {
+    _prune(now);
+    return _starts.length;
+  }
+
   /// Zero when a start now keeps within the budget.
   Duration waitBefore(DateTime now) {
     _prune(now);

@@ -313,6 +313,101 @@ void main() {
       });
     });
 
+    // Build 1112's log: the page came back from two pauses in ten seconds,
+    // and every resume on it cost two starts — the retune's and the
+    // proximity switch's, neither aware of the other — on top of the window
+    // still open. After the fifth start in 30 s Android hands an app no scan
+    // results at all for that scan, and the phone held against this one was
+    // never read at bump distance.
+    test('a resume on the AirDrop page keeps the proximity window it left',
+        () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        var active = true;
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now)
+          ..shouldScanActively = () => active;
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 200));
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 3));
+        final before = radio.starts.length;
+        expect(radio.lastModeLowLatency, isTrue);
+
+        // The shade pulled down and pushed back: paused, then resumed.
+        unawaited(scanner.setProximity(false));
+        async.elapse(const Duration(milliseconds: 300));
+        active = false;
+        unawaited(scanner.retune());
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 1));
+
+        expect(radio.starts.length, before);
+        expect(scanner.proximity, isTrue);
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a retune already queued carries the proximity switch: one start',
+        () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        var active = true;
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now)
+          ..shouldScanActively = () => active;
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 500));
+        final before = radio.starts.length;
+
+        active = false;
+        unawaited(scanner.retune());
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 1));
+
+        expect(radio.starts.length, before + 1);
+        expect(radio.lastModeLowLatency, isTrue);
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
+    test(
+        'a proximity window that hears nothing while a phone is listed '
+        'restarts once, and again only after something was heard', () {
+      fakeAsync((async) {
+        DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);
+        final radio = _FakeRadio(now);
+        final scanner = BleScanner(isIOS: false, platform: radio, now: now);
+        unawaited(scanner.start());
+        async.elapse(const Duration(milliseconds: 200));
+        scanner.debugOnResults([_adv('AA:AA:AA:AA:AA:AA', -60, now())]);
+        unawaited(scanner.setProximity(true));
+        async.elapse(const Duration(seconds: 1));
+        final opened = radio.starts.length;
+        expect(scanner.advertsLastSecond, 0);
+
+        // Silence from a scan that should be hearing that phone several
+        // times a second: restarted, once.
+        async.elapse(BleScanner.blindAfter + const Duration(seconds: 1));
+        expect(radio.starts.length, opened + 1);
+        expect(radio.lastModeLowLatency, isTrue);
+        async.elapse(const Duration(seconds: 10));
+        expect(radio.starts.length, opened + 1);
+
+        // Heard again: counted, and a later silence may restart again.
+        scanner.debugOnResults([_adv('AA:AA:AA:AA:AA:AA', -40, now())]);
+        expect(scanner.advertsLastSecond, 1);
+        async.elapse(const Duration(seconds: 2));
+        expect(scanner.advertsLastSecond, 0);
+        async.elapse(BleScanner.blindAfter);
+        expect(radio.starts.length, opened + 2);
+        unawaited(scanner.dispose());
+        async.flushMicrotasks();
+      });
+    });
+
     test('toggling proximity never makes a fifth start in 30 s', () {
       fakeAsync((async) {
         DateTime now() => DateTime(2026, 9, 24, 12).add(async.elapsed);

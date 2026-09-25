@@ -177,6 +177,12 @@ final bumpReadingsProvider = Provider.autoDispose<List<BumpReading>>(
   ],
 );
 
+/// Fresh advertisements the scan handed over in the last second, from
+/// anyone — see `BleScanner.advertsLastSecond`. Injectable for tests.
+final bumpScanAdvertsProvider = Provider<int Function()>(
+  (ref) => () => ref.read(bleScannerProvider).advertsLastSecond,
+);
+
 /// Key prefix of a reading from a phone with no known identity.
 const String bumpAnonPrefix = 'anon:';
 
@@ -255,10 +261,6 @@ class BumpController extends Notifier<BumpState> {
   int _visit = 0;
   DateTime? _lastLog;
 
-  /// What the last BUMP line said — see [_logReading].
-  String? _loggedClosest;
-  bool _loggedClose = false;
-
   /// Our signed card for this visit. Fetched when the page opens: building it
   /// signs an announcement, which the first bump of a visit should not wait
   /// on.
@@ -312,8 +314,6 @@ class BumpController extends Notifier<BumpState> {
     _keyOfDevice.clear();
     _deviceOfKey.clear();
     _identityOfDevice.clear();
-    _loggedClosest = null;
-    _loggedClose = false;
     _sentAt.clear();
     _heard.clear();
     _sending.clear();
@@ -397,8 +397,6 @@ class BumpController extends Notifier<BumpState> {
     _sentAt.clear();
     _heard.clear();
     _sending.clear();
-    _loggedClosest = null;
-    _loggedClose = false;
     _ownCard = null;
     _visit++;
     state = const BumpState();
@@ -649,21 +647,29 @@ class BumpController extends Notifier<BumpState> {
     return true;
   }
 
-  /// At most once a second while the page is open, and only while the glow
-  /// is lit or the closest phone (or whether it is close) has changed. These
-  /// lines are the measurement `ProximityTracker.bumpRssi` is waiting for —
-  /// but 1109 wrote one a second whenever *anyone* was in range, and
-  /// DebugLog's 200 lines were gone in three minutes of standing in a room.
+  /// At most once a second while the page is open and anyone has a reading,
+  /// cold or not. These lines are the measurement `ProximityTracker.bumpRssi`
+  /// is waiting for.
+  ///
+  /// They were cut to "only while the glow is lit or the closest phone
+  /// changed", because 1109's one a second whenever anyone was in range
+  /// emptied DebugLog's 200 lines in three minutes of standing in a room. The
+  /// cost of that showed in 1112: one line — `-92 dBm, samples 0/3` — and
+  /// then silence while the other phone was held against this one, and no way
+  /// to tell a scan that heard nothing from a tracker that was fed a stale
+  /// reading and nothing after. The line comes only while the AirDrop page is
+  /// open and the category keeps its own 200, so a visit's worth fits.
+  ///
+  /// `last` is the newest sample, `heard` the samples inside the tracker's
+  /// one-second window, `scan` every fresh advertisement the scanner took in
+  /// the last second from anyone — zero there with a phone held close is a
+  /// blind scan, not a threshold.
   void _logReading(ProximityReading r, DateTime now, {required bool bumpable}) {
     final hex = r.closest;
     if (hex == null) return;
-    final changed = hex != _loggedClosest || r.isClose != _loggedClose;
-    if (state.warmth == 0 && !changed) return;
     final last = _lastLog;
     if (last != null && now.difference(last) < _logEvery) return;
     _lastLog = now;
-    _loggedClosest = hex;
-    _loggedClose = r.isClose;
     // Samples and link say what is missing when a bump does not fire: too few
     // readings in the window at the tracker's own close threshold (a hint —
     // `isClose` itself goes by the window's median and count), or no direct
@@ -674,6 +680,9 @@ class BumpController extends Notifier<BumpState> {
       'BUMP',
       '${_short(hex)} ${r.closestRssi} dBm, '
           'next ${r.runnerUpRssi ?? '-'}, '
+          'last ${_tracker.latest(hex) ?? '-'}, '
+          'heard ${_tracker.samplesIn(hex, now)}/s, '
+          'scan ${ref.read(bumpScanAdvertsProvider)()} adv/s, '
           'samples $loud/${ProximityTracker.minCloseSamples}, '
           'link ${bumpable ? 'ready' : 'waiting'}${r.isClose ? ' CLOSE' : ''}',
     );

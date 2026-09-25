@@ -150,6 +150,57 @@ class BleScanner {
 
   bool get isRunning => _running;
 
+  /// Restarts queued on [_restarts] that have not yet picked their cadence.
+  /// A [setProximity] arriving while one is queued rides on it — see there.
+  int _queuedRestarts = 0;
+
+  /// Whether the window open now (or last opened) was a proximity one:
+  /// lowLatency, continuous updates.
+  bool _windowIsProximity = false;
+
+  /// When [setProximity] started waiting out [_budget], for the "on" line.
+  DateTime? _heldSince;
+
+  /// Proximity mode: when each fresh advertisement of the last second
+  /// arrived — see [advertsLastSecond].
+  final List<DateTime> _recentAdverts = [];
+
+  /// Proximity mode: the last fresh advertisement, or the window's opening.
+  DateTime? _lastAdvertAt;
+
+  /// Checks an open proximity window for silence — see [blindAfter].
+  Timer? _blindTimer;
+
+  /// A silent proximity window has been restarted, and nothing has been
+  /// heard since: no second restart until something is.
+  bool _blindRestarted = false;
+
+  /// How long a proximity window may hear nothing while a phone is listed
+  /// before it is restarted.
+  ///
+  /// Android hands an app no results at all for a scan started as the fifth
+  /// in 30 s — no error, just silence — and a proximity window runs 28 s. A
+  /// phone at arm's length advertises several times a second, so five
+  /// seconds of nothing from a scan that listed someone a moment ago is a
+  /// blind scan, not an empty room. Build 1112's log: three seconds on the
+  /// page after a resume with the other phone held against this one, and not
+  /// one reading. Restarted only when [_budget] allows, and once until
+  /// something is heard, so an emptied room costs one start, not one every
+  /// five seconds.
+  static const Duration blindAfter = Duration(seconds: 5);
+
+  /// Fresh advertisements, from anyone, handed over in the last second while
+  /// proximity was on — the BUMP line's "scan N adv/s", which tells a scan
+  /// that hears nothing from a tracker that drops what it hears.
+  int get advertsLastSecond {
+    _pruneAdverts(_clock());
+    return _recentAdverts.length;
+  }
+
+  void _pruneAdverts(DateTime now) => _recentAdverts.removeWhere(
+        (t) => now.difference(t) > const Duration(seconds: 1),
+      );
+
   Future<void> start() async {
     if (_running) return;
     _running = true;
@@ -177,10 +228,26 @@ class BleScanner {
   /// none is: [start] and the adapter listener both ask for one at launch,
   /// and two starts there were two of Android's five.
   Future<void> _restart({bool ifIdle = false}) {
+    // Counted until the window it opens has read [_proximity] — the stop is
+    // the only await in between — so a proximity switch arriving meanwhile
+    // knows this start will carry it.
+    var queued = !ifIdle;
+    if (queued) _queuedRestarts++;
+    void unqueue() {
+      if (!queued) return;
+      queued = false;
+      _queuedRestarts--;
+    }
+
     final next = _restarts.then((_) async {
-      if (ifIdle && _scanSub != null) return;
-      await _stopScanWindow();
-      if (_running) await _startScanWindow();
+      try {
+        if (ifIdle && _scanSub != null) return;
+        await _stopScanWindow();
+        unqueue();
+        if (_running) await _startScanWindow();
+      } finally {
+        unqueue();
+      }
     });
     _restarts = next.catchError((Object e, StackTrace st) {
       debugPrint('BleScanner restart failed: $e\n$st');
@@ -206,6 +273,11 @@ class BleScanner {
     // every retune() call (app resume, a queued delivery) restarted the scan
     // for no cadence change at all.
     if (_proximity) return;
+    // Nor while a proximity window is still open with the flag just cleared:
+    // a pause on the AirDrop page clears it and the resume that follows
+    // retunes here before the page sets it again. The window open is already
+    // the heaviest there is, and its own end picks the next cadence.
+    if (_scanSub != null && _windowIsProximity) return;
     final wanted = shouldScanActively?.call() ?? true;
     if (wanted == _active) return;
     await _restart();
@@ -240,7 +312,26 @@ class BleScanner {
     _proximity = on;
     _proximityRestart?.cancel();
     _proximityRestart = null;
+    if (!on) _heldSince = null;
     if (!_running || !on) return;
+    _blindRestarted = false;
+    // Coming back to the page before the window it left has run out — a
+    // pause for the shade, the recents switcher, a picker: that window is
+    // still lowLatency with continuous updates, so flipping the flag back is
+    // all it takes. Build 1112 restarted here, and the retune on the same
+    // resume restarted too: two starts per pause, and two pauses in ten
+    // seconds made the fifth start in 30 s that Android answers with silence.
+    if (_scanSub != null && _windowIsProximity) {
+      DebugLog.instance.log(
+        'BLE-SCAN',
+        'proximity back on the window still open — no restart',
+      );
+      return;
+    }
+    // A restart already queued (the resume's retune, a cycle's end) reads
+    // the flag when it opens its window, so it opens the proximity one; a
+    // restart of our own behind it would be a second start for nothing.
+    if (_queuedRestarts > 0) return;
     // The budget models Android's own behaviour: it silently stops
     // returning scan results after the 5th startScan in a rolling 30 s
     // window — undocumented, discovered the hard way (see ScanStartBudget's
@@ -266,6 +357,7 @@ class BleScanner {
       'proximity scan held ${wait.inMilliseconds} ms — '
           'four starts in the last 30 s already',
     );
+    _heldSince = _clock();
     _proximityRestart = Timer(wait, _onHeldProximityRestartDue);
   }
 
@@ -307,6 +399,11 @@ class BleScanner {
     _proximityRestart = null;
     _proximityRequestedAt = null;
     _proximityWindowOpenedAt = null;
+    _heldSince = null;
+    if (_windowIsProximity) {
+      _windowIsProximity = false;
+      DebugLog.instance.log('BLE-SCAN', 'proximity scan off: scanner stopped');
+    }
     _gcTimer?.cancel();
     // Cleared, not just cancelled: _restartGcTimer treats a non-null timer as
     // already armed, so leaving the stale handle here would make a later
@@ -417,6 +514,7 @@ class BleScanner {
     final window = _window;
     final gap = _gap;
     _budget.record(_clock());
+    _logProximityEdge(window);
     try {
       await _radio.startScan(
         timeout: window,
@@ -445,6 +543,15 @@ class BleScanner {
     _cycleTimer?.cancel();
     if (!_running) return;
     _scanSub = _radio.scanResults.listen(_onResults);
+    _blindTimer?.cancel();
+    _blindTimer = null;
+    if (_windowIsProximity) {
+      _lastAdvertAt = _clock();
+      _blindTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _checkBlind(),
+      );
+    }
 
     // After the window closes, rest then cycle again.
     _cycleTimer = Timer(window + gap, () async {
@@ -461,9 +568,56 @@ class BleScanner {
     });
   }
 
+  /// One line when a proximity window opens after a normal one, and one when
+  /// a normal window takes over from a proximity one — not one per 28 s
+  /// window. Says what the radio was asked for, and whether the budget made
+  /// it wait: what the 1112 log could not tell.
+  void _logProximityEdge(Duration window) {
+    final was = _windowIsProximity;
+    _windowIsProximity = _proximity;
+    if (_proximity && !was) {
+      final held = _heldSince;
+      _heldSince = null;
+      final now = _clock();
+      DebugLog.instance.log(
+        'BLE-SCAN',
+        'proximity scan on: ${_isIOS ? 'iOS' : 'lowLatency'}, continuous, '
+            '${window.inSeconds} s window, '
+            '${held == null ? 'not held' : 'held ${now.difference(held).inMilliseconds} ms'}'
+            ', ${_budget.startsIn(now)} start(s) in the last 30 s',
+      );
+    } else if (!_proximity && was) {
+      DebugLog.instance.log(
+        'BLE-SCAN',
+        'proximity scan off: back to ${_active ? 'balanced' : 'lowPower'}',
+      );
+    }
+  }
+
+  /// Once a second in a proximity window — see [blindAfter].
+  void _checkBlind() {
+    if (!_running || !_proximity || !_windowIsProximity) return;
+    if (_blindRestarted || _queuedRestarts > 0 || _peers.isEmpty) return;
+    final last = _lastAdvertAt;
+    if (last == null) return;
+    final now = _clock();
+    final quiet = now.difference(last);
+    if (quiet < blindAfter) return;
+    if (!_isIOS && _budget.waitBefore(now) > Duration.zero) return;
+    _blindRestarted = true;
+    DebugLog.instance.log(
+      'BLE-SCAN',
+      'proximity scan heard nothing for ${quiet.inSeconds} s with '
+          '${_peers.length} phone(s) listed — restarting it',
+    );
+    unawaited(_restart());
+  }
+
   Future<void> _stopScanWindow() async {
     _cycleTimer?.cancel();
     _cycleTimer = null;
+    _blindTimer?.cancel();
+    _blindTimer = null;
     await _scanSub?.cancel();
     _scanSub = null;
     _advertAt.clear();
@@ -485,6 +639,11 @@ class BleScanner {
         final prev = _advertAt[mac];
         if (prev != null && !r.timeStamp.isAfter(prev)) continue;
         _advertAt[mac] = r.timeStamp;
+        final at = _clock();
+        _lastAdvertAt = at;
+        _blindRestarted = false;
+        _recentAdverts.add(at);
+        _pruneAdverts(at);
       }
       final advName = r.advertisementData.advName;
       final rotatingId = _rotatingIdOf(r);

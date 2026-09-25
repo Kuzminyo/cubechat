@@ -68,6 +68,16 @@ class ProximityTracker {
     return n;
   }
 
+  /// How many of [peerHex]'s samples fall inside the window, at any RSSI.
+  int samplesIn(String peerHex, DateTime now) =>
+      loudSamples(peerHex, -1 << 20, now);
+
+  /// [peerHex]'s newest sample, or null.
+  int? latest(String peerHex) {
+    final readings = _readings[peerHex];
+    return readings == null || readings.isEmpty ? null : readings.last.$2;
+  }
+
   void forget(String peerHex) {
     _readings.remove(peerHex);
   }

@@ -189,9 +189,11 @@ void main() {
     Future<Uint8List> Function()? ownCard,
     Future<String> Function(Uint8List card)? addContact,
     Future<String?> Function(String device, String? hex)? dial,
+    int Function()? adverts,
   }) =>
       ProviderContainer(
         overrides: [
+          bumpScanAdvertsProvider.overrideWithValue(adverts ?? () => 0),
           bumpDialProvider.overrideWithValue(dial ?? (device, hex) async => null),
           airdropClockProvider.overrideWithValue(
             () => DateTime(2026, 9, 23, 12).add(async.elapsed),
@@ -884,7 +886,12 @@ void main() {
     });
   });
 
-  test('the BUMP line stays quiet for someone across the room', () {
+  // Build 1112 wrote one line when a phone appeared and nothing more while
+  // it stayed cold, so its log could not say whether readings were still
+  // coming. The line now comes once a second while anyone has a reading,
+  // with what was heard in that second and what the scan handed over.
+  test('the BUMP line keeps coming for someone across the room, with counts',
+      () {
     final lines = <String>[];
     final previous = debugPrint;
     debugPrint = (String? m, {int? wrapWidth}) {
@@ -893,12 +900,26 @@ void main() {
     addTearDown(() => debugPrint = previous);
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
-      final c = make(async, port);
+      final c = make(async, port, adverts: () => 7);
       c.read(bumpControllerProvider);
-      // A phone at -70 dBm for ten seconds: no glow, nothing changing — one
-      // line when it appears, not one a second (the log holds 200).
       feed(async, c, _bob, const Duration(seconds: 10), rssi: -70);
-      expect(lines.where((l) => l.contains('dBm')), hasLength(1));
+      final dbm = lines.where((l) => l.contains('dBm')).toList();
+      expect(dbm.length, inInclusiveRange(9, 10));
+      expect(
+        dbm.last,
+        matches(
+          RegExp(r'^\[BUMP\] b0b0b0b0 -70 dBm, next -, last -70, '
+              r'heard (9|10|11)/s, scan 7 adv/s, samples 0/3, link ready$'),
+        ),
+      );
+
+      // Gone quiet: the held reading still says so, then the lines stop.
+      lines.clear();
+      async.elapse(const Duration(seconds: 6));
+      expect(lines, contains(contains('heard 0/s')));
+      final quiet = lines.length;
+      async.elapse(const Duration(seconds: 5));
+      expect(lines, hasLength(quiet));
       c.dispose();
     });
   });
