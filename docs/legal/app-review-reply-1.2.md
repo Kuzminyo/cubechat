@@ -55,9 +55,11 @@ message.
   (open reports are kept until decided); the privacy policy says so. The push
   server must be running the build with the retention purge, or that claim is
   false.
-- `https://cubechat.tech/terms` answers 404 and `/privacy` serves the
-  pre-moderation text; the app links the documents on GitHub instead. Update
-  the site, or give App Store Connect the GitHub links.
+- Done: `https://cubechat.tech/terms` and `/privacy` (and the `.html` forms)
+  now serve the current, moderation-including text, and the app's About
+  screen and terms gate link there instead of to GitHub. Give App Store
+  Connect `https://cubechat.tech/terms.html` and
+  `https://cubechat.tech/privacy.html`.
 - The push server must be running the build that accepts a channel author's
   16-hex fingerprint (`parseReportPayload`), or every report of a channel
   message is refused and dropped.

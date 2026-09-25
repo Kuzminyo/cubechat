@@ -62,7 +62,8 @@ void main() {
     });
   });
 
-  testWidgets('legal links follow the displayed language', (tester) async {
+  testWidgets('legal links point at the published site regardless of locale',
+      (tester) async {
     late BuildContext enContext;
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('en'),
@@ -78,9 +79,14 @@ void main() {
         return const SizedBox();
       }),
     ));
-    expect(termsDocumentUrl(enContext).path, endsWith('terms.en.md'));
     expect(
-        privacyDocumentUrl(enContext).path, endsWith('privacy-policy.en.md'));
+      termsDocumentUrl(enContext).toString(),
+      'https://cubechat.tech/terms.html',
+    );
+    expect(
+      privacyDocumentUrl(enContext).toString(),
+      'https://cubechat.tech/privacy.html',
+    );
 
     late BuildContext ukContext;
     await tester.pumpWidget(MaterialApp(
@@ -97,8 +103,13 @@ void main() {
         return const SizedBox();
       }),
     ));
-    expect(termsDocumentUrl(ukContext).path, endsWith('terms.uk.md'));
     expect(
-        privacyDocumentUrl(ukContext).path, endsWith('privacy-policy.uk.md'));
+      termsDocumentUrl(ukContext).toString(),
+      'https://cubechat.tech/terms.html',
+    );
+    expect(
+      privacyDocumentUrl(ukContext).toString(),
+      'https://cubechat.tech/privacy.html',
+    );
   });
 }
