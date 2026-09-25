@@ -1748,20 +1748,25 @@ class _AboutRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Named for what it opens: App Review is pointed at
+                  // "Profile → About" for the developer's contact, and a row
+                  // reading only "Cubechat" did not say it was a way in.
                   Text(
-                    'Cubechat',
+                    t.aboutTitle,
                     style: AppTypography.heading(
                         size: 15, color: AppColors.textOnGlass),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    t.profileVersion(appVersion),
+                    'Cubechat · ${t.profileVersion(appVersion)}',
                     style: TextStyle(
                         color: AppColors.textOnGlassDim, fontSize: 12),
                   ),
                 ],
               ),
             ),
+            Icon(Icons.chevron_right_rounded,
+                color: AppColors.textOnGlassFaint),
           ],
         ),
       ),

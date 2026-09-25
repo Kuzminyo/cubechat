@@ -12,6 +12,10 @@ import '../domain/report.dart';
 import 'legal_links.dart';
 import 'report_sheet.dart';
 
+/// Where people reach the developer — the same address as the terms and the
+/// privacy policy give.
+const supportEmail = 'cubechatble@gmail.com';
+
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -48,11 +52,15 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
+            // The address is written out, not only behind mailto: a phone
+            // with no mail app configured opens nothing, and App Review asks
+            // that the contact be findable.
             _AboutAction(
               icon: Icons.mail_outline_rounded,
               label: t.aboutContact,
+              subtitle: supportEmail,
               onTap: () => unawaited(launchUrl(
-                Uri.parse('mailto:cubechatble@gmail.com'),
+                Uri.parse('mailto:$supportEmail'),
               )),
             ),
             _AboutAction(
@@ -91,10 +99,12 @@ class _AboutAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.subtitle,
   });
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final VoidCallback onTap;
 
   @override
@@ -107,6 +117,12 @@ class _AboutAction extends StatelessWidget {
           child: ListTile(
             leading: Icon(icon, color: AppColors.brandPrimary),
             title: Text(label, style: TextStyle(color: AppColors.textOnGlass)),
+            subtitle: subtitle == null
+                ? null
+                : Text(
+                    subtitle!,
+                    style: TextStyle(color: AppColors.textOnGlassDim),
+                  ),
             trailing:
                 Icon(Icons.chevron_right, color: AppColors.textOnGlassDim),
             onTap: onTap,
