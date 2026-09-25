@@ -372,7 +372,7 @@ void main() {
       port.deliver(_bob, bump: _bump(5));
       async.flushMicrotasks();
       expect(event(c), isNull);
-      feed(async, c, _bob, const Duration(milliseconds: 300));
+      feed(async, c, _bob, const Duration(milliseconds: 100));
       expect(port.bumpsTo(_bob), isEmpty);
       expect(event(c), isNull);
       feed(async, c, _bob, const Duration(milliseconds: 200));
@@ -891,7 +891,7 @@ void main() {
   // Build 1112 wrote one line when a phone appeared and nothing more while
   // it stayed cold, so its log could not say whether readings were still
   // coming. The line now comes once a second while anyone has a reading,
-  // with what was heard in that second and what the scan handed over.
+  // with what was heard in the two-second tracking window and what the scan handed over.
   test('the BUMP line keeps coming for someone across the room, with counts',
       () {
     final lines = <String>[];
@@ -911,14 +911,14 @@ void main() {
         dbm.last,
         matches(
           RegExp(r'^\[BUMP\] b0b0b0b0 -70 dBm, next -, last -70, '
-              r'heard (9|10|11)/s, scan 7 adv/s, samples 0/3, link ready$'),
+              r'heard (18|19|20|21)/2s, scan 7 adv/s, samples 0/2, link ready$'),
         ),
       );
 
       // Gone quiet: the held reading still says so, then the lines stop.
       lines.clear();
       async.elapse(const Duration(seconds: 6));
-      expect(lines, contains(contains('heard 0/s')));
+      expect(lines, contains(contains('heard 0/2s')));
       final quiet = lines.length;
       async.elapse(const Duration(seconds: 5));
       expect(lines, hasLength(quiet));
@@ -941,12 +941,13 @@ void main() {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
       c.read(bumpControllerProvider);
+      c.read(bumpControllerProvider.notifier).sample(_bob, -35);
+      async.elapse(const Duration(milliseconds: 200));
       feed(async, c, _bob, const Duration(seconds: 2));
-      // The first line lands before the window has filled.
-      expect(lines.first, matches(RegExp(r'samples [0-2]/3, link ready$')));
+      expect(lines.first, contains('samples 1/2, link ready'));
       expect(
         lines.where((l) => l.endsWith(' CLOSE')),
-        everyElement(matches(RegExp(r'samples ([3-9]|\d\d+)/3, link ready'))),
+        everyElement(matches(RegExp(r'samples ([2-9]|\d\d+)/2, link ready'))),
       );
       expect(lines.where((l) => l.endsWith(' CLOSE')), isNotEmpty);
       c.dispose();
@@ -1217,6 +1218,22 @@ void main() {
     });
   });
 
+  test('two sparse touching adverts initiate without a third', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      final ctl = c.read(bumpControllerProvider.notifier);
+      ctl.sample(_bob, -40);
+      async.elapse(const Duration(milliseconds: 1200));
+      expect(port.bumpsTo(_bob), isEmpty);
+      ctl.sample(_bob, -37);
+      async.elapse(const Duration(milliseconds: 200));
+      async.flushMicrotasks();
+      expect(port.bumpsTo(_bob), hasLength(1));
+      c.dispose();
+    });
+  });
+
   test('a phone reading -50 dBm answers the touching phone and sends its file',
       () {
     fakeAsync((async) {
@@ -1259,7 +1276,7 @@ void main() {
       final c = make(async, port);
       c.read(bumpControllerProvider);
       feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -50);
-      async.elapse(const Duration(seconds: 2));
+      async.elapse(const Duration(seconds: 1));
       port.deliver(_bob, bump: _bump(72, hasFiles: true));
       async.flushMicrotasks();
       expect(port.bumpsTo(_bob), isEmpty);

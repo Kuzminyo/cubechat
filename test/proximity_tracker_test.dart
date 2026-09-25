@@ -61,12 +61,40 @@ void main() {
     expect(p.read(at(2000)).isClose, isFalse);
   });
 
-  test('three samples in the window make a bump', () {
+  test('two touching readings 1.2 seconds apart make a bump', () {
+    final p = ProximityTracker()
+      ..add('a', -40, at(0))
+      ..add('a', -37, at(1200));
+    expect(p.read(at(1250)).isClose, isTrue);
+  });
+
+  test('two old touching readings cannot retrigger a bump', () {
+    final p = ProximityTracker()
+      ..add('a', -40, at(0))
+      ..add('a', -37, at(1200));
+    expect(p.read(at(1900)).isClose, isFalse);
+  });
+
+  test('a weak newest reading cancels a previously close pair', () {
+    final p = ProximityTracker()
+      ..add('a', -35, at(0))
+      ..add('a', -35, at(300))
+      ..add('a', -70, at(500));
+    expect(p.read(at(550)).isClose, isFalse);
+  });
+
+  test('one loud spike among weaker readings is not a bump', () {
+    final p = ProximityTracker()
+      ..add('a', -61, at(0))
+      ..add('a', -37, at(1200));
+    expect(p.read(at(1250)).isClose, isFalse);
+  });
+
+  test('two samples in the window make a bump', () {
     final p = ProximityTracker();
     p
       ..add('a', -35, at(0))
-      ..add('a', -35, at(300))
-      ..add('a', -35, at(600));
+      ..add('a', -35, at(300));
     final r = p.read(at(900));
     expect(r.isClose, isTrue);
     expect(r.closest, 'a');
@@ -99,7 +127,7 @@ void main() {
       ..add('a', -48, at(1200))
       ..add('a', -50, at(1500))
       ..add('a', -51, at(1600));
-    expect(p.loudSamples('a', -50, at(1700)), 2);
+    expect(p.loudSamples('a', -50, at(1700)), 3);
     expect(p.loudSamples('b', -50, at(1700)), 0);
   });
 }

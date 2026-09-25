@@ -16,19 +16,19 @@ class ProximityReading {
 
 class ProximityTracker {
   ProximityTracker({
-    this.window = const Duration(seconds: 1),
+    this.window = const Duration(seconds: 2),
     this.hold = const Duration(seconds: 3),
     this.closeRssi = ProximityTracker.bumpRssi,
     this.margin = ProximityTracker.bumpMargin,
     this.warmRssi = ProximityTracker.glowRssi,
   });
 
-  // Starting point, not a measurement: phones touching read about -30 to -40 dBm, and half a metre away about -55 to -65 on the two phones this was written for, but models differ by up to 10 dB. Replace with what the BUMP log lines show on the owner's phones, and say so here.
+  // The owner's September 25 logs saw -40 and -37 dBm touching readings 1.2 s apart, but only 1-4 advertisements per second. Keep the strict touching threshold and 15 dB separation; two readings inside two seconds recognize that pair without waiting for a rare three-in-one-second burst. One isolated RSSI spike still cannot trigger a bump.
   static const int bumpRssi = -40;
   static const int bumpMargin = 15;
   static const int glowRssi = -60;
-  // Minimum number of samples required in the window for a peer to be considered close. A single burst of signal does not prove proximity; the spec requires sustained detection.
-  static const int minCloseSamples = 3;
+  static const int minCloseSamples = 2;
+  static const Duration freshFor = Duration(milliseconds: 600);
 
   final Duration window;
   final Duration hold;
@@ -52,7 +52,8 @@ class ProximityTracker {
 
     // Drop samples older than hold
     final oldestValid = at.subtract(hold);
-    _readings[peerHex]!.removeWhere((reading) => reading.$1.isBefore(oldestValid));
+    _readings[peerHex]!
+        .removeWhere((reading) => reading.$1.isBefore(oldestValid));
   }
 
   /// How many of [peerHex]'s samples inside the window read [rssi] or
@@ -76,6 +77,14 @@ class ProximityTracker {
   int? latest(String peerHex) {
     final readings = _readings[peerHex];
     return readings == null || readings.isEmpty ? null : readings.last.$2;
+  }
+
+  /// A held sample can show a nearby peer, but cannot start an exchange.
+  bool hasFreshSample(String peerHex, DateTime now) {
+    final readings = _readings[peerHex];
+    if (readings == null || readings.isEmpty) return false;
+    final age = now.difference(readings.last.$1);
+    return !age.isNegative && age <= freshFor;
   }
 
   void forget(String peerHex) {
@@ -110,7 +119,8 @@ class ProximityTracker {
     for (final MapEntry(key: peerHex, value: readings) in _readings.entries) {
       // Get samples within the window (windowStart, now]
       final windowSamples = readings
-          .where((reading) => reading.$1.isAfter(windowStart) && !reading.$1.isAfter(now))
+          .where((reading) =>
+              reading.$1.isAfter(windowStart) && !reading.$1.isAfter(now))
           .toList();
 
       late final int median;
@@ -145,15 +155,19 @@ class ProximityTracker {
     }
 
     // Find closest and runner-up
-    final sortedEntries = medians.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final sortedEntries = medians.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     final closestPeer = sortedEntries[0].key;
     final closestValue = sortedEntries[0].value;
-    final runnerUpValue = sortedEntries.length > 1 ? sortedEntries[1].value : null;
+    final runnerUpValue =
+        sortedEntries.length > 1 ? sortedEntries[1].value : null;
     final closestWindowCount = windowSampleCounts[closestPeer] ?? 0;
 
     // Check if close: requires at least minCloseSamples in the window, sufficient RSSI, and margin over runner-up
     final isCloseValue = closestWindowCount >= minCloseSamples &&
+        hasFreshSample(closestPeer, now) &&
+        latest(closestPeer)! >= closeRssi &&
         closestValue >= closeRssi &&
         (runnerUpValue == null || closestValue - runnerUpValue >= margin);
 

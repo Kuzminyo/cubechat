@@ -200,7 +200,7 @@ class BumpController extends Notifier<BumpState> {
   static const Duration _logEvery = Duration(seconds: 1);
 
   /// A phone with no session is dialled once it gives [_dialSamples] readings
-  /// at [dialRssi] or louder inside the tracker's one-second window — ten dB
+  /// at [dialRssi] or louder inside the tracker's two-second window — ten dB
   /// short of a bump, so the handshake is under way while the phones are
   /// still closing in — and at most once per device per [dialEvery].
   /// [dialEvery] is also how long a dialled phone counts for the glow.
@@ -209,7 +209,7 @@ class BumpController extends Notifier<BumpState> {
 
   /// The September 25 owner logs showed one touching phone at -40 dBm and
   /// the other at -47..-56 dBm. Keep -40 for an unsolicited bump; a phone may
-  /// answer a bump over an authenticated direct link at -55 only after three fresh
+  /// answer a bump over an authenticated direct link at -55 only after two fresh
   /// readings and the same 15 dB separation from other peers.
   static const int _replyRssi = -55;
   static const Duration dialEvery = Duration(seconds: 10);
@@ -442,7 +442,7 @@ class BumpController extends Notifier<BumpState> {
     }
     _logReading(r, now, bumpable: bumpable);
     // The other phone may have reached the touching threshold first. Its
-    // authenticated bump can arrive before this phone collects three fresh samples.
+    // authenticated bump can arrive before this phone collects two fresh samples.
     if (!r.isClose && hex != null && _replyIfNear(hex, r, now)) return;
     if (!r.isClose || hex == null || _quiet(hex, now)) return;
     if (!bumpable) return;
@@ -473,7 +473,10 @@ class BumpController extends Notifier<BumpState> {
   void _maybeDial(String key, DateTime now) {
     final device = _deviceOf(key);
     if (device == null) return;
-    if (_tracker.loudSamples(key, dialRssi, now) < _dialSamples) return;
+    if (!_tracker.hasFreshSample(key, now) ||
+        _tracker.loudSamples(key, dialRssi, now) < _dialSamples) {
+      return;
+    }
     if (_dialling(key, now)) return;
     _dialledAt.removeWhere((_, at) => now.difference(at) >= dialEvery);
     _dialledAt[device] = now;
@@ -543,6 +546,8 @@ class BumpController extends Notifier<BumpState> {
     if (heard == null || now.difference(heard.at) > mutualWithin) return false;
     if (_quiet(hex, now) ||
         !ref.read(bumpDirectPeersProvider).contains(hex) ||
+        !_tracker.hasFreshSample(hex, now) ||
+        (_tracker.latest(hex) ?? -100) < _replyRssi ||
         r.closest != hex ||
         r.closestRssi == null ||
         r.closestRssi! < _replyRssi ||
@@ -696,7 +701,7 @@ class BumpController extends Notifier<BumpState> {
   /// open and the category keeps its own 200, so a visit's worth fits.
   ///
   /// `last` is the newest sample, `heard` the samples inside the tracker's
-  /// one-second window, `scan` every fresh advertisement the scanner took in
+  /// two-second window, `scan` every fresh advertisement the scanner took in
   /// the last second from anyone — zero there with a phone held close is a
   /// blind scan, not a threshold.
   void _logReading(ProximityReading r, DateTime now, {required bool bumpable}) {
@@ -716,7 +721,7 @@ class BumpController extends Notifier<BumpState> {
       '${_short(hex)} ${r.closestRssi} dBm, '
           'next ${r.runnerUpRssi ?? '-'}, '
           'last ${_tracker.latest(hex) ?? '-'}, '
-          'heard ${_tracker.samplesIn(hex, now)}/s, '
+          'heard ${_tracker.samplesIn(hex, now)}/2s, '
           'scan ${ref.read(bumpScanAdvertsProvider)()} adv/s, '
           'samples $loud/${ProximityTracker.minCloseSamples}, '
           'link ${bumpable ? 'ready' : 'waiting'}${r.isClose ? ' CLOSE' : ''}',
