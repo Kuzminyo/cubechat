@@ -214,7 +214,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   //
   // The rule, for whoever adds the next one: if a controller keeps a `Box` in
   // a field, its provider belongs in this list.
-  for (final provider in [
+  for (final provider in <ProviderOrFamily>[
     messagesControllerProvider,
     knownPeersControllerProvider,
     peerAvatarsControllerProvider,
