@@ -390,7 +390,7 @@ Cubechat побудований так, щоб бути приватним, а �
 
 Якщо ця політика суттєво зміниться, застосунок про це скаже, а дата вгорі
 зміниться. Чинна версія завжди опублікована за адресою
-`https://github.com/Kuzminyo/cubechat/blob/main/docs/legal/privacy-policy.uk.md`.
+`https://cubechat.tech/privacy`.
 
 ---
 

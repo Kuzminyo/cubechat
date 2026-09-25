@@ -377,7 +377,7 @@ Known limitations, stated plainly because you deserve to know them:
 
 If this policy changes materially, the app will say so and the date at the top
 will change. The current version is always published at
-`https://github.com/Kuzminyo/cubechat/blob/main/docs/legal/privacy-policy.en.md`.
+`https://cubechat.tech/privacy`.
 
 ---
 
