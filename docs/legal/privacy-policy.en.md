@@ -249,13 +249,15 @@ Media you receive is stored inside the app's private container.
 
 ---
 
-### Reports and moderation
+## 7a. Reports and moderation
 
 When you tap Report, the app sends a signed complaint over HTTPS to our push
 service. It contains your public signing key, the reason and optional note,
-the reported person's public identity or channel-author fingerprint, and, if
-you reported a specific message, its type, time and selected text or caption
-(up to 4,000 characters). A channel report also names the channel. Nothing is
+the reported person's public identity key (and their Nostr public key, when
+your phone knows it) or channel-author fingerprint, and, if you reported a
+specific message, its type, time and selected text or caption (up to 4,000
+characters; a shared location or contact card goes as its one-line label, not
+its contents). A channel report also names the channel. Nothing is
 sent for an ordinary message you do not report. If you are offline, the report
 waits in encrypted storage on your phone for up to seven days and is signed
 again when delivery resumes.
@@ -267,7 +269,17 @@ ban publishes a signed list containing public identity keys, Nostr public keys
 and channel-author fingerprints only. Every app can download that public list
 to suppress banned senders. The list never contains report text or your note.
 
+**The ban list download.** Every copy of the app fetches that list from
+`push.cubechat.tech/banned` when it starts and every six hours while it is
+open, whether or not push or the relays are switched on. The request carries
+nothing about you — no key, no token — only what any connection shows, your
+IP address. The list is the same for everyone.
+
+The offensive-content filter runs on your phone only. Nothing about what it
+folds is sent anywhere.
+
 ---
+
 ## 8. What Cubechat does not do
 
 - **No analytics.** No Firebase Analytics, no Crashlytics, no Sentry, no

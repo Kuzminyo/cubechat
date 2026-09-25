@@ -44,9 +44,13 @@ Using Cubechat where it is unlawful to do so is your responsibility, not ours.
 Ordinary messages are end-to-end encrypted and are not visible to us. If you
 choose Report on a message or person, the app sends the selected complaint to
 our moderation service, including the selected message text or caption when
-one was chosen. We review submitted reports as promptly as we can. You can also hide a message
-or block a person locally. We may ban an abusive public identity or channel
-author, and our signed ban list lets other phones suppress that sender.
+one was chosen. We review every report and act on it within 24 hours, and
+users who break these rules are banned: their public identity or channel
+author key goes on a signed ban list that every copy of the app applies, and
+our servers stop serving them. Reporting also blocks the person for you and
+takes the message off your screen at once. You can hide a message or block a
+person without reporting, and an offensive-content filter, on by default,
+folds rude words from people you have not written to and in channels.
 
 Do not submit knowingly false or malicious reports. A report is not a way to
 send us your entire conversation; only the selected content is transmitted.

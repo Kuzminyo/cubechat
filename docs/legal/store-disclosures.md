@@ -10,7 +10,11 @@ Optional push registration stores a public key and device token. An explicit
 abuse report sends the reporter's public identifier, target, reason, optional
 note, and selected message text (up to 4000 characters), type and time to
 push.cubechat.tech. Reports are signed and stored for moderation. The server
-currently has no automatic report deletion schedule.
+currently has no automatic report deletion schedule. The app also downloads
+the public, signed ban list from `push.cubechat.tech/banned` at start and
+every six hours while open; that request carries no identifier, so it collects
+nothing beyond the IP address of the connection
+(`lib/features/moderation/data/ban_list_controller.dart`).
 
 ---
 
