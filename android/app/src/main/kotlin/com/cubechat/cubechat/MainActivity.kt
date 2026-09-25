@@ -116,14 +116,22 @@ class MainActivity : FlutterActivity() {
                         null
                     },
                 )
-                // Every alias the phone has enabled, as the phone has it — not
-                // the pending pick. The cold-start reconcile asks this: one
-                // entry that matches the saved palette is the only state it
-                // leaves alone; two (a switch cut off halfway) or the wrong one
-                // is queued for the next time the user leaves.
-                "enabledIcons" -> result.success(
+                // Every alias as the package manager holds it — the raw setting
+                // and the manifest's own `enabled` — not the pending pick. Raw
+                // rather than resolved so the Dart reconcile decides what
+                // DEFAULT (0, "never touched") means, where a test can pin it.
+                // It only ever *queues* a switch through setIcon; nothing here
+                // or there toggles a component while the user is looking.
+                "aliasStates" -> result.success(
                     try {
-                        LAUNCHER_ICONS.keys.filter { isAliasEnabled(it) }
+                        LAUNCHER_ICONS.keys.map { icon ->
+                            mapOf(
+                                "icon" to icon,
+                                "setting" to packageManager
+                                    .getComponentEnabledSetting(aliasComponent(icon)),
+                                "manifestEnabled" to manifestEnabled(icon),
+                            )
+                        }
                     } catch (error: Exception) {
                         android.util.Log.w(TAG, "launcher icon read failed", error)
                         null
@@ -559,10 +567,34 @@ class MainActivity : FlutterActivity() {
     private fun isAliasEnabled(icon: String): Boolean =
         when (packageManager.getComponentEnabledSetting(aliasComponent(icon))) {
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
-            // Untouched: whatever the manifest says, and only Emerald's says so.
-            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> icon == DEFAULT_LAUNCHER_ICON
+            // Untouched: whatever the manifest says.
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> manifestEnabled(icon)
             else -> false
         }
+
+    /**
+     * The alias's `android:enabled` as installed, read from the package rather
+     * than assumed, so a manifest edit cannot silently disagree with this file.
+     * MATCH_DISABLED_COMPONENTS, or a disabled alias is "not found". Falls back
+     * to the rule the manifest follows today: only Emerald ships enabled.
+     */
+    private fun manifestEnabled(icon: String): Boolean = try {
+        val component = aliasComponent(icon)
+        val info = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getActivityInfo(
+                component,
+                PackageManager.ComponentInfoFlags.of(
+                    PackageManager.MATCH_DISABLED_COMPONENTS.toLong(),
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getActivityInfo(component, PackageManager.MATCH_DISABLED_COMPONENTS)
+        }
+        info.enabled
+    } catch (_: Exception) {
+        icon == DEFAULT_LAUNCHER_ICON
+    }
 
     /** The icon the launcher shows now, or null if no alias is enabled. */
     private fun shownLauncherIcon(): String? =
@@ -573,54 +605,30 @@ class MainActivity : FlutterActivity() {
      * differs — a component re-enabled for nothing is one some launchers treat
      * as a new app, dropping the home-screen shortcut.
      *
-     * On Android 13+ it is one setComponentEnabledSettings call: the package
-     * manager applies the list under a single lock and sends one
-     * PACKAGE_CHANGED for all of it, so no launcher ever sees the old entry
-     * gone before the new one exists, and a process killed mid-switch (MIUI
-     * kills on a swipe from recents, which is exactly when this runs) cannot
-     * leave half of it done. Below 13 there is no batch; the new alias is
-     * enabled first, so a death between the calls leaves two entries (fixed on
-     * the next start, see the Dart reconcile) and never none.
+     * Two separate calls on every API level, the new alias enabled first, so
+     * a death between them leaves two entries (finished on the next start by
+     * the Dart reconcile) and never none.
+     *
+     * Build 1113 used the API 33+ batch setComponentEnabledSettings here, and
+     * on the owner's Samsung the icon stopped following the theme and the old
+     * home-screen icon answered "app is disabled" — the launcher never caught
+     * up with a switch that had happened. 1111's two calls worked on the same
+     * phone. In AOSP both reach the same setEnabledSettings and coalesce into
+     * one delayed PACKAGE_CHANGED, so the difference is One UI's, not ours to
+     * reason about: the proven order stays, and the batch is not re-proposed.
      */
     private fun applyLauncherIcon(icon: String) {
-        val enable = if (isAliasEnabled(icon)) null else aliasComponent(icon)
-        val disable = LAUNCHER_ICONS.keys
-            .filter { it != icon && isAliasEnabled(it) }
-            .map { aliasComponent(it) }
-        if (enable == null && disable.isEmpty()) return
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            val changes = buildList {
-                if (enable != null) {
-                    add(
-                        PackageManager.ComponentEnabledSetting(
-                            enable,
-                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            PackageManager.DONT_KILL_APP,
-                        ),
-                    )
-                }
-                for (component in disable) {
-                    add(
-                        PackageManager.ComponentEnabledSetting(
-                            component,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        ),
-                    )
-                }
-            }
-            packageManager.setComponentEnabledSettings(changes)
-        } else {
-            if (enable != null) {
+        if (!isAliasEnabled(icon)) {
+            packageManager.setComponentEnabledSetting(
+                aliasComponent(icon),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+        for (other in LAUNCHER_ICONS.keys) {
+            if (other != icon && isAliasEnabled(other)) {
                 packageManager.setComponentEnabledSetting(
-                    enable,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-            }
-            for (component in disable) {
-                packageManager.setComponentEnabledSetting(
-                    component,
+                    aliasComponent(other),
                     PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                     PackageManager.DONT_KILL_APP,
                 )
