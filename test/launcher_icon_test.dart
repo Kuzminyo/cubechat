@@ -16,27 +16,6 @@ import 'support/hive_settle.dart';
 /// That second rule is the one a phone pays for: start-up re-selects the saved
 /// palette, and on Android every switch toggles launcher components — some
 /// launchers drop a pinned shortcut whose component was toggled.
-/// `PackageManager.COMPONENT_ENABLED_STATE_*`.
-const _default = 0;
-const _enabled = 1;
-const _disabled = 2;
-
-/// What MainActivity's `aliasStates` answers when [on] are the icons the
-/// launcher really shows, the way a real phone reports it: an alias nobody
-/// has toggled reads DEFAULT (0), not ENABLED or DISABLED. Emerald ships
-/// enabled, so it is DEFAULT while on and DISABLED once switched away from;
-/// every other alias is DEFAULT while off, ENABLED once switched to.
-List<Map<String, Object?>> aliasRows(Set<String> on) => [
-      for (final icon in LauncherIconService.icons)
-        {
-          'icon': icon,
-          'setting': icon == 'emerald'
-              ? (on.contains(icon) ? _default : _disabled)
-              : (on.contains(icon) ? _enabled : _default),
-          'manifestEnabled': icon == 'emerald',
-        },
-    ];
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -101,93 +80,6 @@ void main() {
     });
   });
 
-  group('reading the aliases, DEFAULT included', () {
-    const resolve = LauncherIconService.resolveEnabled;
-
-    test('a fresh install, every alias DEFAULT, shows Emerald alone', () {
-      final rows = [
-        for (final icon in LauncherIconService.icons)
-          {
-            'icon': icon,
-            'setting': _default,
-            'manifestEnabled': icon == 'emerald',
-          },
-      ];
-      expect(resolve(rows), {'emerald'});
-      // Build 1113's suspects: DEFAULT read as off (no icon) or as on (eight)
-      // would each queue a switch on every cold start. Neither happens.
-      expect(LauncherIconService.needsSwitch(resolve(rows), 'emerald'), isFalse);
-      expect(LauncherIconService.needsSwitch(resolve(rows), 'rose'), isTrue);
-    });
-
-    test('DEFAULT follows the manifest, not the icon name', () {
-      expect(
-        resolve([
-          {'icon': 'emerald', 'setting': _default, 'manifestEnabled': false},
-          {'icon': 'rose', 'setting': _default, 'manifestEnabled': true},
-        ]),
-        {'rose'},
-      );
-    });
-
-    test('DEFAULT with no manifest answer falls back to Emerald', () {
-      expect(
-        resolve([
-          {'icon': 'emerald', 'setting': _default},
-          {'icon': 'rose', 'setting': _default},
-        ]),
-        {'emerald'},
-      );
-    });
-
-    test('after a switch: Emerald DISABLED, the pick ENABLED, rest DEFAULT',
-        () {
-      expect(resolve(aliasRows({'rose'})), {'rose'});
-      expect(resolve(aliasRows({'emerald'})), {'emerald'});
-      expect(resolve(aliasRows({'emerald', 'rose'})), {'emerald', 'rose'});
-    });
-
-    test('every disabled flavour reads as off', () {
-      for (final state in [2, 3, 4]) {
-        expect(
-          resolve([
-            {'icon': 'emerald', 'setting': state, 'manifestEnabled': true},
-            {'icon': 'ocean', 'setting': _enabled, 'manifestEnabled': false},
-          ]),
-          {'ocean'},
-          reason: 'state $state',
-        );
-      }
-    });
-
-    test('an unreadable answer is "cannot say", never "all off"', () {
-      expect(resolve(null), isNull);
-      expect(resolve([42]), isNull);
-      expect(
-        resolve([
-          {'icon': 'emerald', 'setting': 9},
-        ]),
-        isNull,
-      );
-      expect(
-        resolve([
-          {'icon': 'emerald'},
-        ]),
-        isNull,
-      );
-    });
-
-    test('an alias this build does not know is ignored', () {
-      expect(
-        resolve([
-          {'icon': 'emerald', 'setting': _default, 'manifestEnabled': true},
-          {'icon': 'tangerine', 'setting': _enabled},
-        ]),
-        {'emerald'},
-      );
-    });
-  });
-
   group('ThemeController and the launcher', () {
     late Directory tempDir;
     late ProviderContainer container;
@@ -212,8 +104,8 @@ void main() {
         switch (call.method) {
           case 'currentIcon':
             return shown;
-          case 'aliasStates':
-            return aliasRows(enabled?.toSet() ?? {shown});
+          case 'enabledIcons':
+            return enabled ?? [shown];
           case 'setIcon':
             shown = (call.arguments as Map<Object?, Object?>)['icon']! as String;
             enabled = null;
@@ -266,7 +158,7 @@ void main() {
       await pick(AppPalette.emerald);
       expect(sets(), ['rose', 'ocean', 'emerald']);
       // The platform is asked what it shows once, not before every switch.
-      expect(calls.where((c) => c.method == 'aliasStates'), hasLength(1));
+      expect(calls.where((c) => c.method == 'enabledIcons'), hasLength(1));
     });
 
     test('a palette whose icon is already shown touches nothing', () async {
@@ -299,12 +191,12 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
-        if (call.method == 'aliasStates') return aliasRows({shown});
+        if (call.method == 'enabledIcons') return [shown];
         throw PlatformException(code: 'nope');
       });
       await pick(AppPalette.amber);
       await pick(AppPalette.slate);
-      expect(calls.where((c) => c.method == 'aliasStates'), hasLength(2));
+      expect(calls.where((c) => c.method == 'enabledIcons'), hasLength(2));
       expect(sets(), ['amber', 'slate']);
     });
 
@@ -328,50 +220,7 @@ void main() {
       await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
       await theme().launcherIconSettled;
       expect(sets(), isEmpty);
-      expect(calls.where((c) => c.method == 'aliasStates'), isNotEmpty);
-    });
-
-    test('a cold start on an untouched install with Rose saved queues Rose once',
-        () async {
-      // Every alias DEFAULT: the phone shows Emerald, the manifest's pick.
-      await theme().select(AppPalette.rose);
-      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
-      await theme().launcherIconSettled;
-      calls.clear();
-      shown = 'emerald';
-      container.dispose();
-      container = ProviderContainer();
-      await theme().loaded;
-      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
-      await theme().launcherIconSettled;
-      expect(sets(), ['rose']);
-
-      // And the next cold start, with Rose now shown, touches nothing.
-      calls.clear();
-      container.dispose();
-      container = ProviderContainer();
-      await theme().loaded;
-      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
-      await theme().launcherIconSettled;
-      expect(sets(), isEmpty);
-    });
-
-    test('a cold start that cannot read the aliases touches nothing',
-        () async {
-      shown = 'rose';
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-        calls.add(call);
-        if (call.method == 'aliasStates') return null;
-        if (call.method == 'setIcon') return true;
-        return null;
-      });
-      container.dispose();
-      container = ProviderContainer();
-      await theme().loaded;
-      await Future<void>.delayed(ThemeController.launcherIconSettle * 2);
-      await theme().launcherIconSettled;
-      expect(sets(), isEmpty);
+      expect(calls.where((c) => c.method == 'enabledIcons'), isNotEmpty);
     });
 
     test('a switch cut off halfway, two entries enabled, is finished',
@@ -390,7 +239,7 @@ void main() {
       expect(sets(), ['ocean']);
     });
 
-    test('a platform without aliasStates falls back to currentIcon',
+    test('a platform without enabledIcons falls back to currentIcon',
         () async {
       // iOS answers notImplemented to the new method.
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

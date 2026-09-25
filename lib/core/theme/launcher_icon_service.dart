@@ -92,15 +92,18 @@ abstract final class LauncherIconService {
   }
 
   /// Every icon the launcher has enabled, or null when the platform cannot
-  /// say. Android answers with each alias's raw state (see [resolveEnabled]),
-  /// and can come out with none or several: a switch cut off between its two
-  /// calls leaves two. iOS has no such state and no `aliasStates`, so its
-  /// single current icon stands in.
+  /// say. Android answers from its aliases, and can name none or several: a
+  /// switch cut off between its two calls below API 33 leaves two. iOS has no
+  /// such state and no `enabledIcons`, so its single current icon stands in.
   static Future<Set<String>?> enabled() async {
     if (!supported) return null;
     try {
-      final rows = await _channel.invokeListMethod<Object?>('aliasStates');
-      return resolveEnabled(rows);
+      final list = await _channel.invokeListMethod<String>('enabledIcons');
+      if (list == null) return null;
+      return {
+        for (final icon in list)
+          if (icons.contains(icon)) icon,
+      };
     } on MissingPluginException {
       final icon = await current();
       return icon == null ? null : {icon};
@@ -108,46 +111,6 @@ abstract final class LauncherIconService {
       DebugLog.instance.log('theme', 'launcher icons read failed: $e');
       return null;
     }
-  }
-
-  /// `PackageManager.COMPONENT_ENABLED_STATE_*`, as `aliasStates` reports them.
-  static const _stateDefault = 0;
-  static const _stateEnabled = 1;
-  static const _stateDisabled = <int>{2, 3, 4};
-
-  /// Which icons Android's raw alias [rows] amount to, or null when any row is
-  /// unreadable — a partial answer would be read as "that one is off" and
-  /// queue a switch nobody asked for.
-  ///
-  /// DEFAULT (0) is what `getComponentEnabledSetting` returns for an alias
-  /// nobody has toggled, and it means "as the manifest says": enabled for
-  /// Emerald, disabled for the rest. Read as disabled, a fresh install would
-  /// look like it had no icon at all; read as enabled, like it had eight.
-  /// Either way every cold start would queue a switch.
-  @visibleForTesting
-  static Set<String>? resolveEnabled(List<Object?>? rows) {
-    if (rows == null) return null;
-    final enabled = <String>{};
-    for (final row in rows) {
-      if (row is! Map) return null;
-      final icon = row['icon'];
-      final setting = row['setting'];
-      if (icon is! String || setting is! int) return null;
-      if (!icons.contains(icon)) continue;
-      final bool on;
-      if (setting == _stateEnabled) {
-        on = true;
-      } else if (setting == _stateDefault) {
-        final manifest = row['manifestEnabled'];
-        on = manifest is bool ? manifest : icon == defaultIcon;
-      } else if (_stateDisabled.contains(setting)) {
-        on = false;
-      } else {
-        return null;
-      }
-      if (on) enabled.add(icon);
-    }
-    return enabled;
   }
 
   /// Whether a launcher showing [enabled] has to be switched to show [want].

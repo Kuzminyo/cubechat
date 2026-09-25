@@ -298,12 +298,6 @@ class ThemeController extends Notifier<AppPalette> {
   /// the saved palette wants. On Android every switch toggles components, and
   /// some launchers drop a pinned home-screen shortcut whose component was
   /// toggled, so a launcher that already matches is never touched.
-  ///
-  /// "Switched" here means *queued*: on Android `setIcon` only records the
-  /// icon, and MainActivity applies it in onStop once the user has left. A
-  /// correction found at cold start takes exactly that path — disabling the
-  /// alias the running task was started from removes the task, so nothing
-  /// may toggle a component while the app is on screen.
   Future<void> _syncLauncherIcon(AppPalette palette) async {
     if (!LauncherIconService.supported) return;
     final want = LauncherIconService.iconFor(palette.id);
