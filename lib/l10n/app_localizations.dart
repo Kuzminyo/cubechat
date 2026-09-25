@@ -6017,14 +6017,20 @@ abstract class AppLocalizations {
   /// No description provided for @reportDisclosure.
   ///
   /// In en, this message translates to:
-  /// **'The selected message text and your report go to Cubechat moderation and its private Telegram bot.'**
+  /// **'The selected message text and your report go to cubechat moderation and its private Telegram bot.'**
   String get reportDisclosure;
 
   /// No description provided for @reportSent.
   ///
   /// In en, this message translates to:
-  /// **'Report sent for review.'**
+  /// **'Report sent. We review reports within 24 hours.'**
   String get reportSent;
+
+  /// No description provided for @reportBlockedToo.
+  ///
+  /// In en, this message translates to:
+  /// **'They\'re blocked for you.'**
+  String get reportBlockedToo;
 
   /// No description provided for @reportQueued.
   ///

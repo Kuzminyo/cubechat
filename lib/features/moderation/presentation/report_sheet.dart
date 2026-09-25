@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../chat/domain/message_preview.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/hidden_authors.dart';
@@ -85,29 +87,58 @@ class _ReportSheetState extends ConsumerState<_ReportSheet> {
     };
   }
 
+  /// The words of the reported message, as the moderator should read them.
+  ///
+  /// A sticker, a shared location or a contact card is a `cubechat:` URI in
+  /// the text field; sending that raw would put somebody's coordinates in
+  /// the moderation bot for no benefit, so those go as the same one-line
+  /// preview the chat list shows. Media go as their caption, if any.
+  String? _text(Message? m, AppLocalizations t) {
+    if (m == null) return null;
+    if (m.kind != MessageKind.text) return m.imageCaption;
+    if (m.isSticker || m.text.startsWith('cubechat:')) {
+      return messagePreview(m, t);
+    }
+    return m.text;
+  }
+
+  /// "Send" promises three things, and the two local ones do not wait on the
+  /// network's verdict (review of the Codex handoff, 2026-09-25): the person
+  /// asked for this author to be gone from their screen, and a server that
+  /// is down, or refuses the payload, is no reason to keep showing them.
   Future<void> _submit() async {
     if (_sending) return;
     setState(() => _sending = true);
     final t = AppLocalizations.of(context);
     final m = widget.message;
+    // The note field only exists under "Other"; text typed there before
+    // switching to another reason is not part of the report.
+    final note = _reason == ReportReason.other ? _note.text.trim() : '';
     final report = ModerationReport(
       reason: _reason,
-      note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+      note: note.isEmpty ? null : note,
       context: widget.reportContext,
       target: widget.targetHex,
       targetNpub: widget.targetNpub,
       channelId: widget.channelId,
-      messageText: m?.kind == MessageKind.text ? m?.text : m?.imageCaption,
+      messageText: _text(m, t),
       messageKind: _kind(m),
-      messageSentAt: m == null ? null : m.sentAt.millisecondsSinceEpoch ~/ 1000,
+      messageSentAt: m?.sentAt.millisecondsSinceEpoch,
     );
+    // null: refused for good (400/401) or not even queued.
+    bool? sent;
     try {
       // send() writes to encrypted storage before trying the network.
-      final sent = await ref.read(reportClientProvider).send(report);
-      final target = widget.targetHex;
-      if ((widget.reportContext == ReportContext.direct ||
-              widget.reportContext == ReportContext.airdrop) &&
-          target != null) {
+      sent = await ref.read(reportClientProvider).send(report);
+    } catch (e) {
+      DebugLog.instance.log('REPORT', 'report not accepted: $e');
+    }
+    final target = widget.targetHex;
+    final blocks = (widget.reportContext == ReportContext.direct ||
+            widget.reportContext == ReportContext.airdrop) &&
+        target != null;
+    try {
+      if (blocks) {
         await ref
             .read(knownPeersControllerProvider.notifier)
             .setBlocked(target, true);
@@ -116,25 +147,28 @@ class _ReportSheetState extends ConsumerState<_ReportSheet> {
           m?.authorId != null) {
         await ref.read(hiddenAuthorsProvider.notifier).hide(m!.authorId!);
       }
-      if (m != null && widget.chatId != null) {
-        ref.read(messagesControllerProvider.notifier).deleteLocal(
-              widget.chatId!,
-              m.id,
-            );
-      }
-      if (!mounted) return;
-      showGlassToast(
-        context,
-        sent ? t.reportSent : t.reportQueued,
-        icon: Icons.flag_rounded,
-        tone: ToastTone.success,
-      );
-      Navigator.of(context).pop(true);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _sending = false);
-      showGlassToast(context, t.reportFailed, tone: ToastTone.danger);
+    } catch (e) {
+      DebugLog.instance.log('REPORT', 'could not block after a report: $e');
     }
+    if (m != null && widget.chatId != null) {
+      ref.read(messagesControllerProvider.notifier).deleteLocal(
+            widget.chatId!,
+            m.id,
+          );
+    }
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      switch (sent) {
+        true when blocks => '${t.reportSent} ${t.reportBlockedToo}',
+        true => t.reportSent,
+        false => t.reportQueued,
+        null => t.reportFailed,
+      },
+      icon: Icons.flag_rounded,
+      tone: sent == null ? ToastTone.danger : ToastTone.success,
+    );
+    Navigator.of(context).pop(true);
   }
 
   @override

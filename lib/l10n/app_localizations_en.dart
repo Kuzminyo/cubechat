@@ -3466,10 +3466,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportDisclosure =>
-      'The selected message text and your report go to Cubechat moderation and its private Telegram bot.';
+      'The selected message text and your report go to cubechat moderation and its private Telegram bot.';
 
   @override
-  String get reportSent => 'Report sent for review.';
+  String get reportSent => 'Report sent. We review reports within 24 hours.';
+
+  @override
+  String get reportBlockedToo => 'They\'re blocked for you.';
 
   @override
   String get reportQueued => 'Report saved. It will send when online.';

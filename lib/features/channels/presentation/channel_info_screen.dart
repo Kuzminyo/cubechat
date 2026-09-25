@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -689,25 +690,25 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GlassCard(
-                padding: EdgeInsets.zero,
-                child: _InfoRow(
-                  icon: Icons.flag_outlined,
-                  label: t.reportAction,
-                  tone: AppColors.danger,
-                  onTap: () => showReportSheet(
-                    context,
-                    reportContext: ReportContext.channel,
-                    targetHex: ownerId,
-                    channelId: widget.channelName,
+            // Reporting the room itself. Not offered to its owner, who would be
+            // reporting themselves.
+            if (ownerId == null || ownerId != _myId) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GlassCard(
+                  padding: EdgeInsets.zero,
+                  child: _InfoRow(
+                    icon: Icons.flag_outlined,
+                    label: t.reportAction,
+                    tone: AppColors.danger,
+                    onTap: () => unawaited(_reportChannel(ownerId)),
+                    last: true,
                   ),
-                  last: true,
                 ),
               ),
-            ), // The end of the room, and only for the one person who can end it.
+            ],
+            // The end of the room, and only for the one person who can end it.
             // Below everything else rather than among the settings, because it
             // is not a setting.
             if (_myId != null &&
@@ -969,6 +970,26 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
       return;
     }
     if (!mounted) return;
+    await ref
+        .read(messagingServiceProvider)
+        .wipeChannelLocally(widget.channelName);
+    if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  /// Report the room, and then leave it — spec §2: a report on a whole
+  /// channel hides the channel, the way a report on a person blocks them.
+  /// The owner's signing fingerprint is the target, so a ban takes their
+  /// rooms off every phone. Leaving is the same local wipe as
+  /// [_leaveChannel], without its confirmation: "Send" on the sheet was the
+  /// confirmation.
+  Future<void> _reportChannel(String? ownerId) async {
+    final reported = await showReportSheet(
+      context,
+      reportContext: ReportContext.channel,
+      targetHex: ownerId,
+      channelId: widget.channelName,
+    );
+    if (!reported || !mounted) return;
     await ref
         .read(messagingServiceProvider)
         .wipeChannelLocally(widget.channelName);

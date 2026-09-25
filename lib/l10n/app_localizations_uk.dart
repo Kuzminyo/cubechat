@@ -3508,10 +3508,14 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get reportDisclosure =>
-      'Текст вибраного повідомлення та скаргу буде передано модерації Cubechat і її приватному боту в Telegram.';
+      'Текст вибраного повідомлення та скаргу буде передано модерації cubechat і її приватному боту в Telegram.';
 
   @override
-  String get reportSent => 'Скаргу надіслано на розгляд.';
+  String get reportSent =>
+      'Скаргу надіслано. Ми розглянемо її протягом 24 годин.';
+
+  @override
+  String get reportBlockedToo => 'Для вас цю людину заблоковано.';
 
   @override
   String get reportQueued =>
