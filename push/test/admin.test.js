@@ -182,6 +182,19 @@ test('a ban whose bans.ban rejects is 503 and the report stays open', async () =
   assert.equal(result.status, 503);
   assert.equal(result.body.reason, 'bans unavailable');
   assert.equal((await store.get('a')).status, 'open');
+  // Reverted to open, so the retention clock must not have started either.
+  assert.equal((await store.get('a')).decidedAt, undefined);
+});
+
+test('a decision stamps decidedAt, which is what the 90-day purge reads', async () => {
+  const store = fakeStore([{ id: 'a', seq: 1, status: 'open' }]);
+  const result = await handleAdmin(
+    req({ method: 'POST', url: '/admin/reports/a/dismiss', headers: { authorization: `Bearer ${TOKEN}` } }),
+    { adminToken: TOKEN, remoteAddress: LOCAL, store, bans: fakeBans(), nowSeconds: 1_800_000_000 },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.report.decidedAt, 1_800_000_000);
+  assert.equal((await store.get('a')).decidedAt, 1_800_000_000);
 });
 
 // The race S2 review round 1 flagged: reading a report's status and later

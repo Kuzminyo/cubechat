@@ -71,7 +71,7 @@ Play Console → Policy → App content → Data safety.
 |---|---|
 | Does your app collect or share any of the required user data types? | **Yes** (push registration and explicit abuse reports) |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** — registration is signed and sent over HTTPS; messages are sealed before they leave the device |
-| Do you provide a way for users to request that their data is deleted? | **Yes** — switching push off deletes the registration; users can request deletion of a report at cubechatble@gmail.com. Give the Privacy Policy URL as the deletion instructions |
+| Do you provide a way for users to request that their data is deleted? | **Yes** — switching push off deletes the registration; a report is kept until it is decided and deleted automatically 90 days after the decision, and users can request earlier deletion at cubechatble@gmail.com. Give the Privacy Policy URL as the deletion instructions |
 
 ### Section 2 — Data types
 

@@ -51,9 +51,10 @@ message.
   do this, and the reply says it is done.
 - Update App Privacy to match `store-disclosures.md`: User ID and Other User
   Content, both linked, neither used for tracking.
-- The server keeps report records with no automatic deletion yet; the privacy
-  policy says so. Do not promise a retention period in the reply until one is
-  enforced.
+- The server now deletes a report automatically 90 days after it is decided
+  (open reports are kept until decided); the privacy policy says so. The push
+  server must be running the build with the retention purge, or that claim is
+  false.
 - `https://cubechat.tech/terms` answers 404 and `/privacy` serves the
   pre-moderation text; the app links the documents on GitHub instead. Update
   the site, or give App Store Connect the GitHub links.

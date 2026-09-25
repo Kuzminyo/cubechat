@@ -303,3 +303,86 @@ test('createReportStore appends, updates through a rewrite, and lists open repor
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+const DAY = 24 * 60 * 60;
+
+test('purge drops a decided report past 90 days, keeps one at 89, and never touches an open one', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-purge-'));
+  const file = path.join(dir, 'reports.jsonl');
+  try {
+    const store = createReportStore(file);
+    await store.append({ id: 'gone', status: 'open', reason: 'spam' });
+    await store.append({ id: 'kept-recent', status: 'open', reason: 'abuse' });
+    await store.append({ id: 'kept-open', status: 'open', reason: 'other' });
+    await store.decide('gone', { status: 'dismissed', decidedAt: now - 91 * DAY });
+    await store.decide('kept-recent', { status: 'dismissed', decidedAt: now - 89 * DAY });
+    // Still open after 200 days: never purged, decided or not.
+    // (decidedAt stays absent — it was never decided.)
+
+    const removed = await store.purge(now);
+    assert.equal(removed, 1);
+
+    const ids = new Set((await store.since(0)).reports.map((r) => r.id));
+    assert.equal(ids.has('gone'), false);
+    assert.equal(ids.has('kept-recent'), true);
+    assert.equal(ids.has('kept-open'), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('purge preserves seq of survivors, does not reset the counter, and since() paging still works', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-purge-seq-'));
+  const file = path.join(dir, 'reports.jsonl');
+  try {
+    const store = createReportStore(file);
+    const first = await store.append({ id: 'a', status: 'open' });
+    const second = await store.append({ id: 'b', status: 'open' });
+    await store.decide('a', { status: 'dismissed', decidedAt: now - 91 * DAY });
+    assert.equal(first.seq, 1);
+    assert.equal(second.seq, 2);
+
+    const removed = await store.purge(now);
+    assert.equal(removed, 1);
+
+    // 'b' kept its seq of 2 — the purge only drops rows, it never renumbers.
+    const survivor = await store.get('b');
+    assert.equal(survivor.seq, 2);
+
+    // The in-memory counter carries on from where it was, not from the
+    // (now lower) max seq still on disk.
+    const third = await store.append({ id: 'c', status: 'open' });
+    assert.equal(third.seq, 3);
+
+    const since = await store.since(0);
+    assert.deepEqual(since.reports.map((r) => r.id), ['b', 'c']);
+    assert.equal(since.next, 3);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a purge racing a decide does not lose the decision', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-purge-race-'));
+  const file = path.join(dir, 'reports.jsonl');
+  try {
+    const store = createReportStore(file);
+    await store.append({ id: 'r1', status: 'open', reason: 'spam' });
+
+    // Both go through the same write queue; whichever runs first, the
+    // decision must land — a purge can only ever remove reports that were
+    // already decided long ago, and this one becomes decided *during* the
+    // race, so it must never be the purge that wins the report away.
+    const [decided] = await Promise.all([
+      store.decide('r1', { status: 'dismissed', decidedAt: now }),
+      store.purge(now),
+    ]);
+
+    assert.ok(decided.report, 'the decision must have gone through');
+    assert.equal(decided.report.status, 'dismissed');
+    const stored = await store.get('r1');
+    assert.equal(stored.status, 'dismissed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

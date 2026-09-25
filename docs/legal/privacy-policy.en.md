@@ -263,11 +263,13 @@ waits in encrypted storage on your phone for up to seven days and is signed
 again when delivery resumes.
 
 The developer reviews reports through a private Telegram moderation bot. The bot forwards the reason, note, a shortened reporter and target key, and up to 1,000 characters of the selected message excerpt to Telegram, a third-party service. The
-server stores the report for review and a decision; it does not yet delete old
-report records automatically. Contact us to request deletion. A decision to
+server keeps the report until it is decided, then deletes it 90 days after
+the decision; an undecided report is kept until it is. A decision to
 ban publishes a signed list containing public identity keys, Nostr public keys
 and channel-author fingerprints only. Every app can download that public list
 to suppress banned senders. The list never contains report text or your note.
+The banned key itself stays on that public list until the developer lifts the
+ban — the 90-day deletion above is for the report, not the ban.
 
 **The ban list download.** Every copy of the app fetches that list from
 `push.cubechat.tech/banned` when it starts and every six hours while it is

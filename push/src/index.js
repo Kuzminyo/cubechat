@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-25-channel-report-fingerprint';
+const VERSION = '2026-09-25-report-retention';
 
 const RECIPIENT_TAG = 'p';
 
@@ -1141,6 +1141,22 @@ function log(scope, message) {
   );
 }
 
+// How often the purge runs once started — not how long anything is kept
+// (that's `REPORT_RETENTION_DAYS`). Once a day is often enough for a 90-day
+// retention window and cheap enough not to matter.
+const REPORT_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function purgeReportsOnce() {
+  try {
+    const removed = await reportStore.purge();
+    if (removed > 0) {
+      log('report', `purged ${removed} decided report(s) past the ${REPORT_RETENTION_DAYS}-day retention window`);
+    }
+  } catch (error) {
+    log('report', `purge failed: ${error.message}`);
+  }
+}
+
 async function main() {
   await loadStore();
   try {
@@ -1161,6 +1177,11 @@ async function main() {
   await fcmServiceAccount();
   for (const url of RELAYS) connectRelay(url);
   server.listen(PORT, () => log('http', `listening on ${PORT}`));
+  // Once at start, then daily. Unref'd so a pending purge never keeps the
+  // process alive by itself — same reasoning as everything else on a timer
+  // here would need, there just wasn't anything else on one yet.
+  await purgeReportsOnce();
+  setInterval(() => void purgeReportsOnce(), REPORT_PURGE_INTERVAL_MS).unref();
 }
 
 // Importing the HTTP handler in tests must not connect to production relays,
@@ -1233,6 +1254,13 @@ const REPORT_KIND = REGISTER_KIND;
 // captured report can't be replayed indefinitely.
 const REPORT_MAX_PAST_SECONDS = 600;
 const REPORT_MAX_FUTURE_SECONDS = 60;
+
+// How long a *decided* report is kept after the decision, not after it was
+// filed — an open report is never purged, however old, because it is still
+// waiting on somebody. Matches the privacy policy: a report is kept until
+// decided, then deleted 90 days later; the ban itself (the key, in the ban
+// list) is untouched by this and stays until an explicit unban.
+const REPORT_RETENTION_DAYS = 90;
 
 const REPORT_REASONS = new Set(['spam', 'abuse', 'violence', 'sexual', 'other']);
 const REPORT_CONTEXTS = new Set(['direct', 'channel', 'airdrop', 'general']);
@@ -1481,6 +1509,35 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
         .sort((a, b) => a.seq - b.seq);
       const next = rest.length ? rest[rest.length - 1].seq : seq;
       return { reports: rest, next };
+    },
+    // Drops decided reports whose `decidedAt` is more than `retentionDays`
+    // old. Open reports are never touched, however old — they're still
+    // waiting on somebody, not sitting around. Goes through the same queue as
+    // `append`/`update`/`decide`, so a purge racing a decide can't drop a
+    // report the same task just decided on, and it rewrites through
+    // temp-file-then-rename like `update` does. `seq` on the surviving
+    // reports is untouched — this only removes map entries and rewrites what's
+    // left, it never renumbers — and `nextSeq` (the in-memory counter) isn't
+    // touched either, so a report appended right after a purge still gets a
+    // seq no one has used. Returns the number of reports removed.
+    async purge(nowSeconds = Math.floor(Date.now() / 1000), retentionDays = REPORT_RETENTION_DAYS) {
+      await load();
+      return enqueue(async () => {
+        const cutoff = nowSeconds - retentionDays * 24 * 60 * 60;
+        let removed = 0;
+        for (const [id, report] of reports) {
+          if (
+            report.status !== 'open' &&
+            Number.isSafeInteger(report.decidedAt) &&
+            report.decidedAt < cutoff
+          ) {
+            reports.delete(id);
+            removed += 1;
+          }
+        }
+        if (removed > 0) await rewrite();
+        return removed;
+      });
     },
   };
 }
@@ -1818,7 +1875,6 @@ export async function handleAdmin(request, {
   bans,
   nowSeconds = Math.floor(Date.now() / 1000),
 } = {}) {
-  void nowSeconds; // reserved for S3-era freshness checks on ban/unban bodies
   const notFound = { status: 404, body: { ok: false } };
   if (!adminToken) return notFound;
   if (!ADMIN_LOCAL_ADDRESSES.has(remoteAddress)) return notFound;
@@ -1865,7 +1921,10 @@ export async function handleAdmin(request, {
     // this far — and reverted through the same queue if `bans.ban` rejects,
     // so the only 200 a caller ever sees is a ban that was actually applied.
     const targetStatus = action === 'ban' ? 'banned' : 'dismissed';
-    const decided = await store.decide(id, { status: targetStatus });
+    // `decidedAt` is the retention clock (see `REPORT_RETENTION_DAYS` and
+    // `store.purge`): a decided report is deleted 90 days after this, not
+    // 90 days after it was filed.
+    const decided = await store.decide(id, { status: targetStatus, decidedAt: nowSeconds });
     if (decided.notFound) return { status: 404, body: { reason: 'no such report' } };
     if (decided.conflict) return { status: 409, body: { ok: false, status: decided.conflict } };
     if (action === 'dismiss') {
@@ -1874,7 +1933,9 @@ export async function handleAdmin(request, {
     try {
       await bans.ban(decided.report);
     } catch {
-      await store.update(id, { status: 'open' });
+      // Reverted to open, so `decidedAt` goes with it — a ban that never
+      // actually took must not start the retention clock.
+      await store.update(id, { status: 'open', decidedAt: undefined });
       return { status: 503, body: { reason: 'bans unavailable' } };
     }
     return { status: 200, body: { ok: true, report: decided.report } };
