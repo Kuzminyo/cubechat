@@ -574,13 +574,50 @@ void main() {
         reason: 'nothing goes to them while they are quiet',
       );
 
-      // Past the five seconds: ours goes again, and a fresh one of theirs
-      // matches it.
+      // Past the five seconds, still lying together: that is the same bump,
+      // not a new one, and nothing goes.
+      feed(async, c, _bob, const Duration(seconds: 3));
+      expect(port.bumpsTo(_bob).length, firstBumps);
+
+      // Taken apart, then together again: ours goes, and a fresh one of
+      // theirs matches it.
+      // Apart for longer than the tracker's two-second window, so no touching
+      // reading is left in it; together again for over half of it, so the
+      // window's median is a touch.
+      feed(async, c, _bob, const Duration(milliseconds: 2200), rssi: -65);
       feed(async, c, _bob, const Duration(milliseconds: 1200));
       expect(port.bumpsTo(_bob).length, firstBumps + 1);
       port.deliver(_bob, bump: _bump(11));
       async.flushMicrotasks();
       expect(event(c), isA<BumpContact>());
+      c.dispose();
+    });
+  });
+
+  test('a pair re-arms only once every reading of the window is apart', () {
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      feed(async, c, _bob, const Duration(milliseconds: 500));
+      port.deliver(_bob, bump: _bump(40));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>());
+      c.read(bumpControllerProvider.notifier).dismiss();
+      final firstBumps = port.bumpsTo(_bob).length;
+
+      // Past the cooldown, wobbling between touching and a dip: one quiet
+      // reading among loud ones is not "moved apart".
+      for (var i = 0; i < 40; i++) {
+        c.read(bumpControllerProvider.notifier).sample(
+              _bob,
+              i % 4 == 0 ? -60 : -40,
+            );
+        async.elapse(tick);
+      }
+      expect(port.bumpsTo(_bob).length, firstBumps);
+      port.deliver(_bob, bump: _bump(41));
+      async.flushMicrotasks();
+      expect(event(c), isNull, reason: 'their bump is the same touch too');
       c.dispose();
     });
   });
@@ -785,13 +822,13 @@ void main() {
     });
   });
 
-  test('warmth climbs from -60 dBm and falls back to zero', () {
+  test('warmth climbs from -65 dBm and falls back to zero', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);
       final c = make(async, port);
       c.read(bumpControllerProvider);
-      feed(async, c, _bob, const Duration(milliseconds: 1000), rssi: -50);
-      expect(c.read(bumpControllerProvider).warmth, closeTo(0.5, 0.05));
+      feed(async, c, _bob, const Duration(milliseconds: 1000), rssi: -57);
+      expect(c.read(bumpControllerProvider).warmth, closeTo(8 / 17, 0.05));
       async.elapse(const Duration(seconds: 4));
       expect(c.read(bumpControllerProvider).warmth, 0);
       c.dispose();
@@ -1057,7 +1094,7 @@ void main() {
           device: 'AA',
           from: 0,
           n: 30,
-          rssi: -58,
+          rssi: -64,
         );
         expect(dials, isEmpty);
         expect(

@@ -204,20 +204,29 @@ class BumpController extends Notifier<BumpState> {
   /// short of a bump, so the handshake is under way while the phones are
   /// still closing in — and at most once per device per [dialEvery].
   /// [dialEvery] is also how long a dialled phone counts for the glow.
-  static const int dialRssi = -50;
+  /// Moved from -50 with `bumpRssi`'s -40 → -48, to stay ten dB short.
+  static const int dialRssi = -58;
   static const int _dialSamples = ProximityTracker.minCloseSamples;
 
   /// The September 25 owner logs showed one touching phone at -40 dBm and
-  /// the other at -47..-56 dBm. Keep -40 for an unsolicited bump; a phone may
-  /// answer a bump over an authenticated direct link at -55 only after two fresh
-  /// readings and the same 15 dB separation from other peers.
-  static const int _replyRssi = -55;
+  /// the other at -47..-56 dBm. A phone that has not reached `bumpRssi` itself
+  /// may answer a bump over an authenticated direct link at -58 — ten dB
+  /// under the -48 touch — only after two fresh readings and the same 15 dB
+  /// separation from other peers. Was -55 against a -40 touch.
+  static const int _replyRssi = -58;
+
+  /// A bumped pair re-arms only once every reading of the last two seconds —
+  /// at least two, the newest fresh — is quieter than this. Seven dB under
+  /// the quietest touch measured (-48); touching never read below it in the
+  /// September 25 logs. Until then the phones are still lying together, and
+  /// the five-second [cooldown] alone fired them a second time.
+  static const int _rearmRssi = -55;
   static const Duration dialEvery = Duration(seconds: 10);
 
-  /// Smallest warmth step the glow is moved by. The warmth spans the 20 dB
-  /// from `glowRssi` to `bumpRssi`, so a twentieth was one decibel — the
-  /// wobble of a phone lying still — and 1109's glow re-animated on almost
-  /// every tick. A tenth is 2 dB of hysteresis.
+  /// Smallest warmth step the glow is moved by. The warmth spans the 17 dB
+  /// from `glowRssi` to `bumpRssi`; a twentieth (one decibel then — the
+  /// wobble of a phone lying still) had 1109's glow re-animate on almost
+  /// every tick. A tenth is under 2 dB of hysteresis.
   static const double _warmthStep = 0.1;
 
   /// How long a bump id is remembered against replay, and how many at most.
@@ -230,6 +239,11 @@ class BumpController extends Notifier<BumpState> {
   final Map<String, DateTime> _sentAt = {};
   final Map<String, ({DateTime at, NearbyBump bump})> _heard = {};
   final Map<String, DateTime> _quietUntil = {};
+
+  /// People bumped with who have not been moved apart since — see
+  /// [_rearmRssi]. Kept across a page close: Android's file picker closes the
+  /// page, and coming back with the phones still together is not a new bump.
+  final Set<String> _disarmed = {};
 
   /// Bump id → when it arrived, oldest first.
   final LinkedHashMap<String, DateTime> _seenIds = LinkedHashMap();
@@ -393,6 +407,7 @@ class BumpController extends Notifier<BumpState> {
   /// running, as from a fresh visit.
   void wipe() {
     _quietUntil.clear();
+    _disarmed.clear();
     _seenIds.clear();
     _dialledAt.clear();
     _tracker.clear();
@@ -426,6 +441,7 @@ class BumpController extends Notifier<BumpState> {
 
   void _evaluate() {
     final now = _now;
+    _rearm(now);
     final r = _tracker.read(now);
     final hex = r.closest;
     final bumpable =
@@ -456,6 +472,22 @@ class BumpController extends Notifier<BumpState> {
     if (heard != null && now.difference(heard.at) <= mutualWithin) {
       _fire(hex, heard.bump, now);
     }
+  }
+
+  /// Lets a bumped person bump again once the phones were taken apart.
+  void _rearm(DateTime now) {
+    if (_disarmed.isEmpty) return;
+    _disarmed.removeWhere((hex) {
+      if (!_tracker.hasFreshSample(hex, now)) return false;
+      final quiet = _tracker.samplesIn(hex, now) -
+          _tracker.loudSamples(hex, _rearmRssi, now);
+      if (quiet < ProximityTracker.minCloseSamples ||
+          _tracker.loudSamples(hex, _rearmRssi, now) > 0) {
+        return false;
+      }
+      DebugLog.instance.log('BUMP', '${_short(hex)} moved apart — re-armed');
+      return true;
+    });
   }
 
   String? _deviceOf(String key) => key.startsWith(bumpAnonPrefix)
@@ -569,6 +601,7 @@ class BumpController extends Notifier<BumpState> {
 
   void _fire(String hex, NearbyBump theirs, DateTime now) {
     _quietUntil[hex] = now.add(cooldown);
+    _disarmed.add(hex);
     // The ledger is a door for *their* offer, auto-accepted: opened only when
     // their bump said files are coming. A bump without files is a contact
     // swap, and a stranger must not get a free offer out of it too.
@@ -668,6 +701,7 @@ class BumpController extends Notifier<BumpState> {
   }
 
   bool _quiet(String hex, DateTime now) {
+    if (_disarmed.contains(hex)) return true;
     final until = _quietUntil[hex];
     if (until == null) return false;
     if (now.isBefore(until)) return true;

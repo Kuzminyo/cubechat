@@ -43,9 +43,11 @@ void main() {
     expect(p.read(at(3500)).closest, isNull);
   });
 
-  test('warmth rises from -60 to -40', () {
-    final p = ProximityTracker()..add('a', -50, at(0));
-    expect(p.read(at(10)).warmth, closeTo(0.5, 0.001));
+  test('warmth rises from -65 to -48', () {
+    final p = ProximityTracker()..add('a', -57, at(0));
+    expect(p.read(at(10)).warmth, closeTo(8 / 17, 0.001));
+    final full = ProximityTracker()..add('a', -48, at(0));
+    expect(full.read(at(10)).warmth, 1);
     final q = ProximityTracker()..add('a', -75, at(0));
     expect(q.read(at(10)).warmth, 0);
   });

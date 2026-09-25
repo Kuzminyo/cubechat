@@ -43,6 +43,9 @@ class _FakePeripheral implements BlePeripheral {
   Future<bool> setAdvertisePower({required bool low}) async => false;
 
   @override
+  Future<bool> setAdvertiseFast({required bool fast}) async => false;
+
+  @override
   Future<bool> notifyInbound(Uint8List data) async {
     notified.add(data);
     return true;

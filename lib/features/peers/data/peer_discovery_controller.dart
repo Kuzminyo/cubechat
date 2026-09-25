@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ble/ble_peripheral.dart';
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
 import '../../../core/crypto/identity_service.dart';
@@ -163,13 +164,18 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // on the same provider.
     if (!_proximityWatched) {
       _proximityWatched = true;
+      final advertiser = ref.read(blePeripheralProvider);
       ref.listen<bool>(airdropPageOnScreenProvider, (_, on) {
         unawaited(scanner.setProximity(on));
+        _setAdvertiseFast(advertiser, on);
       });
       // Leaving with proximity still on would pin the radio to its heaviest
       // cadence for good — the page can't turn it back off once this
       // controller is gone.
-      ref.onDispose(() => unawaited(scanner.setProximity(false)));
+      ref.onDispose(() {
+        unawaited(scanner.setProximity(false));
+        _setAdvertiseFast(advertiser, false);
+      });
     }
 
     // Before every bail-out below, because a rename is not a Bluetooth event.
@@ -298,6 +304,18 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
         await peripheral.stop();
         await peripheral.start(peerName: name);
       }, what: 're-advertise after rename');
+
+  /// The other half of the proximity cadence: the scan on *their* phone can
+  /// only count the advertisements we send. Android only — see
+  /// [BlePeripheral.setAdvertiseFast].
+  static void _setAdvertiseFast(BlePeripheral advertiser, bool on) {
+    if (!PlatformInfo.isAndroid) return;
+    try {
+      unawaited(advertiser.setAdvertiseFast(fast: on));
+    } catch (e) {
+      DebugLog.instance.log('BLE-SCAN', 'fast advertising unavailable: $e');
+    }
+  }
 
   /// Run advertise transitions one at a time.
   ///

@@ -76,6 +76,17 @@ class CubechatBlePeripheralPlugin(
     /// empty room four times a second.
     private var lowPower = false
 
+    /// Whether advertising should run at LOW_LATENCY: only while the AirDrop
+    /// page is on screen, where the bump gesture reads our RSSI.
+    ///
+    /// The September 25 owner logs had the other phone hearing us 1-4 times a
+    /// second at BALANCED, so the two loud readings a bump needs took seconds
+    /// to collect. LOW_LATENCY is about every 100 ms. The transmit level stays
+    /// MEDIUM: the bump thresholds were measured at it, and a louder level
+    /// would move every reading. Low power wins if both are asked for — an app
+    /// out of sight has no page to bump on.
+    private var fast = false
+
     private var advertiser: BluetoothLeAdvertiser? = null
     private var gattServer: BluetoothGattServer? = null
     private var inboundChar: BluetoothGattCharacteristic? = null
@@ -152,6 +163,10 @@ class CubechatBlePeripheralPlugin(
             "setAdvertisePower" -> {
                 val low = call.argument<Boolean>("low") ?: false
                 result.success(setAdvertisePower(low))
+            }
+            "setAdvertiseFast" -> {
+                val on = call.argument<Boolean>("fast") ?: false
+                result.success(setAdvertiseFast(on))
             }
             "notifyInbound" -> {
                 val data = call.argument<ByteArray>("data")
@@ -339,8 +354,11 @@ class CubechatBlePeripheralPlugin(
     private fun buildAdvertiseSettings(): AdvertiseSettings =
         AdvertiseSettings.Builder()
             .setAdvertiseMode(
-                if (lowPower) AdvertiseSettings.ADVERTISE_MODE_LOW_POWER
-                else AdvertiseSettings.ADVERTISE_MODE_BALANCED
+                when {
+                    lowPower -> AdvertiseSettings.ADVERTISE_MODE_LOW_POWER
+                    fast -> AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
+                    else -> AdvertiseSettings.ADVERTISE_MODE_BALANCED
+                }
             )
             .setTxPowerLevel(
                 if (lowPower) AdvertiseSettings.ADVERTISE_TX_POWER_LOW
@@ -357,6 +375,24 @@ class CubechatBlePeripheralPlugin(
     private fun setAdvertisePower(low: Boolean): Boolean {
         if (lowPower == low) return running
         lowPower = low
+        return readvertise()
+    }
+
+    /// LOW_LATENCY while the AirDrop page is open — see [fast].
+    private fun setAdvertiseFast(on: Boolean): Boolean {
+        if (fast == on) return running
+        fast = on
+        return readvertise()
+    }
+
+    private fun modeName(): String = when {
+        lowPower -> "LOW_POWER"
+        fast -> "LOW_LATENCY"
+        else -> "BALANCED"
+    }
+
+    /// Restart the live advertisement with [buildAdvertiseSettings].
+    private fun readvertise(): Boolean {
         if (!running) return false
         val adv = advertiser ?: return false
         val svc = serviceUuid ?: return false
@@ -382,7 +418,7 @@ class CubechatBlePeripheralPlugin(
                 scanResponseBuilder.build(),
                 advertiseCallback,
             )
-            emitLog("re-advertising at ${if (low) "LOW_POWER" else "BALANCED"}")
+            emitLog("re-advertising at ${modeName()}")
             true
         } catch (e: SecurityException) {
             emitLog("re-advertise denied (SecurityException): ${e.message}")

@@ -34,6 +34,12 @@ abstract class BlePeripheral {
   /// not: the peripheral may not be running.
   Future<bool> setAdvertisePower({required bool low});
 
+  /// Advertise at Android's LOW_LATENCY (about every 100 ms) while the AirDrop
+  /// page is on screen, so the bump gesture on the other phone hears us ten
+  /// times a second rather than two to four. The transmit level is unchanged,
+  /// so RSSI readings stay comparable. Android only; a no-op elsewhere.
+  Future<bool> setAdvertiseFast({required bool fast});
+
   /// Push a single frame to every subscribed central via the inbound (notify)
   /// characteristic. Returns true if at least one central received it.
   /// Returns false if there are no subscribers, the radio is off, or the
@@ -118,6 +124,20 @@ class MethodChannelBlePeripheral implements BlePeripheral {
       return false;
     } catch (e, st) {
       debugPrint('BlePeripheral.setAdvertisePower failed: $e\n$st');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> setAdvertiseFast({required bool fast}) async {
+    try {
+      final ok = await _channel
+          .invokeMethod<bool>('setAdvertiseFast', {'fast': fast});
+      return ok ?? false;
+    } on MissingPluginException {
+      return false;
+    } catch (e, st) {
+      debugPrint('BlePeripheral.setAdvertiseFast failed: $e\n$st');
       return false;
     }
   }

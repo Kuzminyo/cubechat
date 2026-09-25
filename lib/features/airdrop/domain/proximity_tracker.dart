@@ -23,10 +23,19 @@ class ProximityTracker {
     this.warmRssi = ProximityTracker.glowRssi,
   });
 
-  // The owner's September 25 logs saw -40 and -37 dBm touching readings 1.2 s apart, but only 1-4 advertisements per second. Keep the strict touching threshold and 15 dB separation; two readings inside two seconds recognize that pair without waiting for a rare three-in-one-second burst. One isolated RSSI spike still cannot trigger a bump.
-  static const int bumpRssi = -40;
+  // Was -40 until the second September 25 owner log: two phones pressed
+  // together read -41..-43 dBm for more than twenty seconds (15:20:57 to
+  // 15:21:18) and never bumped, until one reading spiked to -37. Touching
+  // read -37..-48 there, a hand apart -50..-75, so -48 is the quietest touch
+  // measured. Two readings inside two seconds and the 15 dB separation from
+  // anyone else still keep one isolated spike from triggering a bump.
+  static const int bumpRssi = -48;
   static const int bumpMargin = 15;
-  static const int glowRssi = -60;
+
+  /// Where the glow starts. Was -60 against -40: the phones sat at -41..-43
+  /// with the glow short of full the whole time. 17 dB below [bumpRssi] now,
+  /// so it climbs over the last hand's width and is full at the touch.
+  static const int glowRssi = -65;
   static const int minCloseSamples = 2;
   static const Duration freshFor = Duration(milliseconds: 600);
 
