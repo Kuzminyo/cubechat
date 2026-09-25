@@ -386,3 +386,39 @@ test('a purge racing a decide does not lose the decision', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// The bot pages with `since` and remembers the last `seq` it saw. A purge
+// that deletes the report which happened to hold the *highest* seq, followed
+// by a restart, must not make the next report reuse that seq — a reused seq
+// no greater than the bot's saved one is never fetched, and the report that
+// got it is silently never forwarded. This is what the `<path>.seq` sidecar
+// is for.
+test('seq never goes backwards when a purge removes the highest-seq report and the store restarts', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'cubechat-purge-restart-'));
+  const file = path.join(dir, 'reports.jsonl');
+  try {
+    const store = createReportStore(file);
+    for (let i = 1; i <= 5; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const stored = await store.append({ id: `r${i}`, status: 'open', reason: 'spam' });
+      assert.equal(stored.seq, i);
+    }
+    // #5 — the highest seq — is the one decided and later purged.
+    await store.decide('r5', { status: 'dismissed', decidedAt: now - 91 * DAY });
+    const removed = await store.purge(now);
+    assert.equal(removed, 1);
+    // r1..r4 are still open, so the highest seq left on disk is now 4.
+    assert.equal((await store.get('r5')), null);
+
+    // Reopen against the same files, as a restart would.
+    const reopened = createReportStore(file);
+    const next = await reopened.append({ id: 'r6', status: 'open', reason: 'other' });
+    assert.equal(next.seq, 6, 'must not reuse the seq the purged report held');
+
+    const since = await reopened.since(5);
+    assert.deepEqual(since.reports.map((r) => r.id), ['r6']);
+    assert.equal(since.next, 6);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

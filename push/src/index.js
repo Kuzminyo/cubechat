@@ -1377,9 +1377,23 @@ export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 36
 }
 
 /// The report store: an append-only log on disk (`reports.jsonl`), mirrored
-/// in memory. `seq` is assigned here, monotonically, and survives a restart
-/// by scanning the highest `seq` already on disk — there is no separate
-/// counter file to fall out of step with the log itself.
+/// in memory. `seq` is assigned here, monotonically, and survives an ordinary
+/// restart by scanning the highest `seq` already on disk.
+///
+/// That scan alone isn't enough once `purge` exists: purge can delete the
+/// very report that was carrying the highest `seq` (that's the point of it —
+/// old, decided reports go). A restart right after would then compute a
+/// *lower* `nextSeq` than what was already handed out, and the next `append`
+/// would reuse a seq a caller has already seen — which is exactly the bug the
+/// bot's `since(seq)` paging can't tolerate: a reused seq that isn't greater
+/// than the bot's saved one is never fetched, so that report is silently
+/// never forwarded. So the high-water mark is *also* kept in a tiny sidecar
+/// file (`<path>.seq`, one integer, written temp+rename like everything else
+/// here) every time `append` advances it, and `load` takes
+/// `max(sidecar, max seq still on disk) + 1` — the sidecar can only push
+/// `nextSeq` up, never down, so a missing or stale-low sidecar (an old
+/// deployment that never had one, or one lost in a crash) just falls back to
+/// today's disk scan rather than breaking anything.
 ///
 /// `append` only ever grows the file. `update` (S2's ban/dismiss) can't:
 /// changing one line of a JSONL file in place means rewriting it, so it goes
@@ -1387,9 +1401,31 @@ export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 36
 /// — a crash mid-write leaves the old file intact rather than a half-written
 /// one.
 export function createReportStore(path = process.env.REPORTS_PATH || './reports.jsonl') {
+  const seqPath = `${path}.seq`;
   let reports = null;
   let nextSeq = 1;
   let loadingPromise = null;
+
+  // Best-effort: a missing or corrupt sidecar must not stop the store from
+  // loading — it only ever raises the floor `nextSeq` starts from, and the
+  // disk scan in `load` is the fallback that already worked before this
+  // existed.
+  async function readSeqSidecar() {
+    try {
+      const raw = (await readFile(seqPath, 'utf8')).trim();
+      const parsed = Number(raw);
+      return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+    } catch (error) {
+      if (error.code !== 'ENOENT') log('report', `seq sidecar unreadable: ${error.message}`);
+      return 0;
+    }
+  }
+
+  async function writeSeqSidecar(value) {
+    const temp = `${seqPath}.${randomUUID()}`;
+    await writeFile(temp, String(value));
+    await rename(temp, seqPath);
+  }
 
   function load() {
     if (reports) return Promise.resolve();
@@ -1415,8 +1451,9 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
         } catch (error) {
           if (error.code !== 'ENOENT') throw error;
         }
+        const highWater = await readSeqSidecar();
         reports = map;
-        nextSeq = maxSeq + 1;
+        nextSeq = Math.max(maxSeq, highWater) + 1;
       })();
     }
     return loadingPromise;
@@ -1449,6 +1486,10 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
         const stored = { ...report, seq: nextSeq++ };
         reports.set(stored.id, stored);
         await appendFile(path, `${JSON.stringify(stored)}\n`);
+        // The high-water mark, so a `purge` that later deletes this very
+        // report (once it's old and decided) can't make a restart hand its
+        // seq out again — see the comment on `createReportStore`.
+        await writeSeqSidecar(stored.seq);
         return stored;
       });
     },
