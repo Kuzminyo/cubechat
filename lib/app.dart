@@ -98,20 +98,37 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   late final _router = buildRouter(seenOnboarding: widget.seenOnboarding);
   StreamSubscription<List<ConnectivityResult>>? _reportConnectivitySub;
 
+  /// The ban list's "every six hours while open" (plan A6). The only timer
+  /// the moderation work adds: one tick per six hours, and `refresh` itself
+  /// skips the network when a verified answer is younger than that — so a
+  /// resume or a network change in between costs nothing either.
+  Timer? _banListTimer;
+
+  void _refreshModeration() {
+    unawaited(ref.read(reportClientProvider).flush());
+    unawaited(ref.read(banListProvider.notifier).refresh());
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // Reports are persisted before POST. Retry after a cold start or when the
     // network comes back; neither path polls while the phone is offline.
-    unawaited(ref.read(reportClientProvider).flush());
-    unawaited(ref.read(banListProvider.notifier).refresh());
+    _refreshModeration();
     _reportConnectivitySub =
         Connectivity().onConnectivityChanged.listen((links) {
       if (links.any((link) => link != ConnectivityResult.none)) {
-        unawaited(ref.read(reportClientProvider).flush());
-    unawaited(ref.read(banListProvider.notifier).refresh());
+        _refreshModeration();
       }
+    });
+    _banListTimer = Timer.periodic(BanListController.refreshInterval, (_) {
+      // "While open": an Android isolate keeps its timers in the background,
+      // and the resume path refreshes anyway when the app comes back.
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+      unawaited(ref.read(banListProvider.notifier).refresh());
     });
     // Seed the foreground flag. didChangeAppLifecycleState only fires on a
     // *transition*, so an app that starts already resumed never gets the
@@ -467,6 +484,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   @override
   void dispose() {
     unawaited(_reportConnectivitySub?.cancel() ?? Future<void>.value());
+    _banListTimer?.cancel();
     _goodbyeTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -485,8 +503,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // back asks again only if the grace has run out.
     final lock = ref.read(appLockControllerProvider.notifier);
     if (state == AppLifecycleState.resumed) {
-      unawaited(ref.read(reportClientProvider).flush());
-    unawaited(ref.read(banListProvider.notifier).refresh());
+      _refreshModeration();
       // Measured apart from any chat opened straight after, when the
       // transition probe is armed - see [TransitionProbe.noteResume].
       TransitionProbe.instance.noteResume();

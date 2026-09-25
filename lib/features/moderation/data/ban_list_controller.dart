@@ -40,16 +40,22 @@ class BanList {
       fingerprints.contains(hex.toLowerCase());
 }
 
-String canonicalBanBody(Map<String, dynamic> body) =>
-    jsonEncode(<String, Object?>{
-      'v': body['v'],
-      'updatedAt': body['updatedAt'],
-      'identities': (body['identities'] as List<dynamic>).cast<String>()
-        ..sort(),
-      'npubs': (body['npubs'] as List<dynamic>).cast<String>()..sort(),
-      'fingerprints': (body['fingerprints'] as List<dynamic>).cast<String>()
-        ..sort(),
-    });
+/// The exact bytes `canonicalBanBody` in `push/src/index.js` signs: keys in
+/// this order, arrays sorted, no `sig`, no whitespace. Dart's `compareTo` and
+/// JavaScript's default `sort()` both order by UTF-16 code unit, so the two
+/// agree on any hex list. Sorted copies — `cast()` is a view, and sorting it
+/// would reorder the caller's map.
+String canonicalBanBody(Map<String, dynamic> body) {
+  List<String> sorted(String key) =>
+      List<String>.of((body[key] as List<dynamic>).cast<String>())..sort();
+  return jsonEncode(<String, Object?>{
+    'v': body['v'],
+    'updatedAt': body['updatedAt'],
+    'identities': sorted('identities'),
+    'npubs': sorted('npubs'),
+    'fingerprints': sorted('fingerprints'),
+  });
+}
 
 List<int> _hexBytes(String hex) {
   if (hex.length.isOdd || !RegExp(r'^[0-9a-fA-F]*$').hasMatch(hex)) {
@@ -121,8 +127,13 @@ Future<Map<String, dynamic>?> _fetchBanList(Uri endpoint) async {
 }
 
 class BanListController extends Notifier<BanList> {
-  BanListController({BanListFetcher? fetcher})
-      : _fetcher = fetcher ?? _fetchBanList;
+  BanListController({
+    BanListFetcher? fetcher,
+    String publicKeyHex = banListPublicKeyHex,
+  })  : _fetcher = fetcher ?? _fetchBanList,
+        _publicKeyHex = publicKeyHex;
+
+  final String _publicKeyHex;
 
   static const storageKey = 'moderation.banList';
   static const refreshInterval = Duration(hours: 6);
@@ -148,7 +159,8 @@ class BanListController extends Notifier<BanList> {
       if (raw is! String) return;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
-      final verified = await verifyBanList(decoded);
+      final verified =
+          await verifyBanList(decoded, publicKeyHex: _publicKeyHex);
       if (verified != null && verified.updatedAt > state.updatedAt) {
         state = verified;
       }
@@ -169,12 +181,16 @@ class BanListController extends Notifier<BanList> {
         DateTime.now().difference(_lastFetch!) < refreshInterval) {
       return;
     }
-    _lastFetch = DateTime.now();
     for (final endpoint in endpoints) {
       final body = await _fetcher(endpoint);
       if (body == null) continue;
-      final verified = await verifyBanList(body);
+      final verified = await verifyBanList(body, publicKeyHex: _publicKeyHex);
       if (verified == null) continue;
+      // Stamped only on an answer that verified: a launch with no network
+      // must not wait six hours for the next try — the connectivity and
+      // resume triggers in app.dart ask again as soon as there is a link.
+      _lastFetch = DateTime.now();
+      // Never step back to an older list (a replayed or cached response).
       if (verified.updatedAt < state.updatedAt) return;
       state = verified;
       await _box?.put(storageKey, jsonEncode(body));

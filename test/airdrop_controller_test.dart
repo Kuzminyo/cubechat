@@ -18,12 +18,23 @@ import 'package:cubechat/features/airdrop/data/wifi_lane.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_spam_guard.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';
 import 'package:cubechat/features/files/data/file_transfer_controller.dart';
+import 'package:cubechat/features/moderation/data/ban_list_controller.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _bob = 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0';
 const _eve = 'e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0';
+
+/// A fixed ban list, never fetched.
+class _Bans extends BanListController {
+  _Bans(this._identities);
+
+  final Set<String> _identities;
+
+  @override
+  BanList build() => BanList(identities: _identities);
+}
 
 Uint8List _id(int seed) => Uint8List.fromList(
       List.generate(nearbyIdLen, (i) => (seed * 37 + i * 3) & 0xFF),
@@ -325,9 +336,11 @@ void main() {
     _Wifi? wifi,
     AirDropLane lane = AirDropLane.auto,
     void Function(AirDropTransfer)? notify,
+    Set<String> banned = const {},
   }) =>
       ProviderContainer(
         overrides: [
+          banListProvider.overrideWith(() => _Bans(banned)),
           if (async != null)
             airdropClockProvider.overrideWithValue(
               () => DateTime(2026, 9, 22, 12).add(async.elapsed),
@@ -608,6 +621,21 @@ void main() {
         expect(answers.first.kind, NearbyAnswerKind.seen);
         expect(answers.last.kind, NearbyAnswerKind.declined);
         expect(answers.last.reason, NearbyDeclineReason.contactsOnly);
+        expect(c.read(airdropControllerProvider).requests, isEmpty);
+        c.dispose();
+      });
+    });
+
+    // A6: somebody the developer banned is ignored silently — no "seen", no
+    // decline, no card — even from a contact with "everyone" on.
+    test('an offer from a banned identity gets no answer and no card', () {
+      fakeAsync((async) {
+        final port = _Port()..direct.add(_bob);
+        final c = make(port, async: async, everyone: true, banned: {_bob});
+        c.read(airdropControllerProvider);
+        port.deliver(_bob, offer: _offer(4));
+        async.flushMicrotasks();
+        expect(port.answersTo(_bob), isEmpty);
         expect(c.read(airdropControllerProvider).requests, isEmpty);
         c.dispose();
       });

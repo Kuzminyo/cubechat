@@ -639,14 +639,18 @@ class ChatScreen extends ConsumerWidget {
     final hiddenAuthors =
         saved ? const <String>{} : ref.watch(hiddenAuthorsProvider);
     final bannedAuthors = ref.watch(banListProvider).fingerprints;
+    // Filtered here, beside the map-beacon filter in [visibleMessages] and
+    // for the same reason: the list the view indexes into must already be the
+    // one it shows. The same list instance goes through when nobody in the
+    // room is hidden or banned, so the view's per-message caches keep hitting.
     final suppressedAuthors = {...hiddenAuthors, ...bannedAuthors};
-    final messages = suppressedAuthors.isEmpty
-        ? allMessages
-        : allMessages
-            .where((m) =>
-                m.authorId == null ||
-                !suppressedAuthors.contains(m.authorId!.toLowerCase()))
-            .toList();
+    bool suppressed(Message m) =>
+        m.authorId != null &&
+        suppressedAuthors.contains(m.authorId!.toLowerCase());
+    final messages =
+        suppressedAuthors.isEmpty || !allMessages.any(suppressed)
+            ? allMessages
+            : allMessages.where((m) => !suppressed(m)).toList();
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
       meshAvailable: ref.watch(
