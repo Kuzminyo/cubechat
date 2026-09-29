@@ -38,7 +38,7 @@ function zeroBits(hex) {
   return n;
 }
 
-export function signedOp(content, { key = '01'.repeat(32), createdAt = T0, powBits = 16 } = {}) {
+export function signedOp(content, { key = '01'.repeat(32), createdAt = T0, powBits = 14 } = {}) {
   const pubkey = nostrPub(key);
   const e = { pubkey, created_at: createdAt, kind: 24243, tags: [], content: JSON.stringify(content) };
   if (powBits > 0) {

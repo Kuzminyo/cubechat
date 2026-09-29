@@ -5,9 +5,11 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 /// Kind of every Cube ID operation — its own, not push's 24242, so a push
 /// registration can never be replayed here or the other way round.
 export const KIND = 24243;
-/// NIP-13 difficulty demanded on claim and rename: about a second on a phone,
-/// and what makes minting thousands of names expensive.
-export const POW_BITS = 16;
+/// NIP-13 difficulty demanded on claim and rename — a deterrent against
+/// scripted mass claims, beside the rate limit. 14, not 16: 16 bits measured
+/// up to 3.8 s on a PC (mean 0.77 s, 2026-09-29) and a phone is slower. Must
+/// equal `cubeIdPowBits` in lib/features/cube_id/data/cube_id_events.dart.
+export const POW_BITS = 14;
 export const MAX_PAST = 300;
 export const MAX_FUTURE = 60;
 
