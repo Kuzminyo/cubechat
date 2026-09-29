@@ -15,6 +15,7 @@ import '../../../core/transport/contact_card.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/nostr/nostr_signer.dart';
 import '../../../core/util/debug_log.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../domain/cube_name.dart';
 import 'cube_id_client.dart';
 import 'cube_id_events.dart';
@@ -149,9 +150,9 @@ class CubeIdController extends Notifier<CubeIdState> {
   static String _b64(List<int> bytes) =>
       base64Url.encode(bytes).replaceAll('=', '');
 
-  /// The server's own `reach` for us. Until the privacy setting exists this
-  /// is always `all`.
-  String _reach() => 'all';
+  /// Who may find us, as the registry spells it; sent with every `update` so
+  /// the server never keeps an old answer.
+  String _reach() => ref.read(privacySettingsProvider).strangerReach.wire;
 
   Future<CubeIdResult> _send(
     Map<String, Object?> content, {

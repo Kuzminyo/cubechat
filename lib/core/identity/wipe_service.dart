@@ -58,6 +58,7 @@ import '../../features/profile/data/relay_settings_controller.dart';
 import '../../features/profile/data/ui_scale_controller.dart';
 import '../../features/cube_id/data/cube_id_controller.dart';
 import '../../features/cube_id/data/known_names_controller.dart';
+import '../../features/chats/data/message_requests_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
 import '../storage/hive_cipher.dart';
@@ -113,6 +114,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(recentSearchesControllerProvider.notifier).clear();
   // Which @name each contact was found by is a list of who you looked up.
   await ref.read(knownNamesProvider.notifier).clear();
+  // Who wrote to you as a stranger, and whom you let in.
+  await ref.read(messageRequestsProvider.notifier).clear();
   // Which cuts of the chat list you keep above it says something about who you
   // talk to, and a fresh install has no folders at all.
   await ref.read(chatFoldersControllerProvider.notifier).clear();

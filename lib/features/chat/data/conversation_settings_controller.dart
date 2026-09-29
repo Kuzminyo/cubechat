@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../chats/data/message_requests_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import 'messages_controller.dart';
 
@@ -440,9 +441,13 @@ class ConversationSettingsController
   /// have one, the global switch otherwise. Unlike the three below, an
   /// exception can be more open than the switch as well as less — that is
   /// what "nobody, except" is.
+  ///
+  /// A stranger still waiting in Requests cannot ring at all, whatever the
+  /// switch says — accepting the request is what lets them.
   bool acceptsCallsFrom(String chatId) =>
-      forChat(chatId).acceptCalls ??
-      ref.read(privacySettingsProvider).acceptCalls;
+      !ref.read(messageRequestsProvider).pending.contains(chatId) &&
+      (forChat(chatId).acceptCalls ??
+          ref.read(privacySettingsProvider).acceptCalls);
 
   /// The three questions the transport asks before it sends something about
   /// us, answered by the global switch and this contact's exception together.
@@ -459,7 +464,10 @@ class ConversationSettingsController
 
   bool sharesReadReceiptsWith(String chatId) =>
       ref.read(privacySettingsProvider).shareReadReceipts &&
-      !forChat(chatId).hideReadReceipts;
+      !forChat(chatId).hideReadReceipts &&
+      // A stranger's request learns nothing — not even that it was read —
+      // until it is accepted.
+      !ref.read(messageRequestsProvider).pending.contains(chatId);
 
   Future<void> forget(String chatId) async {
     if (!state.containsKey(chatId)) return;

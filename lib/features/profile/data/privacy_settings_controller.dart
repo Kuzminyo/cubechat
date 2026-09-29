@@ -6,6 +6,27 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../chats/data/message_requests_controller.dart';
+import '../../cube_id/data/cube_id_controller.dart';
+
+/// Who may reach this phone from the internet without being a contact —
+/// Profile → Privacy. See `strangerVerdict` for what each value does, and the
+/// Cube ID registry, which hides the @name altogether for [none].
+///
+/// [wire] is the exact string the registry and this phone's settings store.
+enum StrangerReach {
+  all,
+  request,
+  none;
+
+  String get wire => name;
+
+  static StrangerReach fromWire(String? value) => switch (value) {
+        'request' => StrangerReach.request,
+        'none' => StrangerReach.none,
+        _ => StrangerReach.all,
+      };
+}
 
 /// What this device tells other people about *when* it was here and *when* it
 /// read them.
@@ -31,7 +52,12 @@ class PrivacySettings {
     required this.shareMapLocation,
     this.allowForwardLink = true,
     this.acceptCalls = true,
+    this.strangerReach = StrangerReach.all,
   });
+
+  /// Who may message this phone from the internet as a stranger. Everyone by
+  /// default — what every build did before the setting existed.
+  final StrangerReach strangerReach;
 
   /// True: anybody in the contacts may ring this phone. False: nobody may,
   /// except the people whose profile says otherwise — see
@@ -77,6 +103,7 @@ class PrivacySettings {
     bool? shareMapLocation,
     bool? allowForwardLink,
     bool? acceptCalls,
+    StrangerReach? strangerReach,
   }) =>
       PrivacySettings(
         shareLastSeen: shareLastSeen ?? this.shareLastSeen,
@@ -84,6 +111,7 @@ class PrivacySettings {
         shareMapLocation: shareMapLocation ?? this.shareMapLocation,
         allowForwardLink: allowForwardLink ?? this.allowForwardLink,
         acceptCalls: acceptCalls ?? this.acceptCalls,
+        strangerReach: strangerReach ?? this.strangerReach,
       );
 
   @override
@@ -93,11 +121,12 @@ class PrivacySettings {
       other.shareReadReceipts == shareReadReceipts &&
       other.shareMapLocation == shareMapLocation &&
       other.allowForwardLink == allowForwardLink &&
-      other.acceptCalls == acceptCalls;
+      other.acceptCalls == acceptCalls &&
+      other.strangerReach == strangerReach;
 
   @override
   int get hashCode => Object.hash(shareLastSeen, shareReadReceipts,
-      shareMapLocation, allowForwardLink, acceptCalls);
+      shareMapLocation, allowForwardLink, acceptCalls, strangerReach);
 }
 
 class PrivacySettingsController extends Notifier<PrivacySettings> {
@@ -106,6 +135,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   static const _keyMapLocation = 'privacy.shareMapLocation';
   static const _keyForwardLink = 'privacy.allowForwardLink';
   static const _keyAcceptCalls = 'privacy.acceptCalls';
+  static const _keyStrangerReach = 'privacy.strangerReach';
 
   Box<dynamic>? _box;
 
@@ -147,6 +177,8 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
         shareMapLocation: box.get(_keyMapLocation) as bool? ?? false,
         allowForwardLink: box.get(_keyForwardLink) as bool? ?? true,
         acceptCalls: box.get(_keyAcceptCalls) as bool? ?? true,
+        strangerReach:
+            StrangerReach.fromWire(box.get(_keyStrangerReach) as String?),
       );
     } catch (e) {
       debugPrint('PrivacySettings load failed: $e');
@@ -178,7 +210,19 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
     await _put(_keyAcceptCalls, value);
   }
 
-  Future<void> _put(String key, bool value) async {
+  Future<void> setStrangerReach(StrangerReach value) async {
+    state = state.copyWith(strangerReach: value);
+    await _put(_keyStrangerReach, value.wire);
+    // Back to "everyone": nothing is a request any more. The other way round
+    // never empties the drawer — a waiting request stays one.
+    if (value == StrangerReach.all) {
+      await ref.read(messageRequestsProvider.notifier).clearPending();
+    }
+    // The registry hides the @name for "nobody". A no-op without a name.
+    unawaited(ref.read(cubeIdControllerProvider.notifier).pushReach(value.wire));
+  }
+
+  Future<void> _put(String key, Object value) async {
     _changed = true;
     try {
       // Waits for the box rather than dropping the write into a null one,
@@ -200,6 +244,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
       await _box?.delete(_keyReceipts);
       await _box?.delete(_keyMapLocation);
       await _box?.delete(_keyAcceptCalls);
+      await _box?.delete(_keyStrangerReach);
     } catch (e) {
       debugPrint('PrivacySettings reset failed: $e');
     }

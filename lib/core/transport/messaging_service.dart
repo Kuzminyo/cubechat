@@ -24,7 +24,9 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/send_queue.dart';
 import '../../features/chat/data/held_media.dart';
 import '../../features/chat/data/pinned_controller.dart';
+import '../../features/chats/data/message_requests_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
+import '../../features/chats/domain/stranger_gate.dart';
 import '../../features/chat/domain/message_preview.dart';
 import '../../features/moderation/domain/profanity.dart';
 import '../../features/moderation/data/filter_settings.dart';
@@ -7333,6 +7335,41 @@ class MessagingService {
           originHash: env.originPubkeyHash,
           edPub: verifiedSenderEdPub,
         );
+      }
+
+      // Who may reach us from the internet as a stranger — Profile →
+      // Privacy. Decided here, once, on arrival, and remembered: the chat
+      // list cannot work it out later from history that may not be loaded
+      // yet. See `strangerVerdict`.
+      if (senderPub != null && incomingRoute == MessageRoute.internet) {
+        final sender = _hexOf(senderPub);
+        final requests = _ref.read(messageRequestsProvider);
+        final reach = _ref.read(privacySettingsProvider).strangerReach;
+        if (reach != StrangerReach.all ||
+            requests.pending.contains(sender)) {
+          // "Never wrote to them" must be read from real history, not from a
+          // store still loading — or a known contact would be dropped.
+          await _ref.read(messagesControllerProvider.notifier).loaded;
+          final verdict = strangerVerdict(
+            reach: reach,
+            viaInternet: true,
+            wroteToThem:
+                hasWrittenIn(_ref.read(messagesControllerProvider)[sender]),
+            accepted: requests.accepted.contains(sender),
+            alreadyPending: requests.pending.contains(sender),
+          );
+          if (verdict == StrangerVerdict.drop) {
+            DebugLog.instance
+                .log('MESH', 'drop stranger over internet: reach is nobody');
+            return;
+          }
+          if (verdict == StrangerVerdict.request &&
+              opensRequest(unpacked.type)) {
+            await _ref
+                .read(messageRequestsProvider.notifier)
+                .markPending(sender);
+          }
+        }
       }
 
       // Old, and not the kind of thing that survives being old.
