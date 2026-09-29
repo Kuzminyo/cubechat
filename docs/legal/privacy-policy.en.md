@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 25 September 2026**
+**Last updated: 29 September 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -282,6 +282,38 @@ folds is sent anywhere.
 
 ---
 
+## 7b. Cube ID — a short @name (optional)
+
+In Profile → Cube ID you can take a short name such as `@dima`, so people can
+find you without a QR code. It is not an account: there is no password, e-mail
+or phone number, and the name belongs to the key on your phone.
+
+**What `id.cubechat.tech` keeps while you have a name:** the name itself; your
+public contact card — the same public keys, nickname and avatar digest a QR
+code carries; your "Who can message me from the internet" setting; when the
+name was taken and last renewed. Every change is signed by your key. After a
+rename the old name keeps pointing at you for 30 days (the server remembers
+the old name and your Nostr key) so nobody else can take it. The ids of signed
+requests are kept for a few minutes to stop replays.
+
+**The name is public.** Anyone who knows it gets your contact card and can
+write to you — unless you choose "Nobody", and then the server hands out no
+card at all. There is no reverse lookup from a key to a name, and no directory
+of names. The name and your Nostr key are also answered under the Nostr NIP-05
+standard (`id.cubechat.tech/.well-known/nostr.json`).
+
+**Your IP address** is used only in the server's memory to limit request
+rates, and is not written to the name database.
+
+**How long it is kept.** The app renews the name once a week; a name not
+renewed for 6 months (for example, a lost phone) is deleted. "Release" deletes
+it at once. Emergency Wipe also tries to release it but does not wait for the
+server longer than three seconds — offline, the name disappears after 6
+months. The name of a banned key is removed. Backups of the name database are
+kept for 14 days.
+
+---
+
 ## 8. What Cubechat does not do
 
 - **No analytics.** No Firebase Analytics, no Crashlytics, no Sentry, no
@@ -318,6 +350,8 @@ key.
 - **The dead man's switch**, if you configured one, wipes the device after the
   period of inactivity you set.
 - **Push registration** is deleted from our service when you switch push off.
+- **Cube ID** — Profile → Cube ID → "Release" deletes your name and card from
+  `id.cubechat.tech` at once (see section 7b).
 - **Nostr relays** are third parties with their own retention. A frame already
   published cannot be recalled from them by us. It is ciphertext, and relays
   typically expire events after a period of their choosing.

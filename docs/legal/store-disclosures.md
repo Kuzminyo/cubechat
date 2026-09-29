@@ -29,7 +29,7 @@ before App Review.
 
 | Category | Purpose | Linked to identity | Tracking | Source |
 |---|---|---|---|---|
-| **Identifiers → User ID** | App Functionality | Yes | No | Pseudonymous public keys in push registration and signed reports |
+| **Identifiers → User ID** | App Functionality | Yes | No | Pseudonymous public keys in push registration and signed reports; the optional Cube ID @name and the public card it points to (`id.cubechat.tech`, privacy policy §7b) |
 | **User Content → Other User Content** | App Functionality | Yes | No | Notes and selected message text in submitted reports |
 
 Both categories are linked to a stable in-app public key. Cubechat does not
@@ -81,6 +81,7 @@ Declare these types:
 |---|---|---|---|---|---|
 | **Device or other IDs** | Yes | **Yes for shortened report identifiers** | No | Optional | **App functionality** (notifications and moderation) |
 | **Other user-generated content** | Yes | **Yes** | No | Optional | **App functionality** (user-submitted abuse reports) |
+| **Personal info → User IDs** | Yes | No | No | Optional | **App functionality** (the Cube ID @name; deletable with "Release") |
 
 A private Telegram bot forwards the report reason, note, up to 1000
 characters of an excerpt, and shortened reporter and target identifiers to
