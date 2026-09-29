@@ -1,0 +1,23 @@
+[Unit]
+Description=cubechat Cube ID (@name -> signed card)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cubechat
+WorkingDirectory=/opt/cubechat-id
+EnvironmentFile=/opt/cubechat-id/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+
+# It reads its database, push's ban list and opens one port.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-id
+
+[Install]
+WantedBy=multi-user.target

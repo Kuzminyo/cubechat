@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the Cube ID name registry
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/cubechat-id/deploy/backup-names.sh

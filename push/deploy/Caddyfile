@@ -70,3 +70,14 @@ relay.cubechat.tech {
 		}
 	}
 }
+
+# Cube ID (id/, the cubechat-id service): @name -> signed contact card, and
+# NIP-05 for dima@id.cubechat.tech. Its /admin/revoke is for a curl on this
+# droplet only, so it is blocked here the same way push's /admin/* is.
+id.cubechat.tech {
+	@admin path /admin/*
+	respond @admin 404
+
+	encode gzip
+	reverse_proxy 127.0.0.1:8090
+}
