@@ -56,6 +56,8 @@ import '../../features/profile/data/media_quality_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../../features/profile/data/ui_scale_controller.dart';
+import '../../features/cube_id/data/cube_id_controller.dart';
+import '../../features/cube_id/data/known_names_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
 import '../storage/hive_cipher.dart';
@@ -77,6 +79,10 @@ import 'nickname_controller.dart';
 /// install — a brand new identity gets minted on first read of
 /// identityProvider, and chats list is empty.
 Future<void> emergencyWipe(WidgetRef ref) async {
+  // Give the @name back while the key that owns it still exists. Bounded to
+  // three seconds: a wipe is an emergency and does not wait on a server, and
+  // one that cannot be reached frees the name after six months on its own.
+  await ref.read(cubeIdControllerProvider.notifier).release();
   // Remembered "does this file exist" answers, which outlive the rows that
   // asked. Cheap to drop and wrong to keep: a wipe must not leave anything
   // still saying yes about a photo it just deleted.
@@ -105,6 +111,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(archivedChatsControllerProvider.notifier).clear();
   // Who you went looking for is its own trace, and it lives in its own list.
   await ref.read(recentSearchesControllerProvider.notifier).clear();
+  // Which @name each contact was found by is a list of who you looked up.
+  await ref.read(knownNamesProvider.notifier).clear();
   // Which cuts of the chat list you keep above it says something about who you
   // talk to, and a fresh install has no folders at all.
   await ref.read(chatFoldersControllerProvider.notifier).clear();

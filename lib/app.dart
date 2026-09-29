@@ -45,6 +45,7 @@ import 'features/peers/data/known_peers_controller.dart';
 import 'features/peers/data/peer_discovery_controller.dart';
 import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
+import 'features/cube_id/data/cube_id_controller.dart';
 import 'l10n/app_localizations.dart';
 
 /// What opening a conversation from a notification should do to the stack.
@@ -107,6 +108,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void _refreshModeration() {
     unawaited(ref.read(reportClientProvider).flush());
     unawaited(ref.read(banListProvider.notifier).refresh());
+    // Cube ID: renew the @name weekly and re-send our card when it changed.
+    // A no-op without a name, and never throws.
+    unawaited(ref.read(cubeIdControllerProvider.notifier).maintain());
   }
 
   @override
