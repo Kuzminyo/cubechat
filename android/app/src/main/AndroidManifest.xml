@@ -152,6 +152,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!-- cubechat.tech links open the app: a shared @name (/u.html#dima)
+                 and a contact card (/c1#...). autoVerify checks
+                 cubechat.tech/.well-known/assetlinks.json, which lists the
+                 fingerprints of both signing keys (this machine's and CI's);
+                 without it Android 12+ opens these links in the browser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/u.html" />
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/c1" />
+            </intent-filter>
         </activity>
         <!-- The launcher entry: one alias per theme icon, exactly one enabled.
              MAIN/LAUNCHER lives only here, never on MainActivity as well, or

@@ -12,6 +12,7 @@ import '../../../l10n/app_localizations.dart';
 import '../data/cube_id_client.dart';
 import '../data/cube_id_controller.dart';
 import '../domain/cube_name.dart';
+import 'stranger_reach_selector.dart';
 
 /// Profile → Cube ID: take, change, share or release a short @name.
 ///
@@ -239,6 +240,10 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
                 onTap: () => unawaited(_release(name)),
               ),
             ],
+            // Who can reach you through the name — "Nobody" hides it on the
+            // server as well. The same control as in Profile → Privacy.
+            const SizedBox(height: 18),
+            const StrangerReachSelector(),
           ],
         ),
       ),

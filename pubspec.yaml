@@ -149,6 +149,10 @@ dependencies:
   opus_flutter_android: ^3.0.1
   opus_flutter_ios: ^3.0.1
   connectivity_plus: 6.1.5
+  # Opening the app from a cubechat.tech link: a shared @name (/u.html#dima)
+  # or a contact card (/c1#…). Android App Links and iOS Universal Links land
+  # here; see lib/features/cube_id/domain/cubechat_link.dart.
+  app_links: ^7.0.0
 
 # CameraX must mirror the encoded front-camera clip as well as its preview.
 # The small native patch is documented in third_party/camera_android_camerax.

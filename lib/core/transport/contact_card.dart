@@ -54,8 +54,15 @@ class ContactCard {
   ///
   /// The payload sits in the *fragment*, which is the part a browser never
   /// sends to a server — so even a card opened in a browser leaks nothing to
-  /// the host. The domain here is a name, not a service.
-  static const String linkPrefix = 'https://cubechat.app/c1#';
+  /// the host.
+  ///
+  /// cubechat.tech, our own site, since 1120. It was `cubechat.app` — a domain
+  /// nobody ever registered, so a shared card was a link to nowhere, and
+  /// nothing could claim it to open the app. `/c1` on the site is a small page
+  /// that says "open in cubechat", and the app claims the path (App Links,
+  /// Universal Links). The token inside is unchanged, so every build still
+  /// reads a card from either domain.
+  static const String linkPrefix = 'https://cubechat.tech/c1#';
 
   /// Wrap already-signed announcement bytes into a card string.
   ///

@@ -46,6 +46,9 @@ import 'features/peers/data/peer_discovery_controller.dart';
 import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
 import 'features/cube_id/data/cube_id_controller.dart';
+import 'features/cube_id/domain/cubechat_link.dart';
+import 'core/util/debug_log.dart';
+import 'package:app_links/app_links.dart';
 import 'l10n/app_localizations.dart';
 
 /// What opening a conversation from a notification should do to the stack.
@@ -98,6 +101,42 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     with WidgetsBindingObserver {
   late final _router = buildRouter(seenOnboarding: widget.seenOnboarding);
   StreamSubscription<List<ConnectivityResult>>? _reportConnectivitySub;
+  StreamSubscription<Uri>? _linkSub;
+
+  /// Open what a cubechat.tech link names: find an @name through Cube ID, or
+  /// import a card — both through the same verified path the add-contact
+  /// field uses — then go to the conversation. A link that is not ours, a
+  /// name nobody holds, or no network: a line in the log and nothing else,
+  /// since the person tapped a link and is looking at the app, not at errors.
+  Future<void> _openCubechatLink(Uri uri) async {
+    final link = parseCubechatLink(uri);
+    if (link == null) return;
+    try {
+      final String pubkeyHex;
+      switch (link) {
+        case NameLink(:final name):
+          final result = await ref
+              .read(cubeIdControllerProvider.notifier)
+              .lookupAndAdd(name);
+          if (result is! LookupFound) {
+            DebugLog.instance.log('LINK', '@$name: ${result.runtimeType}');
+            return;
+          }
+          pubkeyHex = result.pubkeyHex;
+        case CardLink(:final raw):
+          pubkeyHex =
+              await ref.read(messagingServiceProvider).addContactFromCard(raw);
+      }
+      if (!mounted) return;
+      final label =
+          ref.read(knownPeersControllerProvider)[pubkeyHex]?.displayName ?? '';
+      unawaited(
+        _router.push('/chat/$pubkeyHex?name=${Uri.encodeComponent(label)}'),
+      );
+    } catch (e) {
+      DebugLog.instance.log('LINK', 'could not open $uri: $e');
+    }
+  }
 
   /// The ban list's "every six hours while open" (plan A6). The only timer
   /// the moderation work adds: one tick per six hours, and `refresh` itself
@@ -153,6 +192,16 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Send an inline reply typed into a message notification straight over the
     // mesh, without opening the app.
     NotificationService.instance.onReply = _replyToChat;
+    // A cubechat.tech link tapped anywhere — "@dima" shared from Cube ID, or a
+    // contact card — opens the conversation with that person. Both the link
+    // that started the app and links arriving while it runs.
+    if (PlatformInfo.isMobile) {
+      _linkSub = AppLinks().uriLinkStream.listen(
+            (uri) => unawaited(_openCubechatLink(uri)),
+            onError: (Object e) =>
+                DebugLog.instance.log('LINK', 'link stream failed: $e'),
+          );
+    }
     // Cold start via a notification tap: open that chat after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       unawaited(_checkDeadMansSwitch());
@@ -487,6 +536,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   @override
   void dispose() {
+    unawaited(_linkSub?.cancel() ?? Future<void>.value());
     unawaited(_reportConnectivitySub?.cancel() ?? Future<void>.value());
     _banListTimer?.cancel();
     _goodbyeTimer?.cancel();

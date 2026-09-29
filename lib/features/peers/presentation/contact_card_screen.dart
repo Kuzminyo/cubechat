@@ -17,6 +17,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../cube_id/data/cube_id_controller.dart';
 import '../../cube_id/domain/cube_name.dart';
+import '../../cube_id/presentation/stranger_reach_selector.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../../qr/presentation/qr_display.dart';
 import '../data/known_peers_controller.dart';
@@ -124,11 +125,19 @@ class ContactCardScreen extends ConsumerWidget {
                         icon: Icons.share_rounded,
                         label: t.contactShare,
                         primary: true,
+                        // With a Cube ID, "@dima" and a short link that opens
+                        // the app, instead of a 300-character card nobody can
+                        // read. The card is still what goes without a name.
                         onTap: card.hasValue
                             ? (buttonContext) => unawaited(
                                   _shareCard(
                                     buttonContext,
-                                    card.value!,
+                                    switch (ref
+                                        .read(cubeIdControllerProvider)
+                                        .name) {
+                                      final name? => t.cubeIdShareText(name),
+                                      null => card.value!,
+                                    },
                                     t.contactShareSubject,
                                   ),
                                 )
@@ -140,6 +149,10 @@ class ContactCardScreen extends ConsumerWidget {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          // Right under the card being handed out: whoever gets it, or finds
+          // our @name, is a stranger writing from the internet.
+          const GlassCard(child: StrangerReachSelector()),
           const SizedBox(height: 18),
           _Label(text: t.contactAddLabel),
           const _AddContactField(),

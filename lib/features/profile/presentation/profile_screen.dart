@@ -42,6 +42,7 @@ import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../../cube_id/data/cube_id_controller.dart';
+import '../../cube_id/presentation/stranger_reach_selector.dart';
 import '../../moderation/data/filter_settings.dart';
 import '../../moderation/presentation/about_screen.dart';
 import '../data/privacy_settings_controller.dart';
@@ -1508,60 +1509,9 @@ class _PrivacyCard extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           // Strangers from the internet: everyone, by request, or nobody.
-          // Three answers, so not a switch. Bluetooth neighbours are never
-          // affected — see `strangerVerdict`.
-          Text(
-            t.strangerReachTitle,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<StrangerReach>(
-              showSelectedIcon: false,
-              segments: [
-                ButtonSegment(
-                  value: StrangerReach.all,
-                  label: Text(t.strangerReachAll),
-                ),
-                ButtonSegment(
-                  value: StrangerReach.request,
-                  label: Text(t.strangerReachRequest),
-                ),
-                ButtonSegment(
-                  value: StrangerReach.none,
-                  label: Text(t.strangerReachNone),
-                ),
-              ],
-              selected: {s.strangerReach},
-              onSelectionChanged: (v) => unawaited(n.setStrangerReach(v.first)),
-              style: ButtonStyle(
-                foregroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? AppColors.textOnGlass
-                      : AppColors.textOnGlassDim,
-                ),
-                backgroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? AppColors.brandPrimary.withValues(alpha: 0.35)
-                      : Colors.transparent,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            t.strangerReachHint,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              height: 1.35,
-            ),
-          ),
+          // Three answers, so not a switch. Also on the card and Cube ID
+          // screens — one widget, see [StrangerReachSelector].
+          const StrangerReachSelector(),
           const SizedBox(height: 10),
           Text(
             t.profilePrivacyExplainer,
