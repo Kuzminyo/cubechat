@@ -8,6 +8,7 @@ import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
+import '../../peers/data/known_peers_controller.dart';
 
 @immutable
 class MessageRequests {
@@ -124,6 +125,21 @@ class MessageRequestsController extends Notifier<MessageRequests> {
       accepted: {...state.accepted}..remove(peer),
     );
     await _persist();
+  }
+
+  /// "Block" on a request: block the key, and take the conversation away
+  /// with it. Only dropping it from [MessageRequests.pending] moved the
+  /// stranger's spam into the main list — the opposite of what was asked.
+  Future<void> block(String peer) async {
+    await ref.read(knownPeersControllerProvider.notifier).setBlocked(peer, true);
+    await ref.read(messagesControllerProvider.notifier).clearForChat(peer);
+    await drop(peer);
+  }
+
+  /// "Delete" on a request: the conversation goes, the person is not blocked.
+  Future<void> delete(String peer) async {
+    await ref.read(messagesControllerProvider.notifier).clearForChat(peer);
+    await drop(peer);
   }
 
   /// The setting went back to "everyone": every waiting chat becomes an

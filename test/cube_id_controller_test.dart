@@ -4,7 +4,10 @@ import 'dart:typed_data';
 
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/features/cube_id/data/cube_id_client.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/core/transport/announcement.dart';
 import 'package:cubechat/features/cube_id/data/cube_id_controller.dart';
+import 'package:cubechat/features/cube_id/data/known_names_controller.dart';
 import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -239,6 +242,31 @@ void main() {
     );
     final ctl = c.read(cubeIdControllerProvider.notifier);
     expect(await ctl.lookupAndAdd('@dima'), isA<LookupNotFound>());
+  });
+
+  test('lookup refuses a real card whose signature was altered', () async {
+    final sign = await Ed25519().newKeyPair();
+    final card = await PeerAnnouncement(
+      pubkey: Uint8List.fromList(List<int>.generate(32, (i) => i + 1)),
+      signPubkey: Uint8List.fromList((await sign.extractPublicKey()).bytes),
+      signedPrekeyPub: Uint8List(32),
+      nostrPubkey: Uint8List.fromList(List<int>.filled(32, 9)),
+      nickname: 'Dima',
+    ).sign(await sign.extract());
+    // The untouched card is one this build accepts, so the flip below is the
+    // only reason the lookup can fail.
+    await PeerAnnouncement.verifyAndDecode(card);
+    final forged = Uint8List.fromList(card)..last ^= 0x01;
+    final c = containerWith(
+      (m, u, {body}) async => (
+        status: 200,
+        body: jsonEncode({'card': base64Url.encode(forged)}),
+      ),
+    );
+    final ctl = c.read(cubeIdControllerProvider.notifier);
+    expect(await ctl.lookupAndAdd('@dima'), isA<LookupNotFound>());
+    await c.read(knownNamesProvider.notifier).loaded;
+    expect(c.read(knownNamesProvider), isEmpty);
   });
 
   test('lookup says offline when nothing answers', () async {

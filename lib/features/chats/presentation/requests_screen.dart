@@ -6,7 +6,6 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../chat/data/messages_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/message_requests_controller.dart';
 import 'chats_list_screen.dart' show requestChatsProvider, routeForChat;
@@ -88,10 +87,7 @@ class RequestActions extends ConsumerWidget {
       children: [
         TextButton(
           onPressed: () async {
-            await ref
-                .read(messagesControllerProvider.notifier)
-                .clearForChat(peer);
-            await requests.drop(peer);
+            await requests.delete(peer);
             onGone?.call();
           },
           child: Text(
@@ -101,10 +97,7 @@ class RequestActions extends ConsumerWidget {
         ),
         TextButton(
           onPressed: () async {
-            await ref
-                .read(knownPeersControllerProvider.notifier)
-                .setBlocked(peer, true);
-            await requests.drop(peer);
+            await requests.block(peer);
             onGone?.call();
           },
           child:

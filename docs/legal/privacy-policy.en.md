@@ -294,7 +294,9 @@ code carries; your "Who can message me from the internet" setting; when the
 name was taken and last renewed. Every change is signed by your key. After a
 rename the old name keeps pointing at you for 30 days (the server remembers
 the old name and your Nostr key) so nobody else can take it. The ids of signed
-requests are kept for a few minutes to stop replays.
+requests are kept for up to an hour to stop replays. An offensive name removed
+by a moderator stays on a list of blocked names, with the reason, so it is not
+handed out again.
 
 **The name is public.** Anyone who knows it gets your contact card and can
 write to you — unless you choose "Nobody", and then the server hands out no

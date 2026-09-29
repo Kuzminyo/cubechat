@@ -125,6 +125,29 @@ void main() {
     expect(c.read(messageRequestsProvider).accepted, {'p'});
   });
 
+  test('blocking a request takes the chat away instead of moving it to the '
+      'main list', () async {
+    final c = fresh();
+    final n = c.read(messageRequestsProvider.notifier);
+    await n.loaded;
+    final messages = c.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+    messages.append(
+      's',
+      Message(
+        id: 'm1',
+        chatId: 's',
+        text: 'spam',
+        sentAt: DateTime(2026, 9, 29),
+        isMine: false,
+      ),
+    );
+    await n.markPending('s');
+    await n.block('s');
+    expect(c.read(messageRequestsProvider).pending, isEmpty);
+    expect(c.read(messagesControllerProvider)['s'] ?? const [], isEmpty);
+  });
+
   test('a pending stranger gets no read receipts and cannot ring', () async {
     final c = fresh();
     final n = c.read(messageRequestsProvider.notifier);
