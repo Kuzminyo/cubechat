@@ -1715,5 +1715,56 @@
   "aboutContact": "Email the developer",
   "aboutReport": "Report a violation",
   "aboutTerms": "Terms of use",
-  "aboutPrivacy": "Privacy policy"
+  "aboutPrivacy": "Privacy policy",
+  "requestsTitle": "Requests",
+  "requestsEmpty": "No requests",
+  "requestBanner": "{name} is not in your contacts. They can't see that you've read this or call you until you accept.",
+  "@requestBanner": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "requestAccept": "Accept",
+  "requestDelete": "Delete",
+  "requestBlock": "Block",
+  "cubeIdTitle": "Cube ID",
+  "cubeIdRowEmpty": "Take a short @name",
+  "cubeIdExplainer": "Your @name points to your contact card. The server keeps only the name and your public card — never your messages.",
+  "cubeIdFieldHint": "a–z, 0–9 and _, 3–20 characters",
+  "cubeIdAvailable": "Available",
+  "cubeIdTaken": "Taken",
+  "cubeIdReserved": "Not allowed",
+  "cubeIdInvalid": "Only a–z, 0–9 and _, 3–20 characters",
+  "cubeIdClaim": "Take this name",
+  "cubeIdWorking": "Securing the name…",
+  "cubeIdChange": "Change",
+  "cubeIdRelease": "Release",
+  "cubeIdReleaseConfirm": "Release @{name}? Anyone will be able to take it.",
+  "@cubeIdReleaseConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cubeIdShare": "Share",
+  "cubeIdShareText": "Find me in cubechat: @{name}\nhttps://cubechat.tech/u.html#{name}",
+  "@cubeIdShareText": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cubeIdFailed": "Couldn't save the name. Try again.",
+  "cubeIdOffline": "No internet",
+  "lookupNotFound": "No one with that @name",
+  "addContactHintName": "Paste a card or type @name",
+  "strangerReachTitle": "Who can message me from the internet",
+  "strangerReachAll": "Everyone",
+  "strangerReachRequest": "Request",
+  "strangerReachNone": "Nobody",
+  "strangerReachHint": "For people you haven't written to who reach you over the internet. People nearby over Bluetooth are not affected."
 }

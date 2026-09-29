@@ -47,8 +47,7 @@ Future<({int status, String body})> _defaultHttp(
       request.headers.contentType = ContentType.json;
       request.write(body);
     }
-    final response =
-        await request.close().timeout(const Duration(seconds: 15));
+    final response = await request.close().timeout(const Duration(seconds: 15));
     final text = await response.transform(utf8.decoder).join();
     return (status: response.statusCode, body: text);
   } catch (e) {

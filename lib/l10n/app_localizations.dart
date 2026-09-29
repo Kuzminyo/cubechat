@@ -6097,6 +6097,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Privacy policy'**
   String get aboutPrivacy;
+
+  /// No description provided for @requestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get requestsTitle;
+
+  /// No description provided for @requestsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No requests'**
+  String get requestsEmpty;
+
+  /// No description provided for @requestBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is not in your contacts. They can\'t see that you\'ve read this or call you until you accept.'**
+  String requestBanner(String name);
+
+  /// No description provided for @requestAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get requestAccept;
+
+  /// No description provided for @requestDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get requestDelete;
+
+  /// No description provided for @requestBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get requestBlock;
+
+  /// No description provided for @cubeIdTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cube ID'**
+  String get cubeIdTitle;
+
+  /// No description provided for @cubeIdRowEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a short @name'**
+  String get cubeIdRowEmpty;
+
+  /// No description provided for @cubeIdExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Your @name points to your contact card. The server keeps only the name and your public card — never your messages.'**
+  String get cubeIdExplainer;
+
+  /// No description provided for @cubeIdFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'a–z, 0–9 and _, 3–20 characters'**
+  String get cubeIdFieldHint;
+
+  /// No description provided for @cubeIdAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Available'**
+  String get cubeIdAvailable;
+
+  /// No description provided for @cubeIdTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken'**
+  String get cubeIdTaken;
+
+  /// No description provided for @cubeIdReserved.
+  ///
+  /// In en, this message translates to:
+  /// **'Not allowed'**
+  String get cubeIdReserved;
+
+  /// No description provided for @cubeIdInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Only a–z, 0–9 and _, 3–20 characters'**
+  String get cubeIdInvalid;
+
+  /// No description provided for @cubeIdClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Take this name'**
+  String get cubeIdClaim;
+
+  /// No description provided for @cubeIdWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Securing the name…'**
+  String get cubeIdWorking;
+
+  /// No description provided for @cubeIdChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get cubeIdChange;
+
+  /// No description provided for @cubeIdRelease.
+  ///
+  /// In en, this message translates to:
+  /// **'Release'**
+  String get cubeIdRelease;
+
+  /// No description provided for @cubeIdReleaseConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Release @{name}? Anyone will be able to take it.'**
+  String cubeIdReleaseConfirm(String name);
+
+  /// No description provided for @cubeIdShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get cubeIdShare;
+
+  /// No description provided for @cubeIdShareText.
+  ///
+  /// In en, this message translates to:
+  /// **'Find me in cubechat: @{name}\nhttps://cubechat.tech/u.html#{name}'**
+  String cubeIdShareText(String name);
+
+  /// No description provided for @cubeIdFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the name. Try again.'**
+  String get cubeIdFailed;
+
+  /// No description provided for @cubeIdOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'No internet'**
+  String get cubeIdOffline;
+
+  /// No description provided for @lookupNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No one with that @name'**
+  String get lookupNotFound;
+
+  /// No description provided for @addContactHintName.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a card or type @name'**
+  String get addContactHintName;
+
+  /// No description provided for @strangerReachTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can message me from the internet'**
+  String get strangerReachTitle;
+
+  /// No description provided for @strangerReachAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone'**
+  String get strangerReachAll;
+
+  /// No description provided for @strangerReachRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Request'**
+  String get strangerReachRequest;
+
+  /// No description provided for @strangerReachNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody'**
+  String get strangerReachNone;
+
+  /// No description provided for @strangerReachHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For people you haven\'t written to who reach you over the internet. People nearby over Bluetooth are not affected.'**
+  String get strangerReachHint;
 }
 
 class _AppLocalizationsDelegate

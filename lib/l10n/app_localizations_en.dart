@@ -3507,4 +3507,102 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutPrivacy => 'Privacy policy';
+
+  @override
+  String get requestsTitle => 'Requests';
+
+  @override
+  String get requestsEmpty => 'No requests';
+
+  @override
+  String requestBanner(String name) {
+    return '$name is not in your contacts. They can\'t see that you\'ve read this or call you until you accept.';
+  }
+
+  @override
+  String get requestAccept => 'Accept';
+
+  @override
+  String get requestDelete => 'Delete';
+
+  @override
+  String get requestBlock => 'Block';
+
+  @override
+  String get cubeIdTitle => 'Cube ID';
+
+  @override
+  String get cubeIdRowEmpty => 'Take a short @name';
+
+  @override
+  String get cubeIdExplainer =>
+      'Your @name points to your contact card. The server keeps only the name and your public card — never your messages.';
+
+  @override
+  String get cubeIdFieldHint => 'a–z, 0–9 and _, 3–20 characters';
+
+  @override
+  String get cubeIdAvailable => 'Available';
+
+  @override
+  String get cubeIdTaken => 'Taken';
+
+  @override
+  String get cubeIdReserved => 'Not allowed';
+
+  @override
+  String get cubeIdInvalid => 'Only a–z, 0–9 and _, 3–20 characters';
+
+  @override
+  String get cubeIdClaim => 'Take this name';
+
+  @override
+  String get cubeIdWorking => 'Securing the name…';
+
+  @override
+  String get cubeIdChange => 'Change';
+
+  @override
+  String get cubeIdRelease => 'Release';
+
+  @override
+  String cubeIdReleaseConfirm(String name) {
+    return 'Release @$name? Anyone will be able to take it.';
+  }
+
+  @override
+  String get cubeIdShare => 'Share';
+
+  @override
+  String cubeIdShareText(String name) {
+    return 'Find me in cubechat: @$name\nhttps://cubechat.tech/u.html#$name';
+  }
+
+  @override
+  String get cubeIdFailed => 'Couldn\'t save the name. Try again.';
+
+  @override
+  String get cubeIdOffline => 'No internet';
+
+  @override
+  String get lookupNotFound => 'No one with that @name';
+
+  @override
+  String get addContactHintName => 'Paste a card or type @name';
+
+  @override
+  String get strangerReachTitle => 'Who can message me from the internet';
+
+  @override
+  String get strangerReachAll => 'Everyone';
+
+  @override
+  String get strangerReachRequest => 'Request';
+
+  @override
+  String get strangerReachNone => 'Nobody';
+
+  @override
+  String get strangerReachHint =>
+      'For people you haven\'t written to who reach you over the internet. People nearby over Bluetooth are not affected.';
 }

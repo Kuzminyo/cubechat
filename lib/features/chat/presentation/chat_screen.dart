@@ -41,6 +41,7 @@ import '../../channels/presentation/channel_viewer_bar.dart';
 import '../../chats/presentation/chats_list_screen.dart' show channelRoute;
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
+import '../../chats/presentation/requests_screen.dart' show RequestBanner;
 import '../../chats/data/saved_tags_controller.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../peers/data/contact_aliases_controller.dart';
@@ -2633,6 +2634,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       },
                     ),
             ),
+            // A stranger's request, until it is accepted, deleted or blocked.
+            // Inside this column so the list's measured top padding makes room
+            // for it; nothing at all for everyone else.
+            RequestBanner(peer: widget.chatId),
             // Last in the stack, and only while something is playing: whose chat
             // this is comes first, then what is pinned in it, then what is coming
             // out of the speaker. The list pads itself to whatever this column

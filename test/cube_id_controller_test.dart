@@ -179,8 +179,7 @@ void main() {
     expect(second.read(cubeIdControllerProvider).name, 'dima');
   });
 
-  test('release clears the name and does not wait past the timeout',
-      () async {
+  test('release clears the name and does not wait past the timeout', () async {
     var slow = false;
     final c = containerWith((m, u, {body}) async {
       if (slow) await Future<void>.delayed(const Duration(seconds: 10));

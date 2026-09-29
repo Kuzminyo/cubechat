@@ -55,6 +55,7 @@ import '../../peers/presentation/widgets/peer_avatar.dart';
 import 'chat_peek.dart';
 import '../data/archive_visibility_controller.dart';
 import '../data/archived_chats_controller.dart';
+import '../data/message_requests_controller.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/swipe_action_controller.dart';
 import 'widgets/swipe_action_row.dart';
@@ -557,11 +558,28 @@ final chatsProvider = Provider<List<Chat>>((ref) {
 final visibleChatsProvider = Provider<List<Chat>>((ref) {
   final chats = ref.watch(chatsProvider);
   final archived = ref.watch(archivedChatsControllerProvider);
-  if (archived.isEmpty) return chats;
+  // A stranger's first message waits in Requests, not in the list — see
+  // [requestChatsProvider].
+  final requests = ref.watch(messageRequestsProvider).pending;
+  if (archived.isEmpty && requests.isEmpty) return chats;
   return [
     for (final chat in chats)
-      if (!archived.contains(chat.id)) chat,
+      if (!archived.contains(chat.id) && !requests.contains(chat.id)) chat,
   ];
+});
+
+/// Strangers' conversations still waiting to be accepted, newest first.
+/// Filled by the inbound path when "who can message me" is "request"; see
+/// `strangerVerdict`.
+final requestChatsProvider = Provider<List<Chat>>((ref) {
+  final pending = ref.watch(messageRequestsProvider).pending;
+  if (pending.isEmpty) return const <Chat>[];
+  final chats = [
+    for (final chat in ref.watch(chatsProvider))
+      if (pending.contains(chat.id)) chat,
+  ];
+  chats.sort(compareChatRows);
+  return chats;
 });
 
 /// What is in the drawer, newest first — the same order the main list uses.
@@ -1257,6 +1275,8 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                 if (query.isEmpty)
                   const SliverToBoxAdapter(child: HeldMediaEntry()),
                 if (query.isEmpty && folder == null && userFolder == null)
+                  const SliverToBoxAdapter(child: _RequestsEntry()),
+                if (query.isEmpty && folder == null && userFolder == null)
                   const SliverToBoxAdapter(child: _ArchiveEntry()),
                 if (filtered.isEmpty)
                   SliverFillRemaining(
@@ -1370,6 +1390,83 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
 /// as a permanent row leading to a permanent "nothing here" — the archive only
 /// exists once somebody has put something in it, and until then the row is one
 /// more thing between them and their conversations.
+/// One row leading to Requests, above the archive's. Absent when nothing is
+/// waiting, like the archive row — the drawer exists only while it holds
+/// somebody.
+class _RequestsEntry extends ConsumerWidget {
+  const _RequestsEntry();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final requests = ref.watch(requestChatsProvider);
+    if (requests.isEmpty) return const SizedBox.shrink();
+    final t = AppLocalizations.of(context);
+    final newest = requests.first;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: FloatingGlass(
+        blur: false,
+        borderRadius: 18,
+        onTap: () => context.push('/requests'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                Icons.mark_email_unread_rounded,
+                size: 20,
+                color: AppColors.brandPrimary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          t.requestsTitle,
+                          style: TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${requests.length}',
+                          style: TextStyle(
+                            color: AppColors.textOnGlassFaint,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      newest.peerName.isEmpty
+                          ? newest.lastMessage
+                          : '${newest.peerName}: ${newest.lastMessage}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: AppColors.textOnGlassDim),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ArchiveEntry extends ConsumerWidget {
   const _ArchiveEntry();
 

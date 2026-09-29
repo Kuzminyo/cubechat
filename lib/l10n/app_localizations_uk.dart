@@ -3550,4 +3550,102 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get aboutPrivacy => 'Політика конфіденційності';
+
+  @override
+  String get requestsTitle => 'Запити';
+
+  @override
+  String get requestsEmpty => 'Запитів немає';
+
+  @override
+  String requestBanner(String name) {
+    return '$name немає у ваших контактах. Поки ви не приймете запит, людина не бачить, що ви прочитали, і не може вам подзвонити.';
+  }
+
+  @override
+  String get requestAccept => 'Прийняти';
+
+  @override
+  String get requestDelete => 'Видалити';
+
+  @override
+  String get requestBlock => 'Заблокувати';
+
+  @override
+  String get cubeIdTitle => 'Cube ID';
+
+  @override
+  String get cubeIdRowEmpty => 'Займіть коротке @ім’я';
+
+  @override
+  String get cubeIdExplainer =>
+      'Ваше @ім’я вказує на вашу картку контакту. Сервер зберігає лише ім’я та публічну картку — ніколи не повідомлення.';
+
+  @override
+  String get cubeIdFieldHint => 'a–z, 0–9 та _, 3–20 символів';
+
+  @override
+  String get cubeIdAvailable => 'Вільне';
+
+  @override
+  String get cubeIdTaken => 'Зайняте';
+
+  @override
+  String get cubeIdReserved => 'Недоступне';
+
+  @override
+  String get cubeIdInvalid => 'Лише a–z, 0–9 та _, 3–20 символів';
+
+  @override
+  String get cubeIdClaim => 'Зайняти';
+
+  @override
+  String get cubeIdWorking => 'Закріплюємо ім’я…';
+
+  @override
+  String get cubeIdChange => 'Змінити';
+
+  @override
+  String get cubeIdRelease => 'Звільнити';
+
+  @override
+  String cubeIdReleaseConfirm(String name) {
+    return 'Звільнити @$name? Його зможе зайняти будь-хто.';
+  }
+
+  @override
+  String get cubeIdShare => 'Поділитися';
+
+  @override
+  String cubeIdShareText(String name) {
+    return 'Знайдіть мене в cubechat: @$name\nhttps://cubechat.tech/u.html#$name';
+  }
+
+  @override
+  String get cubeIdFailed => 'Не вдалося зберегти ім’я. Спробуйте ще раз.';
+
+  @override
+  String get cubeIdOffline => 'Немає інтернету';
+
+  @override
+  String get lookupNotFound => 'Нікого з таким @ім’ям';
+
+  @override
+  String get addContactHintName => 'Вставте картку або введіть @ім’я';
+
+  @override
+  String get strangerReachTitle => 'Хто може писати мені з інтернету';
+
+  @override
+  String get strangerReachAll => 'Усі';
+
+  @override
+  String get strangerReachRequest => 'Через запит';
+
+  @override
+  String get strangerReachNone => 'Ніхто';
+
+  @override
+  String get strangerReachHint =>
+      'Для людей, яким ви не писали і які пишуть через інтернет. Людей поруч через Bluetooth це не стосується.';
 }

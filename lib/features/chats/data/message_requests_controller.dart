@@ -6,6 +6,8 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../chat/data/messages_controller.dart';
+import '../../chat/models/message.dart';
 
 @immutable
 class MessageRequests {
@@ -45,6 +47,21 @@ class MessageRequestsController extends Notifier<MessageRequests> {
   @override
   MessageRequests build() {
     unawaited(_loading = _load());
+    // Writing back is accepting. There are a dozen ways to send from a chat —
+    // text, voice, photos, stickers, circles — and one place they all land,
+    // so the rule lives here rather than at each of them. Costs nothing while
+    // nobody is waiting, and only a look at each waiting chat's last message
+    // otherwise.
+    ref.listen<Map<String, List<Message>>>(messagesControllerProvider,
+        (_, next) {
+      if (state.pending.isEmpty) return;
+      for (final peer in state.pending.toList()) {
+        final history = next[peer];
+        if (history != null && history.isNotEmpty && history.last.isMine) {
+          unawaited(accept(peer));
+        }
+      }
+    });
     return MessageRequests.empty;
   }
 

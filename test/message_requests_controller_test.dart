@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/features/chat/data/conversation_settings_controller.dart';
+import 'package:cubechat/features/chat/data/messages_controller.dart';
+import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chats/data/message_requests_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -87,6 +89,40 @@ void main() {
     await second.read(messageRequestsProvider.notifier).loaded;
     expect(second.read(messageRequestsProvider).pending, {'b'});
     expect(second.read(messageRequestsProvider).accepted, {'x'});
+  });
+
+  test('writing back to a stranger accepts their request', () async {
+    final c = fresh();
+    final n = c.read(messageRequestsProvider.notifier);
+    await n.loaded;
+    final messages = c.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+    await n.markPending('p');
+    messages.append(
+      'p',
+      Message(
+        id: 'm1',
+        chatId: 'p',
+        text: 'hi',
+        sentAt: DateTime(2026, 9, 29),
+        isMine: false,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(c.read(messageRequestsProvider).pending, {'p'});
+    messages.append(
+      'p',
+      Message(
+        id: 'm2',
+        chatId: 'p',
+        text: 'hello',
+        sentAt: DateTime(2026, 9, 29, 0, 1),
+        isMine: true,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(c.read(messageRequestsProvider).pending, isEmpty);
+    expect(c.read(messageRequestsProvider).accepted, {'p'});
   });
 
   test('a pending stranger gets no read receipts and cannot ring', () async {
