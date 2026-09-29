@@ -86,6 +86,7 @@ import 'dedup_cache.dart';
 import 'shared_location.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
+import 'relay_policy.dart';
 import 'frame.dart';
 import 'frame_fragment.dart';
 import 'file_reassembly.dart';
@@ -9449,7 +9450,24 @@ class MessagingService {
       relayed = relayed.withTtl(cap);
     }
     final bytes = Frame(type: outerType, payload: relayed.encode()).encode();
-    final fanout = await _fanoutAllLinks(bytes, excludePeerId: excludePeerId);
+    // Somebody else's broadcast: a random pause, then only about log2 of our
+    // direct links — see `relay_policy.dart` (bitchat's flood control).
+    // Private frames keep going everywhere at once; they have one destination.
+    Set<String>? onlyClients;
+    if (env.isBroadcast) {
+      await Future<void>.delayed(relayJitter(linkCount: _linkCount));
+      if (_disposed) return;
+      final links = [
+        for (final e in _clients.entries)
+          if (e.key != excludePeerId && e.value.isReady) e.key,
+      ];
+      onlyClients = relayLinkSubset(links, env.msgId).toSet();
+    }
+    final fanout = await _fanoutAllLinks(
+      bytes,
+      excludePeerId: excludePeerId,
+      onlyClients: onlyClients,
+    );
     // Metered for the same reason: forwarding is per-frame and a relay under
     // load emits this faster than anything else in the app.
     _relayMeter.add('ttl=${relayed.ttl} fanout=$fanout', bytes.length);
@@ -10040,10 +10058,14 @@ class MessagingService {
   Future<int> _fanoutAllLinks(
     Uint8List bytes, {
     required String? excludePeerId,
+    Set<String>? onlyClients,
   }) async {
     var fanout = 0;
     for (final entry in _clients.entries) {
       if (entry.key == excludePeerId) continue;
+      // A relayed broadcast goes out on a chosen few client links only; the
+      // peripheral notify below still reaches every subscribed central.
+      if (onlyClients != null && !onlyClients.contains(entry.key)) continue;
       // isReady, not isConnected: a link mid-service-discovery is "connected"
       // but its outbound characteristic isn't there yet, so a write throws
       // "outbound characteristic not ready". Skipping it drops nothing that a

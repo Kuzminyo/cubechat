@@ -133,7 +133,16 @@ parsing.
 A flood costs roughly `fanout ^ hops`. Applied both when minting and at every
 forward, using the density of whichever node relays. **It only ever lowers a
 ttl** — a deliberately short budget (a relay introduction rides at 1) must never
-be inflated.
+be inflated. Same numbers as bitchat (checked against its WHITEPAPER.md
+2026-09-29), which also stops at 7.
+
+Since 2026-09-29 a **relayed broadcast** (not our own send, not a directed
+frame) waits a random 10–220 ms (10–400 ms at 6+ links) and goes out on only
+~log₂ of our client links, chosen by msgId — `relay_policy.dart`, bitchat's
+flood control. Up to two links are never thinned (a chain must not break), and
+the peripheral notify still reaches every subscribed central. Purely local: no
+byte on the wire changed. Don't "fix" a missing broadcast by removing it —
+measure first; reaching past 7 hops is directed routing, a separate project.
 
 ## Media chunking
 
