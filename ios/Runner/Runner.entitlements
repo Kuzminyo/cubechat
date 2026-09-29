@@ -22,5 +22,10 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- See RunnerRelease.entitlements: cubechat.tech links open the app. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:cubechat.tech</string>
+	</array>
 </dict>
 </plist>

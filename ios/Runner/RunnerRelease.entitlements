@@ -20,5 +20,13 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<!-- cubechat.tech links (/u.html#name, /c1#card) open the app. Needs the
+	     Associated Domains capability on app.cubechat and a `cubechat App
+	     Store` profile generated after it was switched on (2026-09-29); the
+	     site serves .well-known/apple-app-site-association for this team. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:cubechat.tech</string>
+	</array>
 </dict>
 </plist>
