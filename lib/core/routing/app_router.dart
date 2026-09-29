@@ -12,6 +12,7 @@ import '../../features/profile/presentation/customize_screen.dart';
 import '../../features/profile/presentation/storage_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/backup/presentation/backup_screen.dart';
+import '../../features/cube_id/presentation/cube_id_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
 import '../../features/channels/presentation/channel_info_screen.dart';
 import '../../features/chat/presentation/chat_wallpaper_screen.dart';
@@ -430,6 +431,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: BackupScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/cube-id',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: CubeIdScreen()),
           state: state,
         ),
       ),

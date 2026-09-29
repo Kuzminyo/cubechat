@@ -37,6 +37,7 @@ import '../data/contact_tags_controller.dart';
 import '../data/contact_removal.dart';
 import '../data/removed_contacts_controller.dart';
 import '../data/known_peers_controller.dart';
+import '../../cube_id/data/known_names_controller.dart';
 import '../data/peer_avatars_controller.dart';
 import '../data/presence_controller.dart';
 import '../models/known_peer.dart';
@@ -845,7 +846,15 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           onFaceDrag: _faceDrag,
                           peerId: peerPubkeyHex,
                           label: peerLabel,
-                          status: road == null ? status : '$status · $road',
+                          // The @name they were found by, when they were —
+                          // on the status line, which already has the room.
+                          status: [
+                            if (ref.watch(knownNamesProvider)[peerPubkeyHex]
+                                case final name?)
+                              '@$name',
+                            status,
+                            if (road != null) road,
+                          ].join(' · '),
                           statusColor: active
                               ? AppColors.online
                               : AppColors.textOnGlassDim,

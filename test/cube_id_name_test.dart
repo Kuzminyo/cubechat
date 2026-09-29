@@ -12,6 +12,16 @@ void main() {
   ) as List<dynamic>)
       .cast<Map<String, dynamic>>();
 
+  test('the add-contact field tells an @name from a pasted card', () {
+    expect(looksLikeCubeName('@dima'), isTrue);
+    expect(looksLikeCubeName('Dima_2026'), isTrue);
+    // Reserved still counts as a name: the server answers "not found".
+    expect(looksLikeCubeName('admin'), isTrue);
+    expect(looksLikeCubeName('ab'), isFalse);
+    expect(looksLikeCubeName('cubechat:c1:${'A' * 300}'), isFalse);
+    expect(looksLikeCubeName('hello there'), isFalse);
+  });
+
   for (final c in cases) {
     test('name case ${c['input']}', () {
       final name = normalizeCubeName(c['input'] as String);

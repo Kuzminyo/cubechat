@@ -15,6 +15,8 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../cube_id/data/cube_id_controller.dart';
+import '../../cube_id/domain/cube_name.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../../qr/presentation/qr_display.dart';
 import '../data/known_peers_controller.dart';
@@ -79,6 +81,20 @@ class ContactCardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // The short way to the same card, when there is one.
+                if (ref.watch(cubeIdControllerProvider).name
+                    case final myName?) ...[
+                  Center(
+                    child: Text(
+                      '@$myName',
+                      style: AppTypography.heading(
+                        size: 20,
+                        color: AppColors.textOnGlass,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 if (card.valueOrNull case final qr?) ...[
                   Center(child: QrDisplay(data: qr, size: 190)),
                   const SizedBox(height: 12),
@@ -241,6 +257,38 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
     final raw = _controller.text.trim();
     if (raw.isEmpty || _busy) return;
     setState(() => _busy = true);
+    // "@dima" rather than a card: ask Cube ID for the card behind the name.
+    // The card comes back signed and goes through the same verified import a
+    // pasted one does — see `CubeIdController.lookupAndAdd`.
+    if (looksLikeCubeName(raw)) {
+      try {
+        final result =
+            await ref.read(cubeIdControllerProvider.notifier).lookupAndAdd(raw);
+        if (!mounted) return;
+        switch (result) {
+          case LookupFound(:final pubkeyHex):
+            final name =
+                ref.read(knownPeersControllerProvider)[pubkeyHex]?.displayName ??
+                    '';
+            _controller.clear();
+            showGlassToast(
+              context,
+              t.contactAdded(name),
+              tone: ToastTone.success,
+            );
+            context.pushReplacement(
+              '/chat/$pubkeyHex?name=${Uri.encodeComponent(name)}',
+            );
+          case LookupNotFound():
+            showGlassToast(context, t.lookupNotFound, tone: ToastTone.danger);
+          case LookupOffline():
+            showGlassToast(context, t.cubeIdOffline, tone: ToastTone.danger);
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+      return;
+    }
     try {
       final pubkeyHex =
           await ref.read(messagingServiceProvider).addContactFromCard(raw);
@@ -282,7 +330,7 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                hintText: t.contactAddHint,
+                hintText: t.addContactHintName,
                 hintStyle: TextStyle(
                   color: AppColors.textOnGlassFaint,
                   fontSize: 12.5,

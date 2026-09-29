@@ -41,6 +41,7 @@ import '../data/nav_bar_controller.dart';
 import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
+import '../../cube_id/data/cube_id_controller.dart';
 import '../../moderation/data/filter_settings.dart';
 import '../../moderation/presentation/about_screen.dart';
 import '../data/privacy_settings_controller.dart';
@@ -216,6 +217,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupData,
           summary: _dataSummary(ref, t),
           children: const [
+            _CubeIdCard(framed: false),
             _ContactCardRow(framed: false),
             _FileTransfersCard(framed: false),
             PhoneTransferCard(framed: false),
@@ -500,6 +502,69 @@ class _FileTransfersCard extends ConsumerWidget {
                   active == 0
                       ? t.profileFileTransfersSubtitle
                       : '$active · ${t.profileFileTransfersSubtitle}',
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+/// Profile → Cube ID: the @name, or an invitation to take one.
+class _CubeIdCard extends ConsumerWidget {
+  const _CubeIdCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final name = ref.watch(cubeIdControllerProvider).name;
+    return _frame(
+      framed,
+      onTap: () => context.push('/cube-id'),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.18),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Icon(
+              Icons.alternate_email_rounded,
+              color: AppColors.brandPrimary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.cubeIdTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  name == null ? t.cubeIdRowEmpty : '@$name',
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,
@@ -1440,6 +1505,62 @@ class _PrivacyCard extends ConsumerWidget {
             hint: s.acceptCalls ? t.privacyCallsOnHint : t.privacyCallsOffHint,
             value: s.acceptCalls,
             onChanged: n.setAcceptCalls,
+          ),
+          const SizedBox(height: 14),
+          // Strangers from the internet: everyone, by request, or nobody.
+          // Three answers, so not a switch. Bluetooth neighbours are never
+          // affected — see `strangerVerdict`.
+          Text(
+            t.strangerReachTitle,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<StrangerReach>(
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(
+                  value: StrangerReach.all,
+                  label: Text(t.strangerReachAll),
+                ),
+                ButtonSegment(
+                  value: StrangerReach.request,
+                  label: Text(t.strangerReachRequest),
+                ),
+                ButtonSegment(
+                  value: StrangerReach.none,
+                  label: Text(t.strangerReachNone),
+                ),
+              ],
+              selected: {s.strangerReach},
+              onSelectionChanged: (v) => unawaited(n.setStrangerReach(v.first)),
+              style: ButtonStyle(
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? AppColors.textOnGlass
+                      : AppColors.textOnGlassDim,
+                ),
+                backgroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? AppColors.brandPrimary.withValues(alpha: 0.35)
+                      : Colors.transparent,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            t.strangerReachHint,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 10),
           Text(

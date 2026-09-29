@@ -88,6 +88,13 @@ const List<String> _innocent = [
   'niggle',
 ];
 
+/// Whether text typed into the add-contact field is an @name rather than a
+/// pasted card. A card is hundreds of characters with a scheme; a name is at
+/// most twenty of `[a-z0-9_]` — the two cannot be confused. A reserved name
+/// still counts: the lookup simply finds nobody.
+bool looksLikeCubeName(String raw) =>
+    cubeNameProblem(normalizeCubeName(raw)) != CubeNameProblem.invalid;
+
 String normalizeCubeName(String raw) {
   var s = raw.trim();
   if (s.startsWith('@')) s = s.substring(1);
