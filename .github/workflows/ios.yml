@@ -181,7 +181,12 @@ jobs:
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
           path: build/ios/iphoneos/cubechat-unsigned.ipa
-          retention-days: 7
+          # One day, not seven. Every push to main leaves a ~60 MB IPA here, and
+          # at a dozen pushes a day seven days of them filled the account's
+          # storage quota (2026-09-29: 49 artifacts, 2.9 GB) until GitHub
+          # refused to start any job. The IPA testers use is the `ipa-latest`
+          # release below; this copy is only for the run itself.
+          retention-days: 1
           if-no-files-found: error
 
       # Left as a hard failure on purpose. `continue-on-error` here would turn a
