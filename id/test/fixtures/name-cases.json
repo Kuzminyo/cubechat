@@ -1,0 +1,21 @@
+[
+  {"input": "dima", "name": "dima", "problem": null},
+  {"input": "@Dima", "name": "dima", "problem": null},
+  {"input": "  DIMA_2026 ", "name": "dima_2026", "problem": null},
+  {"input": "ab", "name": "ab", "problem": "invalid"},
+  {"input": "a_very_long_name_over_20", "name": "a_very_long_name_over_20", "problem": "invalid"},
+  {"input": "dima.k", "name": "dima.k", "problem": "invalid"},
+  {"input": "дима", "name": "дима", "problem": "invalid"},
+  {"input": "@@dima", "name": "@dima", "problem": "invalid"},
+  {"input": "admin", "name": "admin", "problem": "reserved"},
+  {"input": "Support", "name": "support", "problem": "reserved"},
+  {"input": "cubechat", "name": "cubechat", "problem": "reserved"},
+  {"input": "cubechat_team", "name": "cubechat_team", "problem": "reserved"},
+  {"input": "bigshit", "name": "bigshit", "problem": "reserved"},
+  {"input": "suka_blyat", "name": "suka_blyat", "problem": "reserved"},
+  {"input": "pidor123", "name": "pidor123", "problem": "reserved"},
+  {"input": "shiitake", "name": "shiitake", "problem": null},
+  {"input": "scunthorpe", "name": "scunthorpe", "problem": null},
+  {"input": "sukanya", "name": "sukanya", "problem": null},
+  {"input": "bass_player", "name": "bass_player", "problem": null}
+]
