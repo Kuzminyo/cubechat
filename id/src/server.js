@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseCard } from './card.js';
+import { POW_BITS, difficulty, verifyEvent } from './events.js';
 import { normalizeName } from './names.js';
 import { openRegistry } from './registry.js';
 
@@ -122,7 +123,15 @@ export function createIdServer({ registry, adminToken, bannedPath, now = () => D
           // apply() reports the malformed content.
         }
         if (op === 'claim' || op === 'rename') {
-          if (!opsByIp(ip) || !opsByKey(String(event?.pubkey))) return send(res, 429, { error: 'rate' });
+          if (!opsByIp(ip)) return send(res, 429, { error: 'rate' });
+          // Counted against the key only once the event is provably from that
+          // key and paid its work: a key is public (it is in the card), and
+          // counting junk that merely names it would let anyone lock its
+          // owner out of renaming for an hour, over and over.
+          if (verifyEvent(event) && difficulty(event.id) >= POW_BITS &&
+              !opsByKey(event.pubkey)) {
+            return send(res, 429, { error: 'rate' });
+          }
         }
         const result = registry.apply(event);
         return send(res, result.status, result.body);
@@ -147,6 +156,7 @@ export function createIdServer({ registry, adminToken, bannedPath, now = () => D
     try {
       const parsed = JSON.parse(await readFile(bannedPath, 'utf8'));
       const npubs = new Set((parsed.npubs ?? []).map((x) => String(x).toLowerCase()));
+      registry.setBanned(npubs);
       const n = registry.revokeNpubs(npubs);
       if (n) console.log(`[id] revoked ${n} name(s) of banned keys`);
       return n;

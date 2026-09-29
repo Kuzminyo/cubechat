@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/features/cube_id/data/cube_id_client.dart';
 import 'package:cubechat/features/cube_id/data/cube_id_controller.dart';
+import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -146,6 +147,40 @@ void main() {
     ops.clear();
     await ctl.maintain();
     expect(ops, ['update']);
+  });
+
+  test('a claim carries "nobody", and maintain re-sends a reach that never '
+      'reached the server', () async {
+    final sent = <Map<dynamic, dynamic>>[];
+    var offline = false;
+    final c = containerWith((m, u, {body}) async {
+      if (offline) return (status: -1, body: '');
+      if (body != null) {
+        sent.add(jsonDecode(jsonDecode(body)['content'] as String) as Map);
+      }
+      return (status: 200, body: '{}');
+    });
+    final privacy = c.read(privacySettingsProvider.notifier);
+    await privacy.loaded;
+    await privacy.setStrangerReach(StrangerReach.none);
+    final ctl = c.read(cubeIdControllerProvider.notifier);
+    await ctl.loaded;
+    await ctl.claim('dima');
+    expect(sent.single['reach'], 'none');
+
+    // The switch goes back to "everyone" while the server is unreachable…
+    offline = true;
+    await privacy.setStrangerReach(StrangerReach.all);
+    await Future<void>.delayed(Duration.zero);
+    offline = false;
+    sent.clear();
+    // …so the next maintain sends it, card unchanged or not.
+    await ctl.maintain();
+    expect(sent.single['op'], 'update');
+    expect(sent.single['reach'], 'all');
+    sent.clear();
+    await ctl.maintain();
+    expect(sent, isEmpty);
   });
 
   test('a name the server no longer has is forgotten here too', () async {

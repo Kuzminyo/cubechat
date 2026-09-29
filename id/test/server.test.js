@@ -73,6 +73,19 @@ test('admin revoke with the token frees the name', async (t) => {
   assert.equal(registry.lookup('dima'), null);
 });
 
+test('junk carrying somebody else\'s key does not use up their claims', async (t) => {
+  const { base, server } = await start();
+  t.after(() => server.close());
+  const victim = nostrPub(A);
+  for (let i = 0; i < 6; i++) {
+    const forged = { ...signedOp({ op: 'claim', name: `junk_${i}`, card: 'x' }, { key: '03'.repeat(32), powBits: 0 }), pubkey: victim };
+    await post(`${base}/v1/op`, forged, { 'x-forwarded-for': `10.0.0.${i}` });
+  }
+  const card = b64u(cardFor(victim));
+  const r = await post(`${base}/v1/op`, signedOp({ op: 'claim', name: 'dima', card }, { key: A }), { 'x-forwarded-for': '10.1.1.1' });
+  assert.equal(r.status, 200);
+});
+
 test('health reports the count', async (t) => {
   const { base, server } = await start();
   t.after(() => server.close());

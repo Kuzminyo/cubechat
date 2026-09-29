@@ -39,6 +39,22 @@ void main() {
     expect(v(StrangerReach.none), StrangerVerdict.drop);
   });
 
+  test('history that failed to load never drops anyone', () {
+    // Unknown history is not "never wrote to them": under "nobody" a real
+    // contact would be thrown away. Held as a request instead.
+    expect(
+      strangerVerdict(
+        reach: StrangerReach.none,
+        viaInternet: true,
+        wroteToThem: false,
+        accepted: false,
+        alreadyPending: false,
+        historyKnown: false,
+      ),
+      StrangerVerdict.request,
+    );
+  });
+
   test('a pending request stays a request even under nobody', () {
     expect(v(StrangerReach.none, pending: true), StrangerVerdict.request);
   });

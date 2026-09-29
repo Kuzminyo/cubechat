@@ -7343,13 +7343,24 @@ class MessagingService {
       // yet. See `strangerVerdict`.
       if (senderPub != null && incomingRoute == MessageRoute.internet) {
         final sender = _hexOf(senderPub);
-        final requests = _ref.read(messageRequestsProvider);
+        // Every input read only after it has loaded. A background relaunch —
+        // a push or relay wake with no UI — can make this the first thing to
+        // touch these providers, and their first state is a default: the
+        // setting would read "everyone", the accepted list empty, the history
+        // empty. Deciding on those drops accepted strangers under "nobody" or
+        // ignores the setting altogether. Awaiting a finished load is a
+        // microtask, so the default path costs nothing measurable.
+        await _ref.read(privacySettingsProvider.notifier).loaded;
         final reach = _ref.read(privacySettingsProvider).strangerReach;
+        final requestsNotifier = _ref.read(messageRequestsProvider.notifier);
+        await requestsNotifier.loaded;
+        final requests = _ref.read(messageRequestsProvider);
         if (reach != StrangerReach.all ||
             requests.pending.contains(sender)) {
           // "Never wrote to them" must be read from real history, not from a
           // store still loading — or a known contact would be dropped.
-          await _ref.read(messagesControllerProvider.notifier).loaded;
+          final messages = _ref.read(messagesControllerProvider.notifier);
+          await messages.loaded;
           final verdict = strangerVerdict(
             reach: reach,
             viaInternet: true,
@@ -7357,6 +7368,7 @@ class MessagingService {
                 hasWrittenIn(_ref.read(messagesControllerProvider)[sender]),
             accepted: requests.accepted.contains(sender),
             alreadyPending: requests.pending.contains(sender),
+            historyKnown: !messages.loadFailed,
           );
           if (verdict == StrangerVerdict.drop) {
             DebugLog.instance

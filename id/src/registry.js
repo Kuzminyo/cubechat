@@ -36,6 +36,9 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
       id TEXT PRIMARY KEY, at INTEGER NOT NULL);
   `);
   const seconds = () => Math.floor(now() / 1000);
+  // Nostr keys the moderator banned (push's banned.json). Refused a name
+  // outright; see [setBanned].
+  let banned = new Set();
   const q = {
     byName: db.prepare('SELECT * FROM names WHERE name = ?'),
     byPub: db.prepare('SELECT * FROM names WHERE nostr_pub = ?'),
@@ -91,8 +94,12 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
     const op = content.op;
 
     if ((op === 'claim' || op === 'rename') && difficulty(event.id) < POW_BITS) return fail(403, 'pow');
+    if ((op === 'claim' || op === 'rename') && banned.has(pub)) return fail(403, 'banned');
     if (op !== 'claim' && !mine) return fail(404, 'no-name');
     if (op === 'claim' && mine) return fail(409, 'has-name');
+    // A claim may carry who can find us, so choosing "nobody" before taking a
+    // name never leaves it public for even one request.
+    if (content.reach !== undefined && !REACH.has(content.reach)) return fail(400, 'bad-request');
 
     let result;
     if (op === 'claim' || op === 'rename') {
@@ -107,7 +114,7 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
           q.del.run(pub);
           if (mine.name !== name) q.hold.run(mine.name, pub, t + HOLD_SECONDS);
         }
-        q.insert.run(name, pub, card, mine?.reach ?? 'all', mine?.created_at ?? t, t);
+        q.insert.run(name, pub, card, content.reach ?? mine?.reach ?? 'all', mine?.created_at ?? t, t);
         db.exec('COMMIT');
       } catch (e) {
         db.exec('ROLLBACK');
@@ -169,10 +176,20 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
     return 0;
   }
 
+  // A banned key loses its name, but the name itself is not burned: it was
+  // somebody's handle, not the offence, and another person may take it.
+  // Moderator revocation of an offensive *name* is [revoke] instead.
   function revokeNpubs(npubs) {
     let n = 0;
-    for (const npub of npubs) n += revoke({ npub, reason: 'banned' });
+    for (const npub of npubs) {
+      n += Number(q.del.run(String(npub).toLowerCase()).changes);
+      q.unholdOwn.run(String(npub).toLowerCase());
+    }
     return n;
+  }
+
+  function setBanned(npubs) {
+    banned = new Set([...npubs].map((x) => String(x).toLowerCase()));
   }
 
   function sweep() {
@@ -184,7 +201,7 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
   }
 
   return {
-    apply, lookup, availability, revoke, revokeNpubs, sweep,
+    apply, lookup, availability, revoke, revokeNpubs, setBanned, sweep,
     count: () => Number(db.prepare('SELECT COUNT(*) AS n FROM names').get().n),
     close: () => db.close(),
   };

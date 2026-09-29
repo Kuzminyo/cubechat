@@ -11,19 +11,25 @@ import '../../profile/data/privacy_settings_controller.dart';
 /// says now, so switching to "nobody" never silently deletes it.
 enum StrangerVerdict { deliver, request, drop }
 
+///
+/// [historyKnown] false means the message store failed to load: "never wrote
+/// to them" is then unknowable, and a real contact must not be thrown away on
+/// a guess — the worst it gets is a request.
 StrangerVerdict strangerVerdict({
   required StrangerReach reach,
   required bool viaInternet,
   required bool wroteToThem,
   required bool accepted,
   required bool alreadyPending,
+  bool historyKnown = true,
 }) {
   if (!viaInternet || wroteToThem || accepted) return StrangerVerdict.deliver;
   if (alreadyPending) return StrangerVerdict.request;
   return switch (reach) {
     StrangerReach.all => StrangerVerdict.deliver,
     StrangerReach.request => StrangerVerdict.request,
-    StrangerReach.none => StrangerVerdict.drop,
+    StrangerReach.none =>
+      historyKnown ? StrangerVerdict.drop : StrangerVerdict.request,
   };
 }
 

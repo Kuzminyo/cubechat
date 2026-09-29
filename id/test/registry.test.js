@@ -104,6 +104,25 @@ test('release frees at once; revoke frees and blocks the name', () => {
   assert.equal(r.revokeNpubs(new Set([nostrPub(A)])), 0);
 });
 
+test('a banned key cannot take a name, and a ban does not burn the name for others', () => {
+  const { r } = reg();
+  r.apply(claim(A, 'dima'));
+  r.setBanned(new Set([nostrPub(A)]));
+  assert.equal(r.revokeNpubs(new Set([nostrPub(A)])), 1);
+  assert.equal(r.lookup('dima'), null);
+  assert.equal(r.apply(claim(A, 'other', { createdAt: T0 + 1 })).body.error, 'banned');
+  assert.equal(r.availability('dima').available, true);
+  assert.equal(r.apply(claim(B, 'dima', { createdAt: T0 + 2 })).status, 200);
+});
+
+test('a claim can carry the reach, so "nobody" is never public even for a moment', () => {
+  const { r } = reg();
+  const card = b64u(cardFor(nostrPub(A)));
+  assert.equal(r.apply(signedOp({ op: 'claim', name: 'dima', card, reach: 'none' }, { key: A })).status, 200);
+  assert.equal(r.lookup('dima'), null);
+  assert.equal(r.apply(signedOp({ op: 'claim', name: 'olga', card: b64u(cardFor(nostrPub(B))), reach: 'maybe' }, { key: B })).body.error, 'bad-request');
+});
+
 test('operations on a key without a name are 404', () => {
   const { r } = reg();
   assert.equal(r.apply(signedOp({ op: 'renew' }, { key: A, powBits: 0 })).status, 404);

@@ -24,7 +24,17 @@ import 'known_names_controller.dart';
 /// This phone's own @name, as far as it knows.
 @immutable
 class CubeIdState {
-  const CubeIdState({this.name, this.renewedAt, this.cardDigest});
+  const CubeIdState({
+    this.name,
+    this.renewedAt,
+    this.cardDigest,
+    this.reachSent,
+  });
+
+  /// The "who can message me" value the server last acknowledged. Differs
+  /// from the setting when an update never got through — [maintain] then
+  /// sends it again, so "nobody" cannot stay public by accident.
+  final String? reachSent;
 
   final String? name;
   final DateTime? renewedAt;
@@ -40,6 +50,7 @@ class CubeIdState {
         'name': name,
         'renewedAt': renewedAt?.millisecondsSinceEpoch,
         'cardDigest': cardDigest,
+        'reachSent': reachSent,
       };
 
   static CubeIdState fromMap(Map<dynamic, dynamic> m) => CubeIdState(
@@ -48,6 +59,7 @@ class CubeIdState {
             ? DateTime.fromMillisecondsSinceEpoch(m['renewedAt'] as int)
             : null,
         cardDigest: m['cardDigest'] as String?,
+        reachSent: m['reachSent'] as String?,
       );
 }
 
@@ -175,11 +187,14 @@ class CubeIdController extends Notifier<CubeIdState> {
     final problem = cubeNameProblem(name);
     if (problem != null) return CubeIdRefused(problem.name);
     final card = await _card();
+    await ref.read(privacySettingsProvider.notifier).loaded;
+    final reach = _reach();
     final result = await _send(
       {
         'op': state.name == null ? 'claim' : 'rename',
         'name': name,
         'card': _b64(card),
+        'reach': reach,
       },
       proofOfWork: true,
     );
@@ -189,6 +204,7 @@ class CubeIdController extends Notifier<CubeIdState> {
           name: name,
           renewedAt: DateTime.now(),
           cardDigest: _digest(card),
+          reachSent: reach,
         ),
       );
     }
@@ -224,12 +240,14 @@ class CubeIdController extends Notifier<CubeIdState> {
       if (state.name == null) return;
       final card = await _card();
       final digest = _digest(card);
+      await ref.read(privacySettingsProvider.notifier).loaded;
+      final reach = _reach();
       CubeIdResult? result;
-      if (digest != state.cardDigest) {
+      if (digest != state.cardDigest || reach != state.reachSent) {
         result = await _send({
           'op': 'update',
           'card': _b64(card),
-          'reach': _reach(),
+          'reach': reach,
         });
         if (result is CubeIdOk) {
           await _set(
@@ -237,6 +255,7 @@ class CubeIdController extends Notifier<CubeIdState> {
               name: state.name,
               renewedAt: DateTime.now(),
               cardDigest: digest,
+              reachSent: reach,
             ),
           );
         }
@@ -251,6 +270,7 @@ class CubeIdController extends Notifier<CubeIdState> {
                 name: state.name,
                 renewedAt: DateTime.now(),
                 cardDigest: state.cardDigest,
+                reachSent: state.reachSent,
               ),
             );
           }
@@ -283,6 +303,7 @@ class CubeIdController extends Notifier<CubeIdState> {
             name: state.name,
             renewedAt: state.renewedAt,
             cardDigest: _digest(card),
+            reachSent: reach,
           ),
         );
       }
@@ -331,6 +352,7 @@ class CubeIdController extends Notifier<CubeIdState> {
         name: state.name,
         renewedAt: at,
         cardDigest: state.cardDigest,
+        reachSent: state.reachSent,
       );
 
   @visibleForTesting
@@ -338,6 +360,7 @@ class CubeIdController extends Notifier<CubeIdState> {
         name: state.name,
         renewedAt: state.renewedAt,
         cardDigest: digest,
+        reachSent: state.reachSent,
       );
 }
 
