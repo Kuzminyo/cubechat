@@ -60,6 +60,9 @@ import 'settings/settings_tiles.dart';
 
 // Each section screen is a part of this file so it can use the setting widgets
 // below as they are, without moving three thousand lines to make them public.
+part 'settings/connection_section.dart';
+part 'settings/data_section.dart';
+part 'settings/notifications_section.dart';
 part 'settings/privacy_section.dart';
 
 // The version was a `const '0.1.0'` here, written on the first day and never

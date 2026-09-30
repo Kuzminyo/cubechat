@@ -420,6 +420,30 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         ),
       ),
       GoRoute(
+        path: '/settings/notifications',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: NotificationsSectionScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/settings/connection',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: ConnectionSectionScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/settings/data',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: DataSectionScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
         path: '/transfers',
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
