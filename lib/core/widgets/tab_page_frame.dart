@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -110,8 +111,13 @@ class _TabPageFrameState extends State<TabPageFrame> {
     return (px / _searchRoom).clamp(0.0, 1.0);
   }
 
-  bool _onScroll(ScrollUpdateNotification n) {
+  bool _onScroll(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
+    if (n is ScrollEndNotification) {
+      _settleSearch(n);
+      return false;
+    }
+    if (n is! ScrollUpdateNotification) return false;
     final px = n.metrics.pixels;
     final delta = n.scrollDelta ?? 0;
     setState(() {
@@ -126,6 +132,33 @@ class _TabPageFrameState extends State<TabPageFrame> {
       }
     });
     return false;
+  }
+
+  /// A scroll that stops part-way through the fold finishes it: back to the
+  /// field if it stopped nearer that end — or if the page is too short to
+  /// scroll the whole fold — else on to the button. Left where it stopped, the
+  /// search sat half field, half button ("поиск залагивает"). Chats has done
+  /// the same with its own search from the start.
+  void _settleSearch(ScrollEndNotification n) {
+    final room = _searchRoom;
+    final px = n.metrics.pixels;
+    if (room == 0 || px <= 0 || px >= room) return;
+    final target =
+        px < room / 2 || n.metrics.maxScrollExtent < room ? 0.0 : room;
+    final context = n.context;
+    if (context == null) return;
+    final position = Scrollable.maybeOf(context)?.position;
+    if (position == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !position.hasPixels) return;
+      unawaited(
+        position.animateTo(
+          target,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    });
   }
 
   @override
@@ -150,6 +183,12 @@ class _TabPageFrameState extends State<TabPageFrame> {
   }
 
   Widget _layout(BuildContext context, double collapse, Duration motion) {
+    // The frame starts at the top of the screen, under the status bar, the
+    // way Chats' header does: the surface reaches under the clock and the
+    // battery, and the header's own content starts below them. Starting the
+    // whole frame below them left a band of a different colour up there once
+    // the surface came in.
+    final top = MediaQuery.paddingOf(context).top;
     final headerHeight = TabHeader.height + _searchRoom * (1 - collapse);
     // The page's first row starts below the search and the island; it
     // reaches the header once the page has scrolled past both.
@@ -162,9 +201,11 @@ class _TabPageFrameState extends State<TabPageFrame> {
         children: [
           Positioned.fill(
             child: IslandInset(
-              height:
-                  TabHeader.height + _searchRoom + TabPageFrame.islandHeight,
-              child: NotificationListener<ScrollUpdateNotification>(
+              height: top +
+                  TabHeader.height +
+                  _searchRoom +
+                  TabPageFrame.islandHeight,
+              child: NotificationListener<ScrollNotification>(
                 onNotification: _onScroll,
                 // Ink for the pages' own buttons, the half not on show
                 // included: it stays built (offstage) to keep its scroll.
@@ -178,7 +219,7 @@ class _TabPageFrameState extends State<TabPageFrame> {
           // Under the header in paint order, so when it slides away it goes
           // behind the header's surface rather than being cut off by a line.
           Positioned(
-            top: headerHeight,
+            top: top + headerHeight,
             left: 0,
             right: 0,
             child: AnimatedSlide(
@@ -222,7 +263,7 @@ class _TabPageFrameState extends State<TabPageFrame> {
               top: 0,
               left: 0,
               right: 0,
-              height: headerHeight + _fade,
+              height: top + headerHeight + _fade,
               child: IgnorePointer(
                 key: TabPageFrame.veilKey,
                 child: DecoratedBox(
@@ -235,14 +276,18 @@ class _TabPageFrameState extends State<TabPageFrame> {
                         AppColors.bgTop.withValues(alpha: 0.96 * veil),
                         AppColors.bgTop.withValues(alpha: 0),
                       ],
-                      stops: [0, headerHeight / (headerHeight + _fade), 1],
+                      stops: [
+                        0,
+                        (top + headerHeight) / (top + headerHeight + _fade),
+                        1,
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
           Positioned(
-            top: 0,
+            top: top,
             left: 0,
             right: 0,
             height: headerHeight,

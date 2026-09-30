@@ -205,6 +205,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     final visible = TickerMode.valuesOf(context).enabled;
     _visible = visible;
     return SafeArea(
+      // The frame reaches under the status bar and insets its own content.
+      top: false,
       bottom: false,
       // One section header owned by the shell, drawn over the pages the way
       // Chats draws its own: the switch slides away under it while you scroll

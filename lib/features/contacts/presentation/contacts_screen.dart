@@ -247,6 +247,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     );
 
     return SafeArea(
+      // The frame reaches under the status bar and insets its own content.
+      top: false,
       child: TabPageFrame(
         header: TabHeader(
           mark: Icon(

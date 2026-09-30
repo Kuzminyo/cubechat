@@ -96,6 +96,65 @@ void main() {
     expect(find.byKey(TabPageFrame.veilKey), findsOneWidget);
   });
 
+  testWidgets('a search let go half folded settles to one end', (tester) async {
+    // A list let go part-way — or one too short to scroll the whole fold —
+    // left the search stuck half field, half button ("поиск залагивает").
+    await pump(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, -38));
+    await tester.pumpAndSettle();
+    final width = tester.getSize(find.byKey(TabPageFrame.searchKey)).width;
+    expect(
+      width == TabPageFrame.bubble || width > 300,
+      isTrue,
+      reason: 'the search is $width wide: neither a field nor a button',
+    );
+  });
+
+  testWidgets('the header surface reaches under the status bar',
+      (tester) async {
+    // Scrolled, the surface began below the status bar and the clock and
+    // battery sat on a band of a different colour above it.
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 30),
+          ),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: TabPageFrame(
+            header: const TabHeader(
+              mark: Icon(Icons.star),
+              title: 'Title',
+              subtitle: 'Sub',
+            ),
+            island: const SizedBox(height: SectionSwitch.height),
+            pageKey: 0,
+            child: Builder(
+              builder: (context) => ListView(
+                padding: EdgeInsets.only(top: IslandInset.of(context)),
+                children: [
+                  for (var i = 0; i < 60; i++)
+                    SizedBox(height: 60, child: Text('row $i')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    // The header's own content starts below the status bar...
+    expect(tester.getTopLeft(find.text('Title')).dy, greaterThan(30));
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    // ...and its surface starts at the very top.
+    expect(tester.getTopLeft(find.byKey(TabPageFrame.veilKey)).dy, 0);
+  });
+
   testWidgets('the island leaves on the way down and returns on the way up',
       (tester) async {
     await pump(tester);
