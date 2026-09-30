@@ -1274,5 +1274,18 @@
   "strangerReachAll": "Усі",
   "strangerReachRequest": "Через запит",
   "strangerReachNone": "Ніхто",
-  "strangerReachHint": "Для людей, яким ви не писали і які пишуть через інтернет. Людей поруч через Bluetooth це не стосується."
+  "strangerReachHint": "Для людей, яким ви не писали і які пишуть через інтернет. Людей поруч через Bluetooth це не стосується.",
+  "sectionPrivacy": "Конфіденційність і безпека",
+  "sectionNotifications": "Сповіщення і дзвінки",
+  "sectionConnection": "Зв'язок",
+  "sectionChats": "Чати і медіа",
+  "sectionAppearance": "Оформлення",
+  "sectionData": "Дані і пам'ять",
+  "sectionAbout": "Про застосунок",
+  "subWhoSeesMe": "Хто мене бачить",
+  "subProtection": "Захист",
+  "subNotifications": "Сповіщення",
+  "subCalls": "Дзвінки",
+  "subMyCard": "Моя картка",
+  "fingerprintCopy": "Копіювати"
 }

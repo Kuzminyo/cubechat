@@ -3605,4 +3605,43 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get strangerReachHint =>
       'For people you haven\'t written to who reach you over the internet. People nearby over Bluetooth are not affected.';
+
+  @override
+  String get sectionPrivacy => 'Privacy & security';
+
+  @override
+  String get sectionNotifications => 'Notifications & calls';
+
+  @override
+  String get sectionConnection => 'Connection';
+
+  @override
+  String get sectionChats => 'Chats & media';
+
+  @override
+  String get sectionAppearance => 'Appearance';
+
+  @override
+  String get sectionData => 'Data & storage';
+
+  @override
+  String get sectionAbout => 'About';
+
+  @override
+  String get subWhoSeesMe => 'Who sees me';
+
+  @override
+  String get subProtection => 'Protection';
+
+  @override
+  String get subNotifications => 'Notifications';
+
+  @override
+  String get subCalls => 'Calls';
+
+  @override
+  String get subMyCard => 'My card';
+
+  @override
+  String get fingerprintCopy => 'Copy';
 }

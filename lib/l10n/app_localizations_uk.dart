@@ -3648,4 +3648,43 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get strangerReachHint =>
       'Для людей, яким ви не писали і які пишуть через інтернет. Людей поруч через Bluetooth це не стосується.';
+
+  @override
+  String get sectionPrivacy => 'Конфіденційність і безпека';
+
+  @override
+  String get sectionNotifications => 'Сповіщення і дзвінки';
+
+  @override
+  String get sectionConnection => 'Зв\'язок';
+
+  @override
+  String get sectionChats => 'Чати і медіа';
+
+  @override
+  String get sectionAppearance => 'Оформлення';
+
+  @override
+  String get sectionData => 'Дані і пам\'ять';
+
+  @override
+  String get sectionAbout => 'Про застосунок';
+
+  @override
+  String get subWhoSeesMe => 'Хто мене бачить';
+
+  @override
+  String get subProtection => 'Захист';
+
+  @override
+  String get subNotifications => 'Сповіщення';
+
+  @override
+  String get subCalls => 'Дзвінки';
+
+  @override
+  String get subMyCard => 'Моя картка';
+
+  @override
+  String get fingerprintCopy => 'Копіювати';
 }

@@ -1766,5 +1766,18 @@
   "strangerReachAll": "Everyone",
   "strangerReachRequest": "Request",
   "strangerReachNone": "Nobody",
-  "strangerReachHint": "For people you haven't written to who reach you over the internet. People nearby over Bluetooth are not affected."
+  "strangerReachHint": "For people you haven't written to who reach you over the internet. People nearby over Bluetooth are not affected.",
+  "sectionPrivacy": "Privacy & security",
+  "sectionNotifications": "Notifications & calls",
+  "sectionConnection": "Connection",
+  "sectionChats": "Chats & media",
+  "sectionAppearance": "Appearance",
+  "sectionData": "Data & storage",
+  "sectionAbout": "About",
+  "subWhoSeesMe": "Who sees me",
+  "subProtection": "Protection",
+  "subNotifications": "Notifications",
+  "subCalls": "Calls",
+  "subMyCard": "My card",
+  "fingerprintCopy": "Copy"
 }

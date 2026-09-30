@@ -6277,6 +6277,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'For people you haven\'t written to who reach you over the internet. People nearby over Bluetooth are not affected.'**
   String get strangerReachHint;
+
+  /// No description provided for @sectionPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy & security'**
+  String get sectionPrivacy;
+
+  /// No description provided for @sectionNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications & calls'**
+  String get sectionNotifications;
+
+  /// No description provided for @sectionConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get sectionConnection;
+
+  /// No description provided for @sectionChats.
+  ///
+  /// In en, this message translates to:
+  /// **'Chats & media'**
+  String get sectionChats;
+
+  /// No description provided for @sectionAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get sectionAppearance;
+
+  /// No description provided for @sectionData.
+  ///
+  /// In en, this message translates to:
+  /// **'Data & storage'**
+  String get sectionData;
+
+  /// No description provided for @sectionAbout.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get sectionAbout;
+
+  /// No description provided for @subWhoSeesMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Who sees me'**
+  String get subWhoSeesMe;
+
+  /// No description provided for @subProtection.
+  ///
+  /// In en, this message translates to:
+  /// **'Protection'**
+  String get subProtection;
+
+  /// No description provided for @subNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get subNotifications;
+
+  /// No description provided for @subCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls'**
+  String get subCalls;
+
+  /// No description provided for @subMyCard.
+  ///
+  /// In en, this message translates to:
+  /// **'My card'**
+  String get subMyCard;
+
+  /// No description provided for @fingerprintCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get fingerprintCopy;
 }
 
 class _AppLocalizationsDelegate
