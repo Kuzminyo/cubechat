@@ -177,8 +177,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // CustomScrollView config is cheap to remake; its contents are not.
     final cubeName = ref.watch(cubeIdControllerProvider).name;
     final quiet = ref.watch(quietHoursControllerProvider);
-    String clock(int minutes) =>
-        TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
     Widget row(
       SettingsSection section,
       String title,
@@ -228,9 +226,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               SettingsSection.notifications,
               t.sectionNotifications,
               '/settings/notifications',
-              value: quiet.enabled
-                  ? '${clock(quiet.fromMinutes)}–${clock(quiet.toMinutes)}'
-                  : null,
+              value: quietHoursSummary(quiet),
             ),
             row(
               SettingsSection.connection,
@@ -1640,6 +1636,18 @@ class _PushWakeRow extends ConsumerWidget {
 ///
 /// Each reads the same providers the screen behind it does, so the row cannot
 /// drift out of step with what opening it would show.
+/// Quiet hours on the Notifications row: "22:00–07:00", or nothing when off.
+///
+/// Always 24-hour. The phone's own format gave "10:00 PM–7:00 AM" on a
+/// 12-hour phone, past the row's value cap, so it was cut mid-time.
+String? quietHoursSummary(QuietHours q) {
+  if (!q.enabled) return null;
+  String hhmm(int minutes) =>
+      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+      '${(minutes % 60).toString().padLeft(2, '0')}';
+  return '${hhmm(q.fromMinutes)}–${hhmm(q.toMinutes)}';
+}
+
 String _connectionSummary(WidgetRef ref, AppLocalizations t) {
   final parts = <String>[
     ref.watch(relaySettingsProvider).isActive

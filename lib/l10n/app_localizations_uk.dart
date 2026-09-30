@@ -735,10 +735,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileEmergencyWipe => 'Аварійне очищення';
 
   @override
-  String get profileEmergencyWipeHint =>
-      'Потрійний тап стирає всі ключі, контакти й повідомлення.';
-
-  @override
   String get profileEmergencyWipeConfirm => 'Стерти все?';
 
   @override
@@ -1344,10 +1340,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileContactCard => 'Картка контакту';
 
   @override
-  String get profileContactCardSubtitle =>
-      'Спілкування з тим, хто поза зоною Bluetooth';
-
-  @override
   String get chatsAddContactTooltip => 'Додати контакт за карткою';
 
   @override
@@ -1388,9 +1380,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String voiceTrimSelection(String duration) {
     return 'Надсилаємо $duration';
   }
-
-  @override
-  String get profilePrivacy => 'Приватність';
 
   @override
   String get profileLastSeen => 'Показувати час у мережі';
@@ -2597,18 +2586,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String get phoneTransferFailed => 'Не вдалося завершити перенесення телефону';
 
   @override
-  String get profileGroupConnection => 'З\'єднання';
-
-  @override
-  String get profileGroupPrivacy => 'Приватність';
-
-  @override
-  String get profileGroupData => 'Обмін і дані';
-
-  @override
-  String get profileGroupApp => 'Застосунок';
-
-  @override
   String get profileSummaryMeshOnly => 'Тільки mesh';
 
   @override
@@ -2616,18 +2593,6 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get profileSummaryBackgroundOn => 'працює у фоні';
-
-  @override
-  String get profileSummaryDiscoverable => 'Вас видно';
-
-  @override
-  String get profileSummaryHidden => 'Приховано';
-
-  @override
-  String get profileSummaryLastSeenHidden => 'час у мережі приховано';
-
-  @override
-  String get profileSummaryMapHidden => 'геолокацію приховано';
 
   @override
   String profileSummaryTransfersActive(int count) {
@@ -2896,12 +2861,6 @@ class AppLocalizationsUk extends AppLocalizations {
     );
     return '$_temp0';
   }
-
-  @override
-  String get profileGroupCustomize => 'Кастомізація';
-
-  @override
-  String get customizeTitle => 'Кастомізація';
 
   @override
   String get customizeBarTitle => 'Нижня панель';
@@ -3573,9 +3532,6 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get cubeIdTitle => 'Cube ID';
-
-  @override
-  String get cubeIdRowEmpty => 'Займіть коротке @ім’я';
 
   @override
   String get cubeIdExplainer =>

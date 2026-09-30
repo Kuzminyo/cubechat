@@ -373,7 +373,6 @@
     }
   },
   "profileEmergencyWipe": "Emergency wipe",
-  "profileEmergencyWipeHint": "Triple-tap to erase all keys, peers, and messages.",
   "profileEmergencyWipeConfirm": "Erase everything?",
   "profileEmergencyWipeConfirmHint": "This will remove your identity, peer list, and conversation history. Cannot be undone.",
   "profileEmergencyWipeAction": "Erase",
@@ -713,7 +712,6 @@
   "contactRelayOff": "Internet fallback is off, so a card can't reach anyone yet.",
   "contactRelayEnable": "Turn on",
   "profileContactCard": "Contact card",
-  "profileContactCardSubtitle": "Chat with someone out of Bluetooth range",
   "chatsAddContactTooltip": "Add a contact by card",
   "chatsMenuTooltip": "More",
   "chatsMenuAddContact": "Add contact",
@@ -734,7 +732,6 @@
       }
     }
   },
-  "profilePrivacy": "Privacy",
   "profileLastSeen": "Share last seen",
   "profileLastSeenOnHint": "Contacts can see when you're in the app",
   "profileLastSeenOffHint": "Nobody sees your time, and you see nobody's: only who is online",
@@ -1257,17 +1254,9 @@
   "phoneTransferConfirmAction": "Transfer profile",
   "phoneTransferSuccess": "Profile transferred successfully",
   "phoneTransferFailed": "Could not complete the phone transfer",
-  "profileGroupConnection": "Connection",
-  "profileGroupPrivacy": "Privacy",
-  "profileGroupData": "Sharing & data",
-  "profileGroupApp": "App",
   "profileSummaryMeshOnly": "Mesh only",
   "profileSummaryMeshInternet": "Mesh · internet",
   "profileSummaryBackgroundOn": "runs in background",
-  "profileSummaryDiscoverable": "Discoverable",
-  "profileSummaryHidden": "Hidden",
-  "profileSummaryLastSeenHidden": "last seen hidden",
-  "profileSummaryMapHidden": "map location hidden",
   "profileSummaryTransfersActive": "{count} in progress",
   "@profileSummaryTransfersActive": {
     "placeholders": {
@@ -1387,8 +1376,6 @@
     }
   },
 
-  "profileGroupCustomize": "Customization",
-  "customizeTitle": "Customization",
   "customizeBarTitle": "Navigation bar",
   "customizeBarHint": "Drag to reorder. Chats cannot be removed.",
   "customizeBarShown": "Shown",
@@ -1730,7 +1717,6 @@
   "requestDelete": "Delete",
   "requestBlock": "Block",
   "cubeIdTitle": "Cube ID",
-  "cubeIdRowEmpty": "Take a short @name",
   "cubeIdExplainer": "Your @name points to your contact card. The server keeps only the name and your public card — never your messages.",
   "cubeIdFieldHint": "a–z, 0–9 and _, 3–20 characters",
   "cubeIdAvailable": "Available",

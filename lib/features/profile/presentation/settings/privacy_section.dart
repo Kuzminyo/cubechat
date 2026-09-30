@@ -21,6 +21,20 @@ class PrivacySectionScreen extends ConsumerWidget {
             _inset(const _MapLocationTile()),
           ],
         ),
+        // Under the group it explains — last seen and read receipts — rather
+        // than at the foot of the screen under Protection, where it read as
+        // being about the lock.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+          child: Text(
+            t.profilePrivacyExplainer,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
+        ),
         SettingsSubheader(t.strangerReachTitle),
         SettingsGroup(
           children: [
@@ -38,17 +52,6 @@ class PrivacySectionScreen extends ConsumerWidget {
             _inset(const _DeadMansRow()),
             _inset(const _FingerprintTile()),
           ],
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-          child: Text(
-            t.profilePrivacyExplainer,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              height: 1.35,
-            ),
-          ),
         ),
       ],
     );

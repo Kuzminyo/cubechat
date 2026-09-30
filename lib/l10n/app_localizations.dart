@@ -1382,12 +1382,6 @@ abstract class AppLocalizations {
   /// **'Emergency wipe'**
   String get profileEmergencyWipe;
 
-  /// No description provided for @profileEmergencyWipeHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Triple-tap to erase all keys, peers, and messages.'**
-  String get profileEmergencyWipeHint;
-
   /// No description provided for @profileEmergencyWipeConfirm.
   ///
   /// In en, this message translates to:
@@ -2408,12 +2402,6 @@ abstract class AppLocalizations {
   /// **'Contact card'**
   String get profileContactCard;
 
-  /// No description provided for @profileContactCardSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Chat with someone out of Bluetooth range'**
-  String get profileContactCardSubtitle;
-
   /// No description provided for @chatsAddContactTooltip.
   ///
   /// In en, this message translates to:
@@ -2491,12 +2479,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sending {duration}'**
   String voiceTrimSelection(String duration);
-
-  /// No description provided for @profilePrivacy.
-  ///
-  /// In en, this message translates to:
-  /// **'Privacy'**
-  String get profilePrivacy;
 
   /// No description provided for @profileLastSeen.
   ///
@@ -4466,30 +4448,6 @@ abstract class AppLocalizations {
   /// **'Could not complete the phone transfer'**
   String get phoneTransferFailed;
 
-  /// No description provided for @profileGroupConnection.
-  ///
-  /// In en, this message translates to:
-  /// **'Connection'**
-  String get profileGroupConnection;
-
-  /// No description provided for @profileGroupPrivacy.
-  ///
-  /// In en, this message translates to:
-  /// **'Privacy'**
-  String get profileGroupPrivacy;
-
-  /// No description provided for @profileGroupData.
-  ///
-  /// In en, this message translates to:
-  /// **'Sharing & data'**
-  String get profileGroupData;
-
-  /// No description provided for @profileGroupApp.
-  ///
-  /// In en, this message translates to:
-  /// **'App'**
-  String get profileGroupApp;
-
   /// No description provided for @profileSummaryMeshOnly.
   ///
   /// In en, this message translates to:
@@ -4507,30 +4465,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'runs in background'**
   String get profileSummaryBackgroundOn;
-
-  /// No description provided for @profileSummaryDiscoverable.
-  ///
-  /// In en, this message translates to:
-  /// **'Discoverable'**
-  String get profileSummaryDiscoverable;
-
-  /// No description provided for @profileSummaryHidden.
-  ///
-  /// In en, this message translates to:
-  /// **'Hidden'**
-  String get profileSummaryHidden;
-
-  /// No description provided for @profileSummaryLastSeenHidden.
-  ///
-  /// In en, this message translates to:
-  /// **'last seen hidden'**
-  String get profileSummaryLastSeenHidden;
-
-  /// No description provided for @profileSummaryMapHidden.
-  ///
-  /// In en, this message translates to:
-  /// **'map location hidden'**
-  String get profileSummaryMapHidden;
 
   /// No description provided for @profileSummaryTransfersActive.
   ///
@@ -4999,18 +4933,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =0{empty} one{{count} file} other{{count} files}}'**
   String storageFilesCount(int count);
-
-  /// No description provided for @profileGroupCustomize.
-  ///
-  /// In en, this message translates to:
-  /// **'Customization'**
-  String get profileGroupCustomize;
-
-  /// No description provided for @customizeTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Customization'**
-  String get customizeTitle;
 
   /// No description provided for @customizeBarTitle.
   ///
@@ -6139,12 +6061,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cube ID'**
   String get cubeIdTitle;
-
-  /// No description provided for @cubeIdRowEmpty.
-  ///
-  /// In en, this message translates to:
-  /// **'Take a short @name'**
-  String get cubeIdRowEmpty;
 
   /// No description provided for @cubeIdExplainer.
   ///

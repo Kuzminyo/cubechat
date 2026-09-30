@@ -730,10 +730,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileEmergencyWipe => 'Emergency wipe';
 
   @override
-  String get profileEmergencyWipeHint =>
-      'Triple-tap to erase all keys, peers, and messages.';
-
-  @override
   String get profileEmergencyWipeConfirm => 'Erase everything?';
 
   @override
@@ -1335,10 +1331,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileContactCard => 'Contact card';
 
   @override
-  String get profileContactCardSubtitle =>
-      'Chat with someone out of Bluetooth range';
-
-  @override
   String get chatsAddContactTooltip => 'Add a contact by card';
 
   @override
@@ -1379,9 +1371,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String voiceTrimSelection(String duration) {
     return 'Sending $duration';
   }
-
-  @override
-  String get profilePrivacy => 'Privacy';
 
   @override
   String get profileLastSeen => 'Share last seen';
@@ -2568,18 +2557,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneTransferFailed => 'Could not complete the phone transfer';
 
   @override
-  String get profileGroupConnection => 'Connection';
-
-  @override
-  String get profileGroupPrivacy => 'Privacy';
-
-  @override
-  String get profileGroupData => 'Sharing & data';
-
-  @override
-  String get profileGroupApp => 'App';
-
-  @override
   String get profileSummaryMeshOnly => 'Mesh only';
 
   @override
@@ -2587,18 +2564,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileSummaryBackgroundOn => 'runs in background';
-
-  @override
-  String get profileSummaryDiscoverable => 'Discoverable';
-
-  @override
-  String get profileSummaryHidden => 'Hidden';
-
-  @override
-  String get profileSummaryLastSeenHidden => 'last seen hidden';
-
-  @override
-  String get profileSummaryMapHidden => 'map location hidden';
 
   @override
   String profileSummaryTransfersActive(int count) {
@@ -2865,12 +2830,6 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
-
-  @override
-  String get profileGroupCustomize => 'Customization';
-
-  @override
-  String get customizeTitle => 'Customization';
 
   @override
   String get customizeBarTitle => 'Navigation bar';
@@ -3530,9 +3489,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cubeIdTitle => 'Cube ID';
-
-  @override
-  String get cubeIdRowEmpty => 'Take a short @name';
 
   @override
   String get cubeIdExplainer =>

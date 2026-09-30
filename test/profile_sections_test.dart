@@ -5,6 +5,7 @@ import 'package:cubechat/features/cube_id/presentation/stranger_reach_selector.d
 import 'package:cubechat/features/moderation/presentation/about_screen.dart';
 import 'package:cubechat/features/profile/data/discovery_settings_controller.dart';
 import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
+import 'package:cubechat/features/profile/data/quiet_hours_controller.dart';
 import 'package:cubechat/features/profile/presentation/customize_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/profile/presentation/settings/settings_section_icons.dart';
@@ -452,6 +453,18 @@ void main() {
     await tester.pump();
     expect(tapped, isTrue);
     expect(calls, isNotEmpty, reason: 'a section row');
+  });
+
+  test('the notifications row shows quiet hours short enough to fit', () {
+    // "10:00 PM–7:00 AM" from a 12-hour phone ran past the row's value cap
+    // and was cut; the 24-hour form is under it in any language.
+    expect(
+      quietHoursSummary(
+        const QuietHours(enabled: true, fromMinutes: 22 * 60, toMinutes: 7 * 60),
+      ),
+      '22:00–07:00',
+    );
+    expect(quietHoursSummary(const QuietHours()), isNull);
   });
 
   testWidgets('About carries the way into Diagnostics', (tester) async {
