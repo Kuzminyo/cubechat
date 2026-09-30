@@ -57,7 +57,8 @@ class MeshForegroundService : Service() {
             .setContentText("Staying reachable over Bluetooth mesh")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            // Pre-O phones read the priority, not the channel.
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setShowWhen(false)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -104,11 +105,16 @@ class MeshForegroundService : Service() {
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (mgr.getNotificationChannel(OLD_CHANNEL_ID) != null) {
+                mgr.deleteNotificationChannel(OLD_CHANNEL_ID)
+            }
             if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
+                // MIN: still in the shade, as a foreground service must be,
+                // but no icon in the status bar.
                 val ch = NotificationChannel(
                     CHANNEL_ID,
                     "Mesh activity",
-                    NotificationManager.IMPORTANCE_LOW,
+                    NotificationManager.IMPORTANCE_MIN,
                 ).apply {
                     description = "Keeps Cubechat reachable over Bluetooth in the background"
                     setShowBadge(false)
@@ -119,7 +125,13 @@ class MeshForegroundService : Service() {
     }
 
     companion object {
-        const val CHANNEL_ID = "cubechat_mesh"
+        // A new id because a channel's importance is fixed once created: the
+        // old "cubechat_mesh" was IMPORTANCE_LOW, which puts an icon (or, with
+        // several, a white dot) in the status bar of every screen and every
+        // screenshot. The owner asked for it gone (2026-09-30). The old
+        // channel is deleted on the way in so phones do not keep both.
+        const val CHANNEL_ID = "cubechat_mesh_quiet"
+        const val OLD_CHANNEL_ID = "cubechat_mesh"
         const val NOTIF_ID = 4201
 
         fun start(ctx: Context) {
