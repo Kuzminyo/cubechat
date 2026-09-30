@@ -1143,7 +1143,7 @@
   "selfUpdateNotOurs": "Цей файл — не оновлення cubechat.",
   "selfUpdateFailed": "Оновлення не встановилося.",
   "chatTranscribeDownloading": "Телефон завантажує мовну модель для цього. Спробуйте за хвилину.",
-  "chatTranscribeNoLanguage": "На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання в Кастомізації.",
+  "chatTranscribeNoLanguage": "На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання: Профіль → Чати і медіа.",
   "chatTranscribeNotAllowed": "Розпізнавання мовлення вимкнене для CubeChat. Увімкніть його в Налаштуваннях iPhone → CubeChat.",
   "customizeTranscribeLanguageTitle": "Мова розпізнавання голосових",
   "customizeTranscribeLanguageAuto": "Авто",
@@ -1285,5 +1285,6 @@
   "subWhoSeesMe": "Хто мене бачить",
   "subProtection": "Захист",
   "subNotifications": "Сповіщення",
-  "subCalls": "Дзвінки"
+  "subCalls": "Дзвінки",
+  "profileDiscoverableMeshOff": "Bluetooth-мережу вимкнено — увімкніть її в розділі «Зв'язок»."
 }

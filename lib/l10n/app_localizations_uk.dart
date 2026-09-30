@@ -3176,7 +3176,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatTranscribeNoLanguage =>
-      'На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання в Кастомізації.';
+      'На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання: Профіль → Чати і медіа.';
 
   @override
   String get chatTranscribeNotAllowed =>
@@ -3681,4 +3681,8 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get subCalls => 'Дзвінки';
+
+  @override
+  String get profileDiscoverableMeshOff =>
+      'Bluetooth-мережу вимкнено — увімкніть її в розділі «Зв\'язок».';
 }

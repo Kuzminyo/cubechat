@@ -3140,7 +3140,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatTranscribeNoLanguage =>
-      'This phone has no speech model for that language. Pick the voice-to-text language in Customize.';
+      'This phone has no speech model for that language. Pick the voice-to-text language in Profile → Chats & media.';
 
   @override
   String get chatTranscribeNotAllowed =>
@@ -3638,4 +3638,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get subCalls => 'Calls';
+
+  @override
+  String get profileDiscoverableMeshOff =>
+      'Bluetooth mesh is off — turn it on in Connection.';
 }

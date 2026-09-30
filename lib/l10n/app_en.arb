@@ -1533,7 +1533,7 @@
   "@chatTranscribeDownloading": {
     "description": "Under a voice note when the on-device recogniser had to fetch its language model first."
   },
-  "chatTranscribeNoLanguage": "This phone has no speech model for that language. Pick the voice-to-text language in Customize.",
+  "chatTranscribeNoLanguage": "This phone has no speech model for that language. Pick the voice-to-text language in Profile → Chats & media.",
   "@chatTranscribeNoLanguage": {
     "description": "Under a voice note when no wanted language has an on-device model."
   },
@@ -1777,5 +1777,6 @@
   "subWhoSeesMe": "Who sees me",
   "subProtection": "Protection",
   "subNotifications": "Notifications",
-  "subCalls": "Calls"
+  "subCalls": "Calls",
+  "profileDiscoverableMeshOff": "Bluetooth mesh is off — turn it on in Connection."
 }

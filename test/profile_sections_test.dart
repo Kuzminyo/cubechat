@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:cubechat/features/cube_id/presentation/stranger_reach_selector.dart';
 import 'package:cubechat/features/moderation/presentation/about_screen.dart';
+import 'package:cubechat/features/profile/data/discovery_settings_controller.dart';
 import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 import 'package:cubechat/features/profile/presentation/customize_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/profile/presentation/settings/settings_tiles.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
+import 'package:cubechat/l10n/app_localizations_en.dart';
 import 'package:cubechat/l10n/app_localizations_uk.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -360,6 +362,33 @@ void main() {
         expect(seen[title], [entry.key], reason: '"$title"');
       }
     }
+  });
+
+  test('the transcription error points at the section that has the setting',
+      () {
+    // The voice-to-text language moved from Customize to Chats & media; an
+    // error still sending people to "Кастомізація" sends them to a screen
+    // that no longer has it.
+    final en = AppLocalizationsEn();
+    expect(t.chatTranscribeNoLanguage, contains(t.sectionChats));
+    expect(en.chatTranscribeNoLanguage, contains(en.sectionChats));
+  });
+
+  testWidgets('with the mesh off, discoverable says where the radio is',
+      (tester) async {
+    // Discoverable is greyed out while the mesh is off. The sentence that
+    // explained why was on the mesh switch, which now lives on Connection.
+    await pumpScreen(tester, const PrivacySectionScreen());
+    expect(find.text(t.profileDiscoverableMeshOff), findsNothing);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PrivacySectionScreen)),
+    );
+    unawaited(
+      container.read(discoverySettingsProvider.notifier).setMeshEnabled(false),
+    );
+    await tester.pump();
+    expect(find.text(t.profileDiscoverableMeshOff), findsOneWidget);
   });
 
   testWidgets('About carries the way into Diagnostics', (tester) async {

@@ -5489,7 +5489,7 @@ abstract class AppLocalizations {
   /// Under a voice note when no wanted language has an on-device model.
   ///
   /// In en, this message translates to:
-  /// **'This phone has no speech model for that language. Pick the voice-to-text language in Customize.'**
+  /// **'This phone has no speech model for that language. Pick the voice-to-text language in Profile → Chats & media.'**
   String get chatTranscribeNoLanguage;
 
   /// Under a voice note on iOS when speech recognition permission was refused.
@@ -6343,6 +6343,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calls'**
   String get subCalls;
+
+  /// No description provided for @profileDiscoverableMeshOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth mesh is off — turn it on in Connection.'**
+  String get profileDiscoverableMeshOff;
 }
 
 class _AppLocalizationsDelegate
