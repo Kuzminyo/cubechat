@@ -46,6 +46,9 @@ class TabHeader extends StatelessWidget {
   /// Measured: the pill made the header 11 points taller on one page only.
   static const double subtitleRowHeight = 28;
 
+  /// The whole header with a subtitle, which every tab has.
+  static const double height = topPadding + rowHeight + subtitleRowHeight;
+
   /// On the mark's box, so a test can find where it landed.
   static const markKey = ValueKey('tab-header-mark');
 

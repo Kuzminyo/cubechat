@@ -50,7 +50,7 @@ class AirDropPage extends ConsumerWidget {
         // the Nearby tab's shared header above the switch already names this
         // page and already pads the switch away from it (nearby_screen.dart).
         // It does start below the section switch, which floats over this
-        // list and slides away on scroll — see [ScrollHidingIsland].
+        // list and slides away on scroll — see [TabPageFrame].
         padding: EdgeInsets.fromLTRB(16, IslandInset.of(context), 16, 140),
         children: [
           if (bluetoothOff) ...[

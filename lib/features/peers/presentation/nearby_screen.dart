@@ -8,6 +8,7 @@ import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../core/widgets/section_switch.dart';
 import '../../../core/widgets/tab_header.dart';
+import '../../../core/widgets/tab_page_frame.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_navigation.dart';
 import '../../airdrop/presentation/airdrop_page.dart';
@@ -35,10 +36,6 @@ class NearbyScreen extends ConsumerStatefulWidget {
 
 class _NearbyScreenState extends ConsumerState<NearbyScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  /// The space above and below the floating section switch.
-  static const double _islandTop = 14;
-  static const double _islandBottom = 16;
-
   int _page = 0;
   double _from = 1;
 
@@ -208,62 +205,46 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     _visible = visible;
     return SafeArea(
       bottom: false,
-      child: Column(
-        children: [
-          // One section header owned by the shell — Contacts' title-then-switch
-          // arrangement, so the name isn't drawn twice (the pages used to draw
-          // their own display titles too; see peers_screen.dart's _Header and
-          // airdrop_page.dart).
-          TabHeader(
-            mark: const CubeLogo(size: 32),
-            title: t.peersTitle,
-            titleKey: const Key('nearby-section-title'),
-            subtitle: subtitle,
-            subtitleKey: const Key('nearby-section-subtitle'),
-            subtitleTrailing:
-                scanning ? ScanningPulse(label: t.bleScanning) : null,
-          ),
-          // The switch floats over the pages and slides away while you scroll
-          // down; each page starts its list below it (see [IslandInset]).
-          Expanded(
-            child: ScrollHidingIsland(
-              islandHeight: _islandTop + SectionSwitch.height + _islandBottom,
-              showKey: _page,
-              island: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  20,
-                  _islandTop,
-                  20,
-                  _islandBottom,
-                ),
-                child: SectionSwitch(
-                  labels: [t.peersTitle, t.airdropTab, t.nearbyTabFiles],
-                  selected: _page,
-                  onSelect: _select,
+      // One section header owned by the shell, drawn over the pages the way
+      // Chats draws its own: the switch slides away under it while you scroll
+      // down, and each page starts its list below both (see [IslandInset]).
+      // The pages used to draw their own display titles too; see
+      // peers_screen.dart's _Header and airdrop_page.dart.
+      child: TabPageFrame(
+        header: TabHeader(
+          mark: const CubeLogo(size: 32),
+          title: t.peersTitle,
+          titleKey: const Key('nearby-section-title'),
+          subtitle: subtitle,
+          subtitleKey: const Key('nearby-section-subtitle'),
+          subtitleTrailing:
+              scanning ? ScanningPulse(label: t.bleScanning) : null,
+        ),
+        pageKey: _page,
+        island: SectionSwitch(
+          labels: [t.peersTitle, t.airdropTab, t.nearbyTabFiles],
+          selected: _page,
+          onSelect: _select,
+        ),
+        child: Stack(
+          children: [
+            for (var i = 0; i < pages.length; i++)
+              Offstage(
+                offstage: i != _page && i != _leaving,
+                child: TickerMode(
+                  enabled: visible && i == _page,
+                  child: _PageSlide(
+                    animation: i == _page || i == _leaving
+                        ? _slide
+                        : kAlwaysCompleteAnimation,
+                    from: _from,
+                    leaving: i == _leaving && i != _page,
+                    child: pages[i],
+                  ),
                 ),
               ),
-              child: Stack(
-                children: [
-                  for (var i = 0; i < pages.length; i++)
-                    Offstage(
-                      offstage: i != _page && i != _leaving,
-                      child: TickerMode(
-                        enabled: visible && i == _page,
-                        child: _PageSlide(
-                          animation: i == _page || i == _leaving
-                              ? _slide
-                              : kAlwaysCompleteAnimation,
-                          from: _from,
-                          leaving: i == _leaving && i != _page,
-                          child: pages[i],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

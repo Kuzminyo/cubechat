@@ -1,5 +1,6 @@
 import 'package:cubechat/core/routing/branch_pager.dart';
 import 'package:cubechat/core/widgets/glass_card.dart';
+import 'package:cubechat/core/widgets/scroll_hiding_island.dart';
 import 'package:cubechat/core/widgets/section_switch.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_controller.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_history_controller.dart';
@@ -20,6 +21,20 @@ import 'package:flutter_test/flutter_test.dart';
 /// The three controllers AirDropPage and _FilesPage reach for, stood in with
 /// no Hive/messaging underneath — this file is about the shell's layout, not
 /// about AirDrop or file-transfer behaviour, which have their own tests.
+/// A stand-in page that starts where a real one does: below the header and
+/// the section switch drawn over the pages.
+class _Page extends StatelessWidget {
+  const _Page(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.only(top: IslandInset.of(context)),
+        child: Text(label),
+      );
+}
+
 class _EmptyAirDrop extends AirDropController {
   @override
   AirDropState build() => const AirDropState();
@@ -151,9 +166,11 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: Locale('uk'),
+          // Each starts below the header and switch drawn over the pages, as
+          // the real pages do through IslandInset.
           home: Scaffold(
             body: NearbyScreen(
-              pages: [Text('page 0'), Text('page 1'), Text('page 2')],
+              pages: [_Page('page 0'), _Page('page 1'), _Page('page 2')],
             ),
           ),
         ),
@@ -232,7 +249,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(shown(), '\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u043d\u0456 \u0439 \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u0456 \u0444\u0430\u0439\u043b\u0438');
     // And back: the subtitle is the selected page's, not the last one seen.
-    await tester.tap(find.text('\u041f\u043e\u0431\u043b\u0438\u0437\u0443').last);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(SectionSwitch),
+        matching: find.text('\u041f\u043e\u0431\u043b\u0438\u0437\u0443'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(shown(), '\u041f\u0440\u0438\u0441\u0442\u0440\u043e\u0457 \u0443 \u0440\u0430\u0434\u0456\u0443\u0441\u0456 Bluetooth');
   });
