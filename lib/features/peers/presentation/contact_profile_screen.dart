@@ -17,6 +17,7 @@ import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../core/widgets/more_button.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -1520,11 +1521,11 @@ class _RoundButton extends StatelessWidget {
   Widget build(BuildContext context) => Material(
         color: Colors.black.withValues(alpha: 0.34),
         shape: const CircleBorder(),
-        child: IconButton(
+        // The shared header button: one size and target with every other.
+        child: HeaderIconButton(
+          icon: icon,
           onPressed: onTap,
           tooltip: tooltip,
-          icon: Icon(icon,
-              color: AppColors.textOnGlass, size: AppMenu.buttonIcon),
         ),
       );
 }

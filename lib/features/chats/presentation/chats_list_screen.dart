@@ -19,7 +19,6 @@ import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';
-import '../../../core/theme/typography.dart';
 import '../../chat/presentation/widgets/held_media_entry.dart';
 import '../../chat/presentation/widgets/send_queue_sheet.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -29,7 +28,8 @@ import '../../../core/widgets/bar_glass.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
-import '../../../core/widgets/triple_tap_detector.dart';
+import '../../../core/widgets/more_button.dart';
+import '../../../core/widgets/tab_header.dart';
 import '../../../core/widgets/unread_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -1724,7 +1724,11 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool softBottom;
 
   /// The title row: logo, name over subtitle, and the two controls.
-  static const double titleHeight = 84;
+  ///
+  /// 90 since the shared [TabHeader] (12 + 44 + a subtitle ≈ 73): the search
+  /// field starts at `titleHeight - 4`, and at 84 it sat 7 points under the
+  /// subtitle where Contacts and Nearby leave 14 before their switch.
+  static const double titleHeight = 90;
 
   /// What the search field adds on top of it while the list is at rest.
   static const double searchHeight = 58;
@@ -1912,7 +1916,6 @@ class _TitleRowWithSearch extends StatelessWidget {
 
   /// The round button's side, and the width the row keeps for the overflow.
   static const double _bubble = 42;
-  static const double _overflowSlot = 44;
   static const double _sidePad = 16;
 
   @override
@@ -1923,14 +1926,21 @@ class _TitleRowWithSearch extends StatelessWidget {
         // Where the search sits at each end of the journey.
         final restWidth = box.maxWidth - _sidePad * 2;
         final width = lerpDouble(restWidth, _bubble, t)!;
+        // Collapsed, it lands in the gap [TabHeader] keeps beside the menu,
+        // centred on the title row — the shared header's margins, not this
+        // list's.
         final left = lerpDouble(
           _sidePad,
-          box.maxWidth - _sidePad - _overflowSlot - _bubble - 2,
+          box.maxWidth -
+              TabHeader.sidePadding -
+              HeaderIconButton.target -
+              _bubble -
+              2,
           t,
         )!;
         final top = lerpDouble(
           _ChatsHeaderDelegate.titleHeight - 4,
-          (_ChatsHeaderDelegate.titleHeight - _bubble) / 2,
+          TabHeader.topPadding + (TabHeader.rowHeight - _bubble) / 2,
           t,
         )!;
         final height = lerpDouble(46, _bubble, t)!;
@@ -1939,52 +1949,24 @@ class _TitleRowWithSearch extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
+            // The shared tab header, so the title sits where Contacts' and
+            // Nearby's do and does not jump as you change tab.
             Positioned(
-              left: _sidePad,
-              right: _sidePad,
+              left: 0,
+              right: 0,
               top: 0,
-              height: _ChatsHeaderDelegate.titleHeight,
-              child: Row(
-                children: [
-                  const CubeLogo(size: 36),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: TripleTapDetector(
-                      onTripleTap: onWipe,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            kAppTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.display(),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: AppColors.textOnGlassDim,
-                              fontSize: 12.5,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // The gap the search bubble lands in, held open at all times
-                  // so the name does not shuffle sideways as it arrives.
+              child: TabHeader(
+                mark: const CubeLogo(size: 32),
+                title: kAppTitle,
+                subtitle: subtitle,
+                onTitleTripleTap: onWipe,
+                actions: [
+                  // The gap the search bubble lands in, held open at all
+                  // times so the name does not shuffle sideways as it arrives.
                   const SizedBox(width: _bubble + 6),
-                  SizedBox(
-                    width: _overflowSlot,
-                    child: _ChatsOverflowMenu(
-                      onAddContact: onAddContact,
-                      onNewChannel: onNewChannel,
-                    ),
+                  _ChatsOverflowMenu(
+                    onAddContact: onAddContact,
+                    onNewChannel: onNewChannel,
                   ),
                 ],
               ),
@@ -2314,8 +2296,7 @@ class _SelectionOverflow extends ConsumerWidget {
     final archivedIds = ref.watch(archivedChatsControllerProvider);
     final anyArchived = selected.isNotEmpty &&
         selected.every((c) => archivedIds.contains(c.id));
-    return IconButton(
-      icon: Icon(Icons.more_vert_rounded, color: AppColors.textOnGlass),
+    return MoreButton(
       onPressed: () async {
         final box = context.findRenderObject() as RenderBox?;
         final origin = box == null
@@ -3654,8 +3635,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return IconButton(
-      icon: Icon(Icons.more_vert_rounded, color: AppColors.brandPrimary),
+    return MoreButton(
       tooltip: t.chatsMenuTooltip,
       onPressed: () => _open(context, t),
     );

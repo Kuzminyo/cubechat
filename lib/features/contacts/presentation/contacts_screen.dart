@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show FloatingHeaderSnapConfiguration;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../channels/presentation/new_channel_screen.dart';
-import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/more_button.dart';
 import '../../../core/widgets/section_switch.dart';
+import '../../../core/widgets/tab_header.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
@@ -97,7 +99,7 @@ class ContactsScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactsScreenState extends ConsumerState<ContactsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _slide = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 260),
@@ -185,55 +187,47 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.contacts_rounded,
-                        color: AppColors.brandPrimary,
-                        size: 30,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          t.contactsTitle,
-                          style: AppTypography.display(),
-                        ),
-                      ),
-                      // A channel is the one thing here that is not a person,
-                      // so it gets the megaphone rather than a place in the
-                      // list. Same dialog the Chats menu opens.
-                      IconButton(
-                        onPressed: () =>
-                            unawaited(openNewChannelScreen(context)),
-                        icon: const Icon(Icons.campaign_rounded),
-                        color: AppColors.brandPrimary,
-                        iconSize: 26,
-                        tooltip: t.chatsMenuNewChannel,
-                      ),
-                    ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TabHeader(
+                  mark: Icon(
+                    Icons.contacts_rounded,
+                    color: AppColors.brandPrimary,
+                    size: 30,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    t.contactsSubtitle,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 13,
+                  title: t.contactsTitle,
+                  subtitle: t.contactsSubtitle,
+                  actions: [
+                    // A channel is the one thing here that is not a person,
+                    // so it gets the megaphone rather than a place in the
+                    // list. Same dialog the Chats menu opens.
+                    HeaderIconButton(
+                      icon: Icons.campaign_rounded,
+                      onPressed: () =>
+                          unawaited(openNewChannelScreen(context)),
+                      tooltip: t.chatsMenuNewChannel,
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  // Contacts or calls: two halves of one screen, the way
-                  // Telegram pairs them.
-                  SectionSwitch(
-                    labels: [t.contactsTabContacts, t.contactsTabCalls],
-                    selected: _calls ? 1 : 0,
-                    onSelect: _selectSection,
-                  ),
-                ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Contacts or calls: two halves of one screen, the way Telegram
+          // pairs them. Floating: it scrolls away with the list and the
+          // slightest scroll back up brings the whole island back, the same
+          // as the switch on Nearby.
+          SliverPersistentHeader(
+            floating: true,
+            delegate: _FloatingIslandDelegate(
+              vsync: this,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                child: SectionSwitch(
+                  labels: [t.contactsTabContacts, t.contactsTabCalls],
+                  selected: _calls ? 1 : 0,
+                  onSelect: _selectSection,
+                ),
               ),
             ),
           ),
@@ -749,6 +743,43 @@ class _ContactsEmptyState extends StatelessWidget {
 }
 
 /// One label in the filter row.
+/// The Contacts | Calls island as a floating sliver header: gone while you
+/// scroll down, fully back on the slightest scroll up (the snap), without the
+/// list underneath moving to make room.
+class _FloatingIslandDelegate extends SliverPersistentHeaderDelegate {
+  _FloatingIslandDelegate({required this.vsync, required this.child});
+
+  @override
+  final TickerProvider vsync;
+  final Widget child;
+
+  static const double _extent = 14 + SectionSwitch.height + 16;
+
+  @override
+  double get minExtent => _extent;
+
+  @override
+  double get maxExtent => _extent;
+
+  @override
+  FloatingHeaderSnapConfiguration get snapConfiguration =>
+      FloatingHeaderSnapConfiguration(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) =>
+      SizedBox(height: _extent, child: child);
+
+  @override
+  bool shouldRebuild(_FloatingIslandDelegate old) => old.child != child;
+}
+
 class _TagChip extends StatelessWidget {
   const _TagChip({
     required this.label,

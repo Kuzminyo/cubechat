@@ -15,6 +15,7 @@ import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
+import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_people_sheet.dart';
 import '../../airdrop/presentation/airdrop_send_flow.dart';
@@ -87,7 +88,8 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+        // Starts below the section switch floating over it on Nearby.
+        padding: EdgeInsets.fromLTRB(16, IslandInset.of(context), 16, 140),
         children: [
           _Header(peripheral: peripheral),
           if (headerHasContent) const SizedBox(height: 12),

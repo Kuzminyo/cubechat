@@ -27,6 +27,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
+import '../../../core/widgets/more_button.dart';
 import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -2676,7 +2677,9 @@ class _CoverMenuButton extends StatelessWidget {
   Widget build(BuildContext context) => Material(
         color: Colors.black.withValues(alpha: 0.34 * scrim),
         shape: const CircleBorder(),
-        child: IconButton(
+        // The shared three dots — same size and target as every other one —
+        // on the disc that keeps them legible over a photo.
+        child: MoreButton(
           // Three dots and nothing else, so the only name this control has is
           // the one given here — without it a screen reader reached a button
           // and had nothing to call it. The other overflow buttons in the app
@@ -2692,11 +2695,6 @@ class _CoverMenuButton extends StatelessWidget {
             if (box == null) return;
             onPick(box.localToGlobal(Offset.zero) & box.size);
           },
-          icon: Icon(
-            Icons.more_vert_rounded,
-            color: AppColors.textOnGlass,
-            size: AppMenu.buttonIcon,
-          ),
         ),
       );
 }

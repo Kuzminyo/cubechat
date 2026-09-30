@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/routing/branch_pager.dart';
-import '../../../core/theme/colors.dart';
-import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
+import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../core/widgets/section_switch.dart';
+import '../../../core/widgets/tab_header.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../airdrop/presentation/airdrop_navigation.dart';
 import '../../airdrop/presentation/airdrop_page.dart';
@@ -35,6 +35,10 @@ class NearbyScreen extends ConsumerStatefulWidget {
 
 class _NearbyScreenState extends ConsumerState<NearbyScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  /// The space above and below the floating section switch.
+  static const double _islandTop = 14;
+  static const double _islandBottom = 16;
+
   int _page = 0;
   double _from = 1;
   late final AnimationController _slide = AnimationController(
@@ -198,71 +202,51 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
           // arrangement, so the name isn't drawn twice (the pages used to draw
           // their own display titles too; see peers_screen.dart's _Header and
           // airdrop_page.dart).
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const CubeLogo(size: 32),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        t.peersTitle,
-                        key: const Key('nearby-section-title'),
-                        style: AppTypography.display(),
-                      ),
-                    ),
-                  ],
+          TabHeader(
+            mark: const CubeLogo(size: 32),
+            title: t.peersTitle,
+            titleKey: const Key('nearby-section-title'),
+            subtitle: subtitle,
+            subtitleKey: const Key('nearby-section-subtitle'),
+            subtitleTrailing:
+                scanning ? ScanningPulse(label: t.bleScanning) : null,
+          ),
+          // The switch floats over the pages and slides away while you scroll
+          // down; each page starts its list below it (see [IslandInset]).
+          Expanded(
+            child: ScrollHidingIsland(
+              islandHeight: _islandTop + SectionSwitch.height + _islandBottom,
+              showKey: _page,
+              island: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  _islandTop,
+                  20,
+                  _islandBottom,
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        subtitle,
-                        key: const Key('nearby-section-subtitle'),
-                        style: TextStyle(
-                          color: AppColors.textOnGlassDim,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    if (scanning) ...[
-                      const SizedBox(width: 10),
-                      ScanningPulse(label: t.bleScanning),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 14),
-                SectionSwitch(
+                child: SectionSwitch(
                   labels: [t.peersTitle, t.airdropTab, t.nearbyTabFiles],
                   selected: _page,
                   onSelect: _select,
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Stack(
-              children: [
-                for (var i = 0; i < pages.length; i++)
-                  Offstage(
-                    offstage: i != _page,
-                    child: TickerMode(
-                      enabled: visible && i == _page,
-                      child: _PageSlide(
-                        animation:
-                            i == _page ? _slide : kAlwaysCompleteAnimation,
-                        from: _from,
-                        child: pages[i],
+              ),
+              child: Stack(
+                children: [
+                  for (var i = 0; i < pages.length; i++)
+                    Offstage(
+                      offstage: i != _page,
+                      child: TickerMode(
+                        enabled: visible && i == _page,
+                        child: _PageSlide(
+                          animation:
+                              i == _page ? _slide : kAlwaysCompleteAnimation,
+                          from: _from,
+                          child: pages[i],
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -310,9 +294,9 @@ class _FilesPage extends StatelessWidget {
   const _FilesPage();
 
   @override
-  Widget build(BuildContext context) => const FileTransferList(
+  Widget build(BuildContext context) => FileTransferList(
         bottomPadding: 140,
-        topPadding: 0,
+        topPadding: IslandInset.of(context),
         showClearHistory: true,
       );
 }

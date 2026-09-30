@@ -8,6 +8,7 @@ import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
+import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../core/widgets/section_switch.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/airdrop_clock.dart';
@@ -48,7 +49,9 @@ class AirDropPage extends ConsumerWidget {
         // No display title here, and no leading top padding of its own —
         // the Nearby tab's shared header above the switch already names this
         // page and already pads the switch away from it (nearby_screen.dart).
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+        // It does start below the section switch, which floats over this
+        // list and slides away on scroll — see [ScrollHidingIsland].
+        padding: EdgeInsets.fromLTRB(16, IslandInset.of(context), 16, 140),
         children: [
           if (bluetoothOff) ...[
             GlassCard(
