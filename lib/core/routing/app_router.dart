@@ -179,6 +179,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
       if (seenOnboarding && atIntro) return '/chats';
       return null;
     },
+    // An address with no screen lands on the chats, never on go_router's
+    // "Page Not Found". A cubechat.tech link reached the router as a route in
+    // 1121 — "no routes for location: https://cubechat.tech/u.html#…", with a
+    // "Home" button to `/`, which has no screen either. Flutter's own deep
+    // linking is off now (AndroidManifest, Info.plist) and `app_links` owns
+    // links; this is the net under anything else that arrives.
+    onException: (context, state, router) =>
+        router.go(seenOnboarding ? '/chats' : '/onboarding'),
     routes: [
       GoRoute(
         path: '/onboarding',

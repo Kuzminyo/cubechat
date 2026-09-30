@@ -141,6 +141,12 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Links are app_links' job (lib/app.dart). Flutter's own deep
+                 linking, on by default, pushed https://cubechat.tech/u.html#…
+                 into go_router as a route and showed "Page Not Found" (1121). -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false" />
             <!-- "Share → CubeChat" from any app: the files go to AirDrop. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

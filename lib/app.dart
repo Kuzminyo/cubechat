@@ -115,6 +115,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       final String pubkeyHex;
       switch (link) {
         case NameLink(:final name):
+          // One's own link, tapped on one's own phone: there is no chat with
+          // yourself, so show the name it points at.
+          if (name == ref.read(cubeIdControllerProvider).name) {
+            unawaited(_router.push('/cube-id'));
+            return;
+          }
           final result = await ref
               .read(cubeIdControllerProvider.notifier)
               .lookupAndAdd(name);

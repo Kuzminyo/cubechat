@@ -43,6 +43,10 @@
 	     cubechat.tech/u.html and /c1 (cubechat://u?n=dima, cubechat://c1?c=…)
 	     for when a Universal Link was not handed over — typed into Safari,
 	     or tapped inside an app's own browser — and old cubechat:c1: cards. -->
+	<!-- Links are app_links' job (lib/app.dart); Flutter's own deep linking
+	     would push the URL into go_router as a route ("Page Not Found", 1121). -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
