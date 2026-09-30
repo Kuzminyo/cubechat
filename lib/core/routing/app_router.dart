@@ -410,6 +410,15 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           state: state,
         ),
       ),
+      // The profile's sections, each opening the way Customize does.
+      GoRoute(
+        path: '/settings/privacy',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: PrivacySectionScreen()),
+          state: state,
+        ),
+      ),
       GoRoute(
         path: '/transfers',
         parentNavigatorKey: _rootNavKey,

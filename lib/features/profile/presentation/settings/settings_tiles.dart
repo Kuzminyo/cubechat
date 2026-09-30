@@ -15,22 +15,11 @@ class SettingsGroup extends StatelessWidget {
 
   final List<Widget> children;
 
-  /// On every divider, so a test can count them.
-  static const dividerKey = ValueKey('settings-group-divider');
-
   @override
   Widget build(BuildContext context) {
     final rows = <Widget>[];
     for (var i = 0; i < children.length; i++) {
-      if (i > 0) {
-        rows.add(
-          Padding(
-            key: dividerKey,
-            padding: const EdgeInsets.only(left: 62),
-            child: Container(height: 1, color: AppColors.glass(0.07)),
-          ),
-        );
-      }
+      if (i > 0) rows.add(const SettingsGroupDivider());
       rows.add(children[i]);
     }
     final radius = BorderRadius.circular(22);
@@ -51,6 +40,21 @@ class SettingsGroup extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The hairline between two rows of a [SettingsGroup]. A type of its own
+/// rather than a shared key: one key on several siblings is a duplicate-key
+/// error the moment a group holds three rows.
+class SettingsGroupDivider extends StatelessWidget {
+  const SettingsGroupDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 62),
+      child: Container(height: 1, color: AppColors.glass(0.07)),
     );
   }
 }

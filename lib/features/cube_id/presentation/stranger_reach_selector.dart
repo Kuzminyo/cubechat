@@ -14,9 +14,16 @@ import '../../profile/data/privacy_settings_controller.dart';
 /// how findable to be. Bluetooth neighbours are never affected; see
 /// `strangerVerdict`.
 class StrangerReachSelector extends ConsumerWidget {
-  const StrangerReachSelector({super.key, this.showHint = true});
+  const StrangerReachSelector({
+    super.key,
+    this.showHint = true,
+    this.showTitle = true,
+  });
 
   final bool showHint;
+
+  /// False where a section subheader above already asks the question.
+  final bool showTitle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,15 +44,17 @@ class StrangerReachSelector extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          t.strangerReachTitle,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        if (showTitle) ...[
+          Text(
+            t.strangerReachTitle,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         SizedBox(
           width: double.infinity,
           child: SegmentedButton<StrangerReach>(

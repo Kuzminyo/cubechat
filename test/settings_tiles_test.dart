@@ -52,11 +52,30 @@ void main() {
     expect(value.maxLines, 1);
     expect(value.overflow, TextOverflow.ellipsis);
 
-    expect(find.byKey(SettingsGroup.dividerKey), findsOneWidget);
+    expect(find.byType(SettingsGroupDivider), findsOneWidget);
     expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(2));
 
     await tester.tap(find.text('Cube ID'));
     expect(tapped, 1);
+  });
+
+  testWidgets('three rows: two dividers, no duplicate-key error',
+      (tester) async {
+    await pump(
+      tester,
+      SettingsGroup(
+        children: [
+          for (final s in [
+            SettingsSection.chats,
+            SettingsSection.appearance,
+            SettingsSection.data,
+          ])
+            SettingsSectionRow(section: s, title: s.name, onTap: () {}),
+        ],
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsGroupDivider), findsNWidgets(2));
   });
 
   testWidgets('a danger row has no chevron', (tester) async {

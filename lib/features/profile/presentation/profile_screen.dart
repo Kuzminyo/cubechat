@@ -56,6 +56,11 @@ import '../../peers/data/peer_discovery_controller.dart';
 import 'widgets/code_pad.dart';
 import '../data/dead_mans_switch_controller.dart';
 import '../../map/presentation/map_sharing_consent.dart';
+import 'settings/settings_tiles.dart';
+
+// Each section screen is a part of this file so it can use the setting widgets
+// below as they are, without moving three thousand lines to make them public.
+part 'settings/privacy_section.dart';
 
 // The version was a `const '0.1.0'` here, written on the first day and never
 // touched — so this screen, the one place a tester checks what they are
@@ -1320,9 +1325,6 @@ class _PrivacyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final s = ref.watch(privacySettingsProvider);
-    final n = ref.read(privacySettingsProvider.notifier);
-    final lock = ref.watch(appLockControllerProvider);
     return _frame(
       framed,
       child: Column(
@@ -1337,176 +1339,33 @@ class _PrivacyCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // First, and the odd one out: every other switch here decides what
-          // other people are told about you. This one decides whether the
-          // person holding the phone is you.
-          _SettingSwitch(
-            icon: lock.enabled ? Icons.lock_rounded : Icons.lock_open_rounded,
-            title: t.appLockTitle,
-            hint: lock.enabled ? t.appLockOn : t.appLockHint,
-            value: lock.enabled,
-            onChanged: (on) => unawaited(_toggleAppLock(context, ref, on)),
-          ),
-          // Only once there is a lock to delay. Offering the delay first would
-          // be a setting for a thing that is not on.
-          if (lock.enabled) ...[
-            const SizedBox(height: 10),
-            _GraceRow(seconds: lock.graceSeconds),
-          ],
+          const _AppLockTile(),
           const SizedBox(height: 10),
           const _DeadMansRow(),
           const SizedBox(height: 14),
-          _SettingSwitch(
-            icon: Icons.shield_outlined,
-            title: t.filterToggle,
-            hint: t.filterToggleHint,
-            value: ref.watch(filterEnabledProvider),
-            onChanged: (enabled) => unawaited(
-              ref.read(filterEnabledProvider.notifier).setEnabled(enabled),
-            ),
-          ),
+          const _FilterTile(),
           const SizedBox(height: 14),
-          // A setting rather than a button on the recorder, because the camera
-          // plugin cannot hand a running capture to the other sensor: a switch
-          // on the circle itself would either do nothing until the next one or
-          // throw away what had been recorded. Chosen before the finger goes
-          // down, it simply is the camera you get.
-          _SettingSwitch(
-            icon: ref.watch(circleLensProvider)
-                ? Icons.photo_camera_front_rounded
-                : Icons.photo_camera_back_rounded,
-            title: t.circleLensTitle,
-            hint: ref.watch(circleLensProvider)
-                ? t.circleLensFrontHint
-                : t.circleLensBackHint,
-            value: ref.watch(circleLensProvider),
-            onChanged: (front) => unawaited(
-              ref.read(circleLensProvider.notifier).set(front),
-            ),
-          ),
+          const _CircleLensTile(),
           const SizedBox(height: 14),
-          _SettingSwitch(
-            icon: s.shareMapLocation
-                ? Icons.location_on_rounded
-                : Icons.location_off_rounded,
-            title: t.profileMapLocation,
-            hint: s.shareMapLocation
-                ? t.profileMapLocationOnHint
-                : t.profileMapLocationOffHint,
-            value: s.shareMapLocation,
-            // On is asked, off is not — see [confirmMapSharing].
-            onChanged: (on) => unawaited(
-              on
-                  ? confirmMapSharing(context, ref)
-                  : n.setShareMapLocation(false),
-            ),
-          ),
+          const _MapLocationTile(),
           const SizedBox(height: 14),
-          // With the map pin and last seen, because it is the same kind of
-          // question: what the other person is told about you. A direct call
-          // tells them your IP address; the relayed one, the default, tells
-          // them nothing.
-          _SettingSwitch(
-            icon: ref.watch(callAllowsDirectProvider)
-                ? Icons.call_split_rounded
-                : Icons.shield_rounded,
-            title: t.callDirectTitle,
-            hint: ref.watch(callAllowsDirectProvider)
-                ? t.callDirectOnHint
-                : t.callDirectOffHint,
-            value: ref.watch(callAllowsDirectProvider),
-            onChanged: (on) => unawaited(
-              ref.read(callAllowsDirectProvider.notifier).set(on),
-            ),
-          ),
+          const _CallDirectTile(),
           const SizedBox(height: 14),
-          // Beside the other call setting. A system permission rather than an
-          // app one, so the switch shows what Android says and flipping it opens
-          // the page that changes it — see [CallScreenAccess].
           if (PlatformInfo.isAndroid) ...[
-            Builder(
-              builder: (context) {
-                final access = ref.watch(callScreenAccessProvider);
-                return _SettingSwitch(
-                  icon: access.complete
-                      ? Icons.fullscreen_rounded
-                      : Icons.notifications_active_outlined,
-                  title: t.callFullScreenTitle,
-                  hint: access.xiaomi
-                      ? '${t.callFullScreenBody} ${t.callFullScreenXiaomi}'
-                      : t.callFullScreenBody,
-                  value: access.complete,
-                  onChanged: (_) {
-                    final notifier =
-                        ref.read(callScreenAccessProvider.notifier);
-                    unawaited(
-                      access.complete && access.xiaomi
-                          ? notifier.openVendorSettings()
-                          : notifier.openSettings(),
-                    );
-                  },
-                );
-              },
-            ),
+            const _CallFullScreenTile(),
             const SizedBox(height: 14),
             // Right under the switch it keeps on: an update installed from
             // here does not switch lock-screen calls off. See [SelfUpdate].
             const _InstallUpdateRow(),
             const SizedBox(height: 14),
           ],
-          _SettingSwitch(
-            icon: s.shareLastSeen
-                ? Icons.schedule_rounded
-                : Icons.history_toggle_off_rounded,
-            title: t.profileLastSeen,
-            hint: s.shareLastSeen
-                ? t.profileLastSeenOnHint
-                : t.profileLastSeenOffHint,
-            value: s.shareLastSeen,
-            onChanged: n.setShareLastSeen,
-          ),
+          const _LastSeenTile(),
           const SizedBox(height: 14),
-          _SettingSwitch(
-            icon: s.shareReadReceipts
-                ? Icons.done_all_rounded
-                : Icons.remove_done_rounded,
-            title: t.profileReadReceipts,
-            hint: s.shareReadReceipts
-                ? t.profileReadReceiptsOnHint
-                : t.profileReadReceiptsOffHint,
-            value: s.shareReadReceipts,
-            onChanged: n.setShareReadReceipts,
-          ),
+          const _ReadReceiptsTile(),
           const SizedBox(height: 14),
-          _SettingSwitch(
-            icon: s.allowForwardLink
-                ? Icons.shortcut_rounded
-                : Icons.person_off_rounded,
-            title: t.privacyForwardLinkTitle,
-            hint: t.privacyForwardLinkHint,
-            value: s.allowForwardLink,
-            // Told to everyone we talk to, not stored and forgotten: the
-            // person who forwards is whoever we said something to, and their
-            // build is the only place this can be honoured.
-            onChanged: (value) async {
-              await n.setAllowForwardLink(value);
-              await ref
-                  .read(messagingServiceProvider)
-                  .broadcastForwardPrivacy(allowed: value);
-            },
-          ),
+          const _ForwardLinkTile(),
           const SizedBox(height: 14),
-          // Who may ring this phone. Exceptions either way live on each
-          // contact's profile — see `ConversationSettings.acceptCalls`.
-          _SettingSwitch(
-            icon: s.acceptCalls
-                ? Icons.call_rounded
-                : Icons.phone_disabled_rounded,
-            title: t.privacyCallsTitle,
-            hint: s.acceptCalls ? t.privacyCallsOnHint : t.privacyCallsOffHint,
-            value: s.acceptCalls,
-            onChanged: n.setAcceptCalls,
-          ),
+          const _AcceptCallsTile(),
           const SizedBox(height: 14),
           // Strangers from the internet: everyone, by request, or nobody.
           // Three answers, so not a switch. Also on the card and Cube ID
@@ -1532,6 +1391,269 @@ class _PrivacyCard extends ConsumerWidget {
     );
   }
 }
+
+// The privacy card's switches, one widget each. They used to be one card; the
+// profile's sections put them on three different screens (privacy, calls,
+// chats), so each was cut out whole — body and comment moved as they were.
+
+class _AppLockTile extends ConsumerWidget {
+  const _AppLockTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final lock = ref.watch(appLockControllerProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // First, and the odd one out: every other switch here decides what
+        // other people are told about you. This one decides whether the
+        // person holding the phone is you.
+        _SettingSwitch(
+          icon: lock.enabled ? Icons.lock_rounded : Icons.lock_open_rounded,
+          title: t.appLockTitle,
+          hint: lock.enabled ? t.appLockOn : t.appLockHint,
+          value: lock.enabled,
+          onChanged: (on) => unawaited(_toggleAppLock(context, ref, on)),
+        ),
+        // Only once there is a lock to delay. Offering the delay first would
+        // be a setting for a thing that is not on.
+        if (lock.enabled) ...[
+          const SizedBox(height: 10),
+          _GraceRow(seconds: lock.graceSeconds),
+        ],
+      ],
+    );
+  }
+}
+
+class _FilterTile extends ConsumerWidget {
+  const _FilterTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return _SettingSwitch(
+      icon: Icons.shield_outlined,
+      title: t.filterToggle,
+      hint: t.filterToggleHint,
+      value: ref.watch(filterEnabledProvider),
+      onChanged: (enabled) => unawaited(
+        ref.read(filterEnabledProvider.notifier).setEnabled(enabled),
+      ),
+    );
+  }
+}
+
+class _CircleLensTile extends ConsumerWidget {
+  const _CircleLensTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    // A setting rather than a button on the recorder, because the camera
+    // plugin cannot hand a running capture to the other sensor: a switch
+    // on the circle itself would either do nothing until the next one or
+    // throw away what had been recorded. Chosen before the finger goes
+    // down, it simply is the camera you get.
+    return _SettingSwitch(
+      icon: ref.watch(circleLensProvider)
+          ? Icons.photo_camera_front_rounded
+          : Icons.photo_camera_back_rounded,
+      title: t.circleLensTitle,
+      hint: ref.watch(circleLensProvider)
+          ? t.circleLensFrontHint
+          : t.circleLensBackHint,
+      value: ref.watch(circleLensProvider),
+      onChanged: (front) => unawaited(
+        ref.read(circleLensProvider.notifier).set(front),
+      ),
+    );
+  }
+}
+
+class _MapLocationTile extends ConsumerWidget {
+  const _MapLocationTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return _SettingSwitch(
+      icon: s.shareMapLocation
+          ? Icons.location_on_rounded
+          : Icons.location_off_rounded,
+      title: t.profileMapLocation,
+      hint: s.shareMapLocation
+          ? t.profileMapLocationOnHint
+          : t.profileMapLocationOffHint,
+      value: s.shareMapLocation,
+      // On is asked, off is not — see [confirmMapSharing].
+      onChanged: (on) => unawaited(
+        on ? confirmMapSharing(context, ref) : n.setShareMapLocation(false),
+      ),
+    );
+  }
+}
+
+class _CallDirectTile extends ConsumerWidget {
+  const _CallDirectTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    // With the map pin and last seen, because it is the same kind of
+    // question: what the other person is told about you. A direct call
+    // tells them your IP address; the relayed one, the default, tells
+    // them nothing.
+    return _SettingSwitch(
+      icon: ref.watch(callAllowsDirectProvider)
+          ? Icons.call_split_rounded
+          : Icons.shield_rounded,
+      title: t.callDirectTitle,
+      hint: ref.watch(callAllowsDirectProvider)
+          ? t.callDirectOnHint
+          : t.callDirectOffHint,
+      value: ref.watch(callAllowsDirectProvider),
+      onChanged: (on) => unawaited(
+        ref.read(callAllowsDirectProvider.notifier).set(on),
+      ),
+    );
+  }
+}
+
+class _CallFullScreenTile extends ConsumerWidget {
+  const _CallFullScreenTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!PlatformInfo.isAndroid) return const SizedBox.shrink();
+    final t = AppLocalizations.of(context);
+    // Beside the other call setting. A system permission rather than an
+    // app one, so the switch shows what Android says and flipping it opens
+    // the page that changes it — see [CallScreenAccess].
+    final access = ref.watch(callScreenAccessProvider);
+    return _SettingSwitch(
+      icon: access.complete
+          ? Icons.fullscreen_rounded
+          : Icons.notifications_active_outlined,
+      title: t.callFullScreenTitle,
+      hint: access.xiaomi
+          ? '${t.callFullScreenBody} ${t.callFullScreenXiaomi}'
+          : t.callFullScreenBody,
+      value: access.complete,
+      onChanged: (_) {
+        final notifier = ref.read(callScreenAccessProvider.notifier);
+        unawaited(
+          access.complete && access.xiaomi
+              ? notifier.openVendorSettings()
+              : notifier.openSettings(),
+        );
+      },
+    );
+  }
+}
+
+class _LastSeenTile extends ConsumerWidget {
+  const _LastSeenTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return _SettingSwitch(
+      icon: s.shareLastSeen
+          ? Icons.schedule_rounded
+          : Icons.history_toggle_off_rounded,
+      title: t.profileLastSeen,
+      hint: s.shareLastSeen ? t.profileLastSeenOnHint : t.profileLastSeenOffHint,
+      value: s.shareLastSeen,
+      onChanged: n.setShareLastSeen,
+    );
+  }
+}
+
+class _ReadReceiptsTile extends ConsumerWidget {
+  const _ReadReceiptsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return _SettingSwitch(
+      icon: s.shareReadReceipts
+          ? Icons.done_all_rounded
+          : Icons.remove_done_rounded,
+      title: t.profileReadReceipts,
+      hint: s.shareReadReceipts
+          ? t.profileReadReceiptsOnHint
+          : t.profileReadReceiptsOffHint,
+      value: s.shareReadReceipts,
+      onChanged: n.setShareReadReceipts,
+    );
+  }
+}
+
+class _ForwardLinkTile extends ConsumerWidget {
+  const _ForwardLinkTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return _SettingSwitch(
+      icon: s.allowForwardLink
+          ? Icons.shortcut_rounded
+          : Icons.person_off_rounded,
+      title: t.privacyForwardLinkTitle,
+      hint: t.privacyForwardLinkHint,
+      value: s.allowForwardLink,
+      // Told to everyone we talk to, not stored and forgotten: the
+      // person who forwards is whoever we said something to, and their
+      // build is the only place this can be honoured.
+      onChanged: (value) async {
+        await n.setAllowForwardLink(value);
+        await ref
+            .read(messagingServiceProvider)
+            .broadcastForwardPrivacy(allowed: value);
+      },
+    );
+  }
+}
+
+class _AcceptCallsTile extends ConsumerWidget {
+  const _AcceptCallsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    // Who may ring this phone. Exceptions either way live on each
+    // contact's profile — see `ConversationSettings.acceptCalls`.
+    return _SettingSwitch(
+      icon: s.acceptCalls ? Icons.call_rounded : Icons.phone_disabled_rounded,
+      title: t.privacyCallsTitle,
+      hint: s.acceptCalls ? t.privacyCallsOnHint : t.privacyCallsOffHint,
+      value: s.acceptCalls,
+      onChanged: n.setAcceptCalls,
+    );
+  }
+}
+
+/// A setting sitting inside a [SettingsGroup]: the group draws the glass, this
+/// gives the row the same side margin as a section row, so the setting's icon
+/// lines up with the badges on the profile and the divider starts under text.
+/// [vertical] is 0 for a card drawn with `framed: false`, which pads itself.
+Widget _inset(Widget child, {double vertical = 10}) => Padding(
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: vertical),
+      child: child,
+    );
 
 /// "Wake this phone when something arrives."
 ///
