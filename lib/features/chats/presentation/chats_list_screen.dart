@@ -19,6 +19,7 @@ import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';
+import '../../../core/theme/typography.dart';
 import '../../chat/presentation/widgets/held_media_entry.dart';
 import '../../chat/presentation/widgets/send_queue_sheet.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -3541,13 +3542,18 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same row as every menu's — see [AppMenuRow].
     return Row(
       children: [
-        Icon(icon, size: 18, color: AppColors.brandPrimary),
-        const SizedBox(width: 12),
+        Icon(icon, size: AppMenu.rowIcon + 2, color: AppColors.textOnGlass),
+        const SizedBox(width: 14),
         Text(
           label,
-          style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: AppMenu.rowLabel,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );

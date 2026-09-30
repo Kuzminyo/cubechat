@@ -16,6 +16,8 @@ import '../../../core/transport/shared_contact.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
+import '../../../core/widgets/context_popup.dart'
+    show AppMenuRow, AppMenuSurface;
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/more_button.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -386,13 +388,8 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
               widthFactor: 0.82,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 48, 8, 12),
-                child: GlassCard(
-                  strong: true,
-                  borderRadius: 28,
-                  // Floats over the scrolled profile, not the aurora — here
-                  // there is real detail behind the panel worth softening.
-                  blur: true,
-                  padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+                // The same surface as every drop menu in the app.
+                child: AppMenuSurface(
                   // Scrolls, because the list of things you can do to a
                   // contact has outgrown a short phone: the privacy exceptions
                   // took it 307 points past the bottom of a 360x800 screen,
@@ -1587,41 +1584,27 @@ class _ActionTile extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.subtitle,
-    this.tone = Colors.white,
+    this.tone,
   });
 
   final IconData icon;
   final String label;
   final String? subtitle;
   final VoidCallback onTap;
-  final Color tone;
 
+  /// A destructive row's colour; null for the ordinary accent.
+  final Color? tone;
+
+  /// The shared menu row, so this panel reads like every other menu — its own
+  /// look (white icon, semibold label, chevron), now at the drop menus' size.
   @override
-  Widget build(BuildContext context) => ListTile(
-        minLeadingWidth: 32,
-        leading: Icon(icon, color: tone, size: AppMenu.rowIcon),
-        title: Text(
-          label,
-          style: TextStyle(
-            color: tone,
-            fontSize: AppMenu.rowLabel,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: subtitle == null
-            ? null
-            : Text(
-                subtitle!,
-                style: TextStyle(
-                  color: AppColors.textOnGlassDim,
-                  fontSize: AppMenu.rowSubtitle,
-                ),
-              ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: tone.withValues(alpha: 0.52),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  Widget build(BuildContext context) => AppMenuRow(
+        icon: icon,
+        label: label,
+        subtitle: subtitle,
+        tone: tone,
+        // Every row here opens a dialog or a screen of its own.
+        chevron: true,
         onTap: onTap,
       );
 }
