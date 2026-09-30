@@ -25,17 +25,34 @@ class CardLink extends CubechatLink {
 
 const String _host = 'cubechat.tech';
 
+/// Also read: the forms the cubechat.tech page uses to hand a link to the app
+/// when the system did not — `?n=`/`?c=` on the https path (Android's
+/// `intent://` carries a query, since the fragment is taken by `#Intent`),
+/// and the `cubechat://u?n=…` / `cubechat://c1?c=…` scheme (iOS). And a bare
+/// `cubechat:c1:…` card, which old QR codes and pasted cards are.
 CubechatLink? parseCubechatLink(Uri uri) {
+  if (uri.scheme == 'cubechat') {
+    if (uri.host == 'u') return _name(uri.queryParameters['n'] ?? '');
+    if (uri.host == 'c1') return _card(uri.queryParameters['c'] ?? '');
+    return _card(uri.toString());
+  }
   if (uri.scheme != 'https' || uri.host != _host) return null;
   final fragment = Uri.decodeComponent(uri.fragment);
   if (uri.path == '/u.html') {
-    final name = normalizeCubeName(fragment);
-    return cubeNameProblem(name) == CubeNameProblem.invalid
-        ? null
-        : NameLink(name);
+    return _name(uri.queryParameters['n'] ?? fragment);
   }
   if (uri.path == '/c1' || uri.path == '/c1/') {
-    return ContactCard.looksLikeCard(fragment) ? CardLink(fragment) : null;
+    return _card(uri.queryParameters['c'] ?? fragment);
   }
   return null;
 }
+
+CubechatLink? _name(String raw) {
+  final name = normalizeCubeName(raw);
+  return cubeNameProblem(name) == CubeNameProblem.invalid
+      ? null
+      : NameLink(name);
+}
+
+CubechatLink? _card(String raw) =>
+    ContactCard.looksLikeCard(raw) ? CardLink(raw) : null;

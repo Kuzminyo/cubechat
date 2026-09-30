@@ -21,6 +21,29 @@ void main() {
     expect((link! as CardLink).raw, contains(card));
   });
 
+  test('the page\'s "open in app" forms carry the name or card in the query',
+      () {
+    // Android: intent://…/u.html?n=dima arrives as https with the query.
+    final android =
+        parseCubechatLink(Uri.parse('https://cubechat.tech/u.html?n=Dima'));
+    expect((android! as NameLink).name, 'dima');
+    // iOS: the cubechat:// scheme.
+    final ios = parseCubechatLink(Uri.parse('cubechat://u?n=dima'));
+    expect((ios! as NameLink).name, 'dima');
+    final card = 'cubechat:c1:${'A' * 300}';
+    final iosCard = parseCubechatLink(
+      Uri.parse('cubechat://c1?c=${Uri.encodeComponent(card)}'),
+    );
+    expect((iosCard! as CardLink).raw, contains(card));
+  });
+
+  test('an old cubechat:c1: card or QR opens as a card', () {
+    final card = 'cubechat:c1:${'A' * 300}';
+    final link = parseCubechatLink(Uri.parse(card));
+    expect(link, isA<CardLink>());
+    expect(parseCubechatLink(Uri.parse('cubechat://u?n=ab')), isNull);
+  });
+
   test('the card link we hand out is one we can open', () {
     expect(ContactCard.linkPrefix, startsWith('https://cubechat.tech/c1#'));
   });

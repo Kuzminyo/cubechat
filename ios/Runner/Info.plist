@@ -39,6 +39,21 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- cubechat:// opens the app: the "Відкрити в cubechat" button on
+	     cubechat.tech/u.html and /c1 (cubechat://u?n=dima, cubechat://c1?c=…)
+	     for when a Universal Link was not handed over — typed into Safari,
+	     or tapped inside an app's own browser — and old cubechat:c1: cards. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.cubechat</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>cubechat</string>
+			</array>
+		</dict>
+	</array>
 	<key>GoogleMapsApiKey</key>
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>LSRequiresIPhoneOS</key>

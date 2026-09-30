@@ -164,6 +164,16 @@
                 <data android:scheme="https" android:host="cubechat.tech" android:path="/u.html" />
                 <data android:scheme="https" android:host="cubechat.tech" android:path="/c1" />
             </intent-filter>
+            <!-- cubechat:// and old cubechat:c1: cards. The site's own
+                 "open in app" uses an intent:// URL naming this package,
+                 which reaches the https filter above without needing the
+                 domain verified at all. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cubechat" />
+            </intent-filter>
         </activity>
         <!-- The launcher entry: one alias per theme icon, exactly one enabled.
              MAIN/LAUNCHER lives only here, never on MainActivity as well, or
