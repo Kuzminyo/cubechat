@@ -3666,4 +3666,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String chatRouteReceivedVia(String route) {
     return 'Отримано: $route';
   }
+
+  @override
+  String get chatUnreadDivider => 'Нові повідомлення';
 }

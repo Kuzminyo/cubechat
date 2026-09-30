@@ -1291,5 +1291,6 @@
     "placeholders": {
       "route": {"type": "String"}
     }
-  }
+  },
+  "chatUnreadDivider": "Нові повідомлення"
 }

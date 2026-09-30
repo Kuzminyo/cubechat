@@ -80,6 +80,7 @@ import '../data/voice_recorder_controller.dart';
 import '../data/translation_controller.dart';
 import '../data/voice_transcription_controller.dart';
 import '../domain/message_search.dart';
+import '../domain/unread_divider.dart';
 import '../models/message.dart';
 import '../domain/command_processor.dart';
 import '../domain/message_preview.dart';
@@ -746,6 +747,45 @@ const double _headerPillHeight = 56;
 /// The one floating glass capsule that owns the whole chat header.
 /// Its contents mirror the message composer: circular controls at the edges
 /// and flexible content in the middle.
+/// "New messages": a small glass capsule between two hairlines, above the
+/// first message that arrived since the chat was last read.
+class _UnreadDivider extends StatelessWidget {
+  const _UnreadDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line() => Expanded(
+          child: Container(height: 1, color: AppColors.glass(0.14)),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      child: Row(
+        children: [
+          line(),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.glass(0.10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.glass(0.16)),
+            ),
+            child: Text(
+              AppLocalizations.of(context).chatUnreadDivider,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          line(),
+        ],
+      ),
+    );
+  }
+}
+
 class _HeaderPill extends StatelessWidget {
   const _HeaderPill({
     required this.child,
@@ -1367,6 +1407,29 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// bar, wrong as soon as a tapped quote pointed somewhere else, which landed
   /// you near the message instead of on it.
   final _jumpTargetKey = GlobalKey();
+
+  /// On the first new message, under its "New messages" line — see
+  /// [_unreadFromId].
+  final _unreadKey = GlobalKey();
+
+  /// How far this chat had been read when it was opened, taken before the
+  /// screen marks it read on its first frame. Held for the whole visit, so the
+  /// line stays where the new messages began while they are being read, the
+  /// way it does in every messenger, instead of vanishing on arrival.
+  DateTime? _readAtOpen;
+
+  /// The first message that arrived since [_readAtOpen], decided once, when
+  /// the history is first there to look at. The line is drawn above it and
+  /// the chat opens on it.
+  String? _unreadFromId;
+  bool _unreadDecided = false;
+
+  void _decideUnread() {
+    if (_unreadDecided || widget.messages.isEmpty) return;
+    _unreadDecided = true;
+    _unreadFromId = firstUnreadMessageId(widget.messages, _readAtOpen);
+  }
+
   int _jumpRequest = 0;
   String _searchQuery = '';
   int _searchIndex = 0;
@@ -1511,6 +1574,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   @override
   void initState() {
     super.initState();
+    // Before the chat screen's first frame marks this conversation read.
+    _readAtOpen = ref.read(readMarkersControllerProvider)[widget.chatId];
+    _decideUnread();
     _scroll.addListener(_onScrollChanged);
     // Start with nothing marked. The query provider outlives this screen, so a
     // conversation left with the search bar open would otherwise come back
@@ -1534,6 +1600,23 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// has started scrolling meanwhile.
   Future<void> _restoreScroll() async {
     if (widget.initialMessageId != null) return;
+    // New messages since the last visit: open on the first of them, with its
+    // line near the top, so a run of them reads from its start. Where they all
+    // fit above the composer the list cannot scroll that far and stays at the
+    // bottom, which is the same answer.
+    final unread = _unreadFromId;
+    if (unread != null) {
+      await _jumpToMessageId(
+        unread,
+        _unreadKey,
+        // Measured from the bottom: the list is reversed, so its leading edge
+        // is the bottom of the screen and 0.85 is near the top. 0.15 put the
+        // line in the bottom quarter, which a render showed at once.
+        alignment: 0.85,
+        duration: Duration.zero,
+      );
+      return;
+    }
     final saved = ChatScrollMemory.of(widget.chatId);
     if (saved == null) return;
     for (var frame = 0; frame < 30; frame++) {
@@ -1552,6 +1635,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   void didUpdateWidget(covariant _ConversationView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _trackSmoothSends(oldWidget.messages, widget.messages);
+    // The history arrived after the chat opened: decide the line now, and
+    // open on it as the first frame would have.
+    if (!_unreadDecided) {
+      _decideUnread();
+      if (_unreadFromId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _restoreScroll());
+      }
+    }
     if (_initialMessageRevealed) return;
     if (oldWidget.initialMessageId != widget.initialMessageId ||
         oldWidget.messages.length != widget.messages.length) {
@@ -1888,6 +1979,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     String messageId,
     GlobalKey targetKey, {
     int? jumpRequest,
+    double alignment = 0.5,
+    Duration duration = const Duration(milliseconds: 380),
   }) async {
     final messages = widget.messages;
     final index = messages.indexWhere((message) => message.id == messageId);
@@ -1928,11 +2021,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           // header sitting above it, sometimes half under them. The middle is
           // where the eye already is. A message near either end of the history
           // cannot be centred and simply lands at the end, which is the right
-          // answer there: nothing above it to show.
-          alignment: 0.5,
+          // answer there: nothing above it to show. (Opening on new messages
+          // asks for higher up — see [_restoreScroll].)
+          alignment: alignment,
           // Long enough to be a movement rather than a cut, and eased out so it
-          // arrives rather than stops.
-          duration: const Duration(milliseconds: 380),
+          // arrives rather than stops. Zero when opening, which is a place to
+          // start rather than a journey.
+          duration: duration,
           curve: Curves.easeOutCubic,
         );
         await _nudgeBelowHeader(targetKey);
@@ -2397,6 +2492,19 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                               (album?.any((photo) => photo.id == id) ?? false));
                       Widget bubble =
                           _bubbleFor(m, album, _smoothSendIds.contains(m.id));
+                      // "New messages" rides on the first of them, inside
+                      // its own row, so no index moves (rule 1 of the
+                      // module README).
+                      if (isHere(_unreadFromId)) {
+                        bubble = KeyedSubtree(
+                          key: _unreadKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [const _UnreadDivider(), bubble],
+                          ),
+                        );
+                      }
                       if (isHere(widget.initialMessageId)) {
                         bubble = KeyedSubtree(
                             key: _initialMessageKey, child: bubble);

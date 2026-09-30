@@ -3622,4 +3622,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatRouteReceivedVia(String route) {
     return 'Received: $route';
   }
+
+  @override
+  String get chatUnreadDivider => 'New messages';
 }

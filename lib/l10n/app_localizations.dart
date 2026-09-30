@@ -6289,6 +6289,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Received: {route}'**
   String chatRouteReceivedVia(String route);
+
+  /// No description provided for @chatUnreadDivider.
+  ///
+  /// In en, this message translates to:
+  /// **'New messages'**
+  String get chatUnreadDivider;
 }
 
 class _AppLocalizationsDelegate
