@@ -279,6 +279,89 @@ void main() {
     });
   });
 
+  testWidgets('every setting lives in exactly one place', (tester) async {
+    // The census. Each setting's title, and the screen the spec puts it on;
+    // every screen is pumped and the title must be found once across all of
+    // them — a setting lost in the move, or left behind in two places, fails
+    // here by name. flutter_test reports Android, so Android's rows count.
+    final home = <String, List<String>>{
+      'privacy': [
+        t.profileLastSeen,
+        t.profileReadReceipts,
+        t.privacyForwardLinkTitle,
+        t.profileDiscoverable,
+        t.profileMapLocation,
+        t.appLockTitle,
+        t.filterToggle,
+        t.deadmanTitle,
+      ],
+      'notifications': [
+        t.pushWakeTitle,
+        t.quietHoursTitle,
+        t.privacyCallsTitle,
+        t.callDirectTitle,
+        t.callFullScreenTitle,
+      ],
+      'connection': [
+        t.profileMeshSwitch,
+        t.profileTransportMesh,
+        t.profileBackground,
+        t.relaysTitle,
+      ],
+      'chats': [
+        t.customizeSwipeTitle,
+        'Рядок архіву',
+        t.customizeQuickReaction,
+        t.customizeCircleAudioTitle,
+        t.circleLensTitle,
+        t.customizeMediaQualityTitle,
+        t.customizeDeferMediaTitle,
+        t.customizeTranscribeLanguageTitle,
+      ],
+      'appearance': [
+        t.profileTheme,
+        t.profileScale,
+        t.profileGlass,
+        t.customizeBarTitle,
+        t.profileLanguage,
+      ],
+      'data': [
+        t.storageTitle,
+        t.profileFileTransfers,
+        t.profileBackup,
+        t.phoneTransferTitle,
+        t.selfUpdateTitle,
+      ],
+      'about': [t.diagnosticsTitle],
+    };
+    final screens = <String, Widget>{
+      'privacy': const PrivacySectionScreen(),
+      'notifications': const NotificationsSectionScreen(),
+      'connection': const ConnectionSectionScreen(),
+      'chats': const ChatsSectionScreen(),
+      'appearance': const CustomizeScreen(),
+      'data': const DataSectionScreen(),
+      'about': const AboutScreen(),
+      'profile': const ProfileScreen(),
+    };
+
+    final seen = <String, List<String>>{};
+    for (final entry in screens.entries) {
+      await pumpScreen(tester, entry.value);
+      for (final title in home.values.expand((titles) => titles)) {
+        final n = find.text(title).evaluate().length;
+        for (var i = 0; i < n; i++) {
+          (seen[title] ??= []).add(entry.key);
+        }
+      }
+    }
+    for (final entry in home.entries) {
+      for (final title in entry.value) {
+        expect(seen[title], [entry.key], reason: '"$title"');
+      }
+    }
+  });
+
   testWidgets('About carries the way into Diagnostics', (tester) async {
     await pumpScreen(tester, const AboutScreen());
     expect(find.text(t.diagnosticsTitle), findsOneWidget);

@@ -44,7 +44,7 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  testWidgets('capture profile settings groups', (tester) async {
+  Future<GlobalKey> pumpCaptured(WidgetTester tester, Widget screen) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final boundaryKey = GlobalKey();
@@ -66,29 +66,32 @@ void main() {
                   colors: [AppColors.bgTop, AppColors.bgBottom],
                 ),
               ),
-              child: ProfileScreen(),
+              child: screen,
             ),
           ),
         ),
       ),
     );
     await tester.pump(const Duration(milliseconds: 400));
+    return boundaryKey;
+  }
 
-    // Closed: the whole screen should fit without scrolling.
+  testWidgets('capture the profile as a list of sections', (tester) async {
+    final boundaryKey = await pumpCaptured(tester, const ProfileScreen());
     await expectLater(
       find.byKey(boundaryKey),
-      matchesGoldenFile('../.codex/design-qa/profile-groups-closed-360x800.png'),
+      matchesGoldenFile('../.codex/design-qa/profile-sections-360x800.png'),
     );
+  });
 
-    // Open the first group — the point of the redesign is that its rows appear
-    // inside the same pane rather than as more slabs.
-    await tester.tap(find.byIcon(Icons.radar_rounded).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
+  testWidgets('capture the privacy & security section', (tester) async {
+    final boundaryKey =
+        await pumpCaptured(tester, const PrivacySectionScreen());
     await expectLater(
       find.byKey(boundaryKey),
-      matchesGoldenFile('../.codex/design-qa/profile-groups-open-360x800.png'),
+      matchesGoldenFile(
+        '../.codex/design-qa/profile-section-privacy-360x800.png',
+      ),
     );
   });
 }
