@@ -129,20 +129,38 @@ class FloatingGlass extends StatelessWidget {
     // window onto the streets. The slight deepening stays — it is what keeps a
     // pane from reading as a flat rectangle — and the lit edge lives in the
     // hairline border. See test/island_fill_test.dart.
+    //
+    // Then, the same day, "the tiles are too gloomy — add some life": the even
+    // fill fixed the stripe and left a flat dark slab. The life is back as
+    // *diagonal* light, which cannot make a horizontal band: the glass runs
+    // lighter and faintly tinted with the theme's accent at the top-left
+    // corner to its plain pane at the bottom-right, and a soft white corner
+    // glow sits over that. Both are plain paints — no layer, no blur.
     final Widget tint = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            AppColors.pane(0.54),
-            AppColors.pane(0.66),
+            Color.alphaBlend(
+              AppColors.brandPrimary.withValues(alpha: 0.12),
+              AppColors.pane(0.42),
+            ),
+            AppColors.pane(0.60),
           ],
         ),
         borderRadius: radius,
-        border: border
-            ? Border.all(color: AppColors.glass(0.16))
-            : null,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(-1.0, -1.2),
+            radius: 1.6,
+            colors: [AppColors.glass(0.10), AppColors.glass(0)],
+          ),
+          borderRadius: radius,
+          border: border ? Border.all(color: AppColors.glass(0.18)) : null,
+        ),
       ),
     );
 
