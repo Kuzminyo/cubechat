@@ -1428,6 +1428,18 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (_unreadDecided || widget.messages.isEmpty) return;
     _unreadDecided = true;
     _unreadFromId = firstUnreadMessageId(widget.messages, _readAtOpen);
+    // One line per chat open, to read from Diagnostics when the line does
+    // not show: what the marker was, what the history held, what was picked.
+    final inbound = widget.messages.where((m) => !m.isMine).toList();
+    final chat = widget.chatId.length > 8
+        ? widget.chatId.substring(0, 8)
+        : widget.chatId;
+    debugPrint(
+      '[UNREAD] $chat readAt=${_readAtOpen?.toIso8601String()} '
+      'msgs=${widget.messages.length} '
+      'lastIn=${inbound.isEmpty ? '-' : inbound.last.sentAt.toIso8601String()} '
+      'first=${_unreadFromId ?? '-'}',
+    );
   }
 
   int _jumpRequest = 0;

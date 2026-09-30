@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/core/theme/app_theme.dart';
+import 'package:cubechat/core/util/app_lifecycle.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/chat_screen.dart';
@@ -117,6 +118,72 @@ void main() {
       lessThanOrEqualTo(tester.getTopLeft(first).dy),
       reason: 'the line goes above the first new message',
     );
+    await close(tester, container);
+  });
+
+  testWidgets('the real flow: read, leave, messages arrive, open again',
+      (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    for (final ch in [
+      'com.llfbandit.record/messages',
+      'plugins.it_nomads.com/flutter_secure_storage',
+    ]) {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(MethodChannel(ch), (call) async => null);
+    }
+    // On screen, as on a phone: the chat marks itself read only while the app
+    // is in the foreground.
+    AppLifecycle.instance.isForeground = true;
+    addTearDown(() => AppLifecycle.instance.isForeground = false);
+    // The real markers controller, not a stand-in: whatever moves the marker
+    // on the way in and out moves it here too.
+    final container = ProviderContainer(
+      overrides: [messagesControllerProvider.overrideWith(_Messages.new)],
+    );
+    Widget app(Widget home) => UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.dark(),
+            home: home,
+          ),
+        );
+
+    // Open: everything is read.
+    await tester.pumpWidget(app(ChatScreen(peerId: _peer, peerLabel: 'Alice')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    tester.takeException();
+    // Leave.
+    await tester.pumpWidget(app(const SizedBox()));
+    await tester.pump(const Duration(seconds: 1));
+    // Three arrive.
+    final notifier = container.read(messagesControllerProvider.notifier);
+    for (var i = 0; i < 3; i++) {
+      notifier.append(
+        _peer,
+        Message(
+          id: 'new$i',
+          wireId: 'wnew$i',
+          chatId: _peer,
+          text: 'new message $i',
+          sentAt: DateTime.now().add(Duration(seconds: i)),
+          isMine: false,
+        ),
+      );
+    }
+    await tester.pump();
+    // Open again.
+    await tester.pumpWidget(app(ChatScreen(peerId: _peer, peerLabel: 'Alice')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    tester.takeException();
+
+    expect(find.text(t.chatUnreadDivider), findsOneWidget);
     await close(tester, container);
   });
 

@@ -78,6 +78,13 @@ class ReadMarkersController extends Notifier<Map<String, DateTime>> {
     final when = at ?? DateTime.now();
     final existing = state[chatId];
     if (existing != null && !when.isAfter(existing)) return;
+    // Only real moves are logged — most calls are refused above — so this is
+    // a line per read, readable beside the chat's [UNREAD] line. `now` means
+    // the caller passed no time: a swipe, a notification reply, a resume.
+    final short = chatId.length > 8 ? chatId.substring(0, 8) : chatId;
+    debugPrint(
+      '[READ] $short -> ${when.toIso8601String()}${at == null ? ' (now)' : ''}',
+    );
     state = {...state, chatId: when};
     await _persist();
   }
