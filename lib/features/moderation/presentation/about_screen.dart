@@ -24,7 +24,8 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bgDeep,
+      // Over the aurora, like every section it sits among; the route draws it.
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textOnGlass,

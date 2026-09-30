@@ -69,6 +69,7 @@ void main() {
       t.profileMapLocation,
       t.appLockTitle,
       t.filterToggle,
+      t.profileFingerprint,
     ]) {
       expect(find.text(title), findsOneWidget, reason: title);
     }
@@ -195,6 +196,7 @@ void main() {
             'customize',
             'settings/data',
             'contact',
+            'settings/about',
           ])
             GoRoute(path: '/$p', builder: (_, __) => stub(p)),
         ],
@@ -231,7 +233,9 @@ void main() {
         expect(find.text(title), findsOneWidget, reason: title);
       }
       expect(find.byType(SettingsSectionRow), findsNWidgets(9));
-      expect(find.byIcon(Icons.fingerprint_rounded), findsOneWidget);
+      // The fingerprint moved into Privacy & security; nothing lies loose
+      // between the cover and the list any more.
+      expect(find.byIcon(Icons.fingerprint_rounded), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -243,6 +247,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('stub:settings/privacy'), findsOneWidget);
+    });
+
+    testWidgets('About is a root route, so a swipe back returns to profile',
+        (tester) async {
+      // Pushed on the tab's own navigator it sat inside the tab pager, and
+      // the back swipe turned the page to the Map.
+      await pumpProfile(tester);
+      await tester.tap(find.text(t.sectionAbout));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('stub:settings/about'), findsOneWidget);
     });
 
     testWidgets('the privacy row says who may write, and follows a change',
@@ -296,6 +311,7 @@ void main() {
         t.appLockTitle,
         t.filterToggle,
         t.deadmanTitle,
+        t.profileFingerprint,
       ],
       'notifications': [
         t.pushWakeTitle,

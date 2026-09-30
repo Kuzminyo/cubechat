@@ -36,6 +36,7 @@ class PrivacySectionScreen extends ConsumerWidget {
             _inset(const _AppLockTile()),
             _inset(const _FilterTile()),
             _inset(const _DeadMansRow()),
+            _inset(const _FingerprintTile()),
           ],
         ),
         Padding(

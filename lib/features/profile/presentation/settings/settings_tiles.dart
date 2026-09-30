@@ -85,6 +85,7 @@ class SettingsSectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = this.value;
+    final accent = danger ? AppColors.danger : AppColors.brandPrimary;
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
@@ -93,14 +94,26 @@ class SettingsSectionRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
+              // Glass in the theme's colour: a tint of the accent over the
+              // pane, an edge of the same, the icon in the accent itself —
+              // so a rose theme gets rose badges and the row stays one
+              // surface. Red for the wipe row only.
               Container(
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: section.color,
                   borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      accent.withValues(alpha: 0.30),
+                      accent.withValues(alpha: 0.12),
+                    ],
+                  ),
+                  border: Border.all(color: accent.withValues(alpha: 0.42)),
                 ),
-                child: Icon(section.icon, size: 20, color: Colors.white),
+                child: Icon(section.icon, size: 19, color: accent),
               ),
               const SizedBox(width: 13),
               // The title wins the width and may take a second line — the

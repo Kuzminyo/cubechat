@@ -42,7 +42,6 @@ import '../../backup/presentation/phone_transfer_card.dart';
 import '../../cube_id/data/cube_id_controller.dart';
 import '../../cube_id/presentation/stranger_reach_selector.dart';
 import '../../moderation/data/filter_settings.dart';
-import '../../moderation/presentation/about_screen.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/util/platform_info.dart';
@@ -164,7 +163,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       data: (v) => v,
       orElse: () => '… … … …  … … … …',
     );
-    final fingerprintReady = fingerprintAsync.hasValue;
 
     // Hoisted out of the builder below and handed to AnimatedBuilder as its
     // `child`: the cover animates every frame it is opening, and without
@@ -194,14 +192,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // each row is what keeps "did I change anything?" answerable without a
     // tap. Rows are grouped by how often each is wanted, not alphabetically.
     final settings = SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+      // The @name sits in the cover under the nickname, and the key's
+      // fingerprint is a row in Privacy & security: as chips here between the
+      // header and the list they looked left lying about.
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
       sliver: SliverList.list(children: [
-        _IdentityChips(
-          cubeName: cubeName,
-          fingerprint: fingerprint,
-          fingerprintReady: fingerprintReady,
-        ),
-        const SizedBox(height: 18),
         SettingsGroup(
           children: [
             row(
@@ -265,9 +260,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               section: SettingsSection.about,
               title: t.sectionAbout,
               value: appVersion,
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
-              ),
+              // A root route like every other section. Pushed on the tab's
+              // own navigator it sat inside the tab pager, and the swipe back
+              // was taken as "next tab" — it went to the Map, not the profile.
+              onTap: () => context.push('/settings/about'),
             ),
           ],
         ),
@@ -1852,183 +1848,194 @@ Widget _frame(
 }
 
 
-class _FingerprintRow extends StatelessWidget {
-  const _FingerprintRow({
-    required this.label,
-    required this.value,
-    this.ready = true,
-  });
+/// The key's fingerprint, as a row in Privacy & security.
+///
+/// It was a pane above every setting, then a chip under the cover; both read
+/// as something left lying between the header and the list. It is the thing
+/// you compare with a person beside you to know the chat is really theirs —
+/// a security fact — so it lives with security, short on the row and whole in
+/// a sheet.
+class _FingerprintTile extends ConsumerWidget {
+  const _FingerprintTile();
 
-  final String label;
-  final String value;
-  final bool ready;
+  /// "d4ae · 00db" — the first two groups, enough to recognise a key by.
+  static String short(String fingerprint) =>
+      _groups(fingerprint).take(2).join(' · ');
+
+  static List<String> _groups(String fingerprint) =>
+      fingerprint.split(RegExp(r'\s+')).where((g) => g.isNotEmpty).toList();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.glass(0.06),
-        border: Border.all(color: AppColors.glass(0.1)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 11),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: SelectableText(
-                  value,
-                  style: AppTypography.mono(
-                    size: 12.5,
-                    color: ready
-                        ? AppColors.textOnGlass
-                        : AppColors.textOnGlassFaint,
-                  ),
+    final fingerprint = ref.watch(identityFingerprintProvider).valueOrNull;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: fingerprint == null
+          ? null
+          : () => unawaited(
+                showGlassSheet<void>(
+                  context: context,
+                  useRootNavigator: true,
+                  builder: (_) => _FingerprintSheet(fingerprint: fingerprint),
                 ),
               ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                splashRadius: 18,
-                icon: Icon(Icons.copy_rounded,
-                    size: 16, color: AppColors.textOnGlassDim),
-                tooltip: t.copy,
-                onPressed: ready
-                    ? () async {
-                        await Clipboard.setData(ClipboardData(text: value));
-                        if (!context.mounted) return;
-                        showCopiedToast(context, t.copied);
-                      }
-                    : null,
-              ),
-            ],
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
+            ),
+            child: Icon(
+              Icons.fingerprint_rounded,
+              color: AppColors.brandPrimary,
+              size: 19,
+            ),
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              t.profileFingerprint,
+              style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+            ),
+          ),
+          Text(
+            fingerprint == null ? '…' : short(fingerprint),
+            style: AppTypography.mono(
+              size: 12.5,
+              color: AppColors.textOnGlassDim,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
   }
 }
 
-/// Under the cover: the @name, then the key's fingerprint as a short chip.
-///
-/// The fingerprint used to be a pane of its own above every setting. It is
-/// identity, not a setting, so it sits with the name; the full fingerprint is
-/// one tap away, in a sheet with its copy button, for the moment somebody
-/// reads it out to a person beside them.
-class _IdentityChips extends StatelessWidget {
-  const _IdentityChips({
-    required this.cubeName,
-    required this.fingerprint,
-    required this.fingerprintReady,
-  });
+/// The whole fingerprint, four groups to a line so two people can read it to
+/// each other line by line, and one button to copy it. Sized to what it holds:
+/// a bare row in a sheet stretched the sheet to the full screen.
+class _FingerprintSheet extends StatelessWidget {
+  const _FingerprintSheet({required this.fingerprint});
 
-  final String? cubeName;
   final String fingerprint;
-  final bool fingerprintReady;
-
-  /// "A3F2 · 9C1D" — the first two groups, enough to recognise a key by.
-  static String short(String fingerprint) {
-    final groups =
-        fingerprint.split(RegExp(r'\s+')).where((g) => g.isNotEmpty).toList();
-    return groups.take(2).join(' · ');
-  }
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final name = cubeName;
-    return Column(
-      children: [
-        if (name != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '@$name',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                color: AppColors.brandPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+    final groups = _FingerprintTile._groups(fingerprint);
+    final lines = <List<String>>[
+      for (var i = 0; i < groups.length; i += 4)
+        groups.sublist(i, (i + 4).clamp(0, groups.length)),
+    ];
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.fingerprint_rounded,
+                  color: AppColors.brandPrimary,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    t.profileFingerprint,
+                    style: AppTypography.heading(
+                      size: 17,
+                      color: AppColors.textOnGlass,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        // No "My card" chip beside it, though the mock-up had one: the cover
-        // already carries a Card action to the same screen, and two doors to
-        // one room is the clutter this layout exists to remove.
-        _IdentityChip(
-          icon: Icons.fingerprint_rounded,
-          label: fingerprintReady ? short(fingerprint) : '… · …',
-          onTap: fingerprintReady
-              ? () => unawaited(
-                    showGlassSheet<void>(
-                      context: context,
-                      useRootNavigator: true,
-                      builder: (_) => SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: _FingerprintRow(
-                            label: t.profileFingerprint,
-                            value: fingerprint,
-                            ready: fingerprintReady,
-                          ),
-                        ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.glass(0.06),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.glass(0.12)),
+              ),
+              child: Column(
+                children: [
+                  for (final line in lines)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      // Equal columns, so the groups line up down the grid
+                      // and a reader's eye can walk it column by column.
+                      child: Row(
+                        children: [
+                          for (final group in line)
+                            Expanded(
+                              child: Text(
+                                group,
+                                textAlign: TextAlign.center,
+                                style: AppTypography.mono(
+                                  size: 17,
+                                  color: AppColors.textOnGlass,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                  )
-              : null,
-        ),
-      ],
-    );
-  }
-}
-
-class _IdentityChip extends StatelessWidget {
-  const _IdentityChip({required this.icon, required this.label, this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(14);
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        borderRadius: radius,
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.glass(0.07),
-            borderRadius: radius,
-            border: Border.all(color: AppColors.glass(0.09)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 17, color: AppColors.brandPrimary),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  color: AppColors.textOnGlass,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Material(
+              color: AppColors.brandPrimary.withValues(alpha: 0.22),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.45),
                 ),
               ),
-            ],
-          ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: fingerprint));
+                  if (!context.mounted) return;
+                  showCopiedToast(context, t.copied);
+                  Navigator.of(context).pop();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.copy_rounded,
+                        size: 18,
+                        color: AppColors.textOnGlass,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        t.copy,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2330,6 +2337,7 @@ class _CoverBody extends ConsumerWidget {
     bool discoverable,
     double width,
   ) {
+    final cubeName = ref.watch(cubeIdControllerProvider).name;
     // The circle and the cover are the same rectangle at two sizes; lerping it
     // (and the corner radius with it) is what makes one grow into the other.
     // Centred at rest, full-bleed open. It used to sit in the left corner with
@@ -2541,17 +2549,31 @@ class _CoverBody extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
+                      // The @name, where one is taken, in the line under the
+                      // name — where a handle sits in every messenger. It was
+                      // a separate line and chip under the cover first, and on
+                      // the phone that read as something left lying between
+                      // the header and the settings. The dot keeps saying
+                      // whether you are visible nearby.
                       Flexible(
                         child: Text(
-                          discoverable
-                              ? tt.profileDiscoverableOnHint
-                              : tt.profileDiscoverableOffHint,
+                          cubeName != null
+                              ? '@$cubeName'
+                              : discoverable
+                                  ? tt.profileDiscoverableOnHint
+                                  : tt.profileDiscoverableOffHint,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.textOnGlassDim,
-                            fontSize: _coverStatusSize,
-                          ),
+                          style: cubeName != null
+                              ? TextStyle(
+                                  color: AppColors.brandPrimary,
+                                  fontSize: _coverStatusSize + 1,
+                                  fontWeight: FontWeight.w600,
+                                )
+                              : TextStyle(
+                                  color: AppColors.textOnGlassDim,
+                                  fontSize: _coverStatusSize,
+                                ),
                         ),
                       ),
                     ],
@@ -2714,7 +2736,8 @@ Future<void> _showProfileMenu(
       AnimatedMenuItem(
         value: _ProfileMenuAction.colour,
         icon: Icons.palette_outlined,
-        label: t.customizeTitle,
+        // Named like the screen it opens, which is Appearance now.
+        label: t.sectionAppearance,
       ),
       AnimatedMenuItem(
         value: _ProfileMenuAction.copyLink,

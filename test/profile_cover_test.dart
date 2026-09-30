@@ -72,13 +72,15 @@ void main() {
     // face claims only drags that start on it.
     await pumpProfile(tester);
 
-    // The fingerprint chip is the first thing under the cover.
-    final below = find.byIcon(Icons.fingerprint_rounded);
+    // The first section row is the first thing under the cover.
+    final below = find.byIcon(Icons.alternate_email_rounded);
     final before = tester.getTopLeft(below).dy;
     await tester.drag(
       find.byType(CustomScrollView),
       const Offset(0, 260),
-      touchSlopY: 0,
+      // Default slop, not 0: the drag starts on a section row, and a
+      // zero-slop drag on an InkWell never becomes a scroll in the test
+      // binding (a finger does — checked against a plain InkWell ListView).
     );
     await tester.pumpAndSettle();
 
@@ -130,7 +132,7 @@ void main() {
     // axis pulling opposite ways.
     await pumpProfile(tester);
 
-    final below = find.byIcon(Icons.fingerprint_rounded);
+    final below = find.byIcon(Icons.alternate_email_rounded);
     final before = tester.getTopLeft(below).dy;
 
     await tester.drag(
@@ -169,7 +171,7 @@ void main() {
     await tester.drag(
       find.byType(CustomScrollView),
       const Offset(0, -220),
-      touchSlopY: 0,
+      // Default slop — see the pull test above.
     );
     await tester.pumpAndSettle();
 

@@ -35,6 +35,7 @@ import '../../features/peers/presentation/nearby_screen.dart';
 import '../../features/airdrop/data/share_inbox.dart';
 import '../../features/airdrop/presentation/airdrop_share_screen.dart';
 import '../../features/peers/presentation/verification_screen.dart';
+import '../../features/moderation/presentation/about_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/relays_screen.dart';
@@ -416,6 +417,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: PrivacySectionScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: AboutScreen()),
           state: state,
         ),
       ),
