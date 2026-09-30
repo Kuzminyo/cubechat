@@ -4541,7 +4541,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileSummaryCardBackup.
   ///
   /// In en, this message translates to:
-  /// **'Contact card, files, backup'**
+  /// **'Files, backup'**
   String get profileSummaryCardBackup;
 
   /// No description provided for @chatPlay.

@@ -2635,7 +2635,7 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
-  String get profileSummaryCardBackup => 'Картка, файли, бекап';
+  String get profileSummaryCardBackup => 'Файли, бекап';
 
   @override
   String get chatPlay => 'Відтворити';

@@ -2606,7 +2606,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get profileSummaryCardBackup => 'Contact card, files, backup';
+  String get profileSummaryCardBackup => 'Files, backup';
 
   @override
   String get chatPlay => 'Play';
