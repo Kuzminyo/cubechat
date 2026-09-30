@@ -118,17 +118,26 @@ class FloatingGlass extends StatelessWidget {
 
     // The tint, on its own. It is what the pane *looks* like; the blur behind
     // it is what the pane costs.
+    //
+    // Even, top to bottom. It used to open on `glass(0.07)` — white at seven
+    // percent, over nothing — and reach `pane(0.52)` only a third of the way
+    // down, so the top third of every tile was the backdrop barely tinted and
+    // the rest half-covered dark: a pale stripe with a soft edge where it
+    // settled. The chat islands lost the same stripe in 968; these kept it
+    // until the owner sent the chats, contacts and map screens on 2026-09-30
+    // ("still visibly stripes"), worst on the map, where the pale third was a
+    // window onto the streets. The slight deepening stays — it is what keeps a
+    // pane from reading as a flat rectangle — and the lit edge lives in the
+    // hairline border. See test/island_fill_test.dart.
     final Widget tint = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.glass(0.07),
-            AppColors.pane(0.52),
+            AppColors.pane(0.54),
             AppColors.pane(0.66),
           ],
-          stops: const [0, 0.35, 1],
         ),
         borderRadius: radius,
         border: border

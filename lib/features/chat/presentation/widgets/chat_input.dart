@@ -113,13 +113,10 @@ class MessageIslandGlass extends StatelessWidget {
                       // top-to-bottom deepening stays: it is what keeps the
                       // island from reading as a flat rectangle.
                       //
-                      // [FloatingGlass] — the chat-list tiles — deliberately
-                      // still has the old fill. It was changed to match and
-                      // changed straight back: the band was reported about the
-                      // chat, and a surface nobody complained about does not
-                      // get altered to be consistent with an argument about
-                      // another one. So the two are no longer identical, and
-                      // that is the intent rather than an oversight.
+                      // [FloatingGlass] — the chat-list tiles — kept the old
+                      // fill until 2026-09-30, when the owner reported the
+                      // same stripe on the tiles and the map; it is even now
+                      // too, and both are pinned by test/island_fill_test.dart.
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
