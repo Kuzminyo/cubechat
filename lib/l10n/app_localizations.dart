@@ -6349,6 +6349,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Bluetooth mesh is off — turn it on in Connection.'**
   String get profileDiscoverableMeshOff;
+
+  /// No description provided for @chatRouteBluetoothDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth, direct'**
+  String get chatRouteBluetoothDirect;
+
+  /// No description provided for @chatRouteMeshHops.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one{Mesh · {n} hop} other{Mesh · {n} hops}}'**
+  String chatRouteMeshHops(int n);
+
+  /// No description provided for @chatRouteDeliveredVia.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered: {route}'**
+  String chatRouteDeliveredVia(String route);
+
+  /// No description provided for @chatRouteReceivedVia.
+  ///
+  /// In en, this message translates to:
+  /// **'Received: {route}'**
+  String chatRouteReceivedVia(String route);
 }
 
 class _AppLocalizationsDelegate

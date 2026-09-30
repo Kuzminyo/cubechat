@@ -1286,5 +1286,24 @@
   "subProtection": "Захист",
   "subNotifications": "Сповіщення",
   "subCalls": "Дзвінки",
-  "profileDiscoverableMeshOff": "Bluetooth-мережу вимкнено — увімкніть її в розділі «Зв'язок»."
+  "profileDiscoverableMeshOff": "Bluetooth-мережу вимкнено — увімкніть її в розділі «Зв'язок».",
+  "chatRouteBluetoothDirect": "Bluetooth напряму",
+  "chatRouteMeshHops": "{n, plural, one{Меш · {n} перехід} few{Меш · {n} переходи} other{Меш · {n} переходів}}",
+  "@chatRouteMeshHops": {
+    "placeholders": {
+      "n": {"type": "int"}
+    }
+  },
+  "chatRouteDeliveredVia": "Доставлено: {route}",
+  "@chatRouteDeliveredVia": {
+    "placeholders": {
+      "route": {"type": "String"}
+    }
+  },
+  "chatRouteReceivedVia": "Отримано: {route}",
+  "@chatRouteReceivedVia": {
+    "placeholders": {
+      "route": {"type": "String"}
+    }
+  }
 }

@@ -3685,4 +3685,29 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get profileDiscoverableMeshOff =>
       'Bluetooth-мережу вимкнено — увімкніть її в розділі «Зв\'язок».';
+
+  @override
+  String get chatRouteBluetoothDirect => 'Bluetooth напряму';
+
+  @override
+  String chatRouteMeshHops(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Меш · $n переходів',
+      few: 'Меш · $n переходи',
+      one: 'Меш · $n перехід',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatRouteDeliveredVia(String route) {
+    return 'Доставлено: $route';
+  }
+
+  @override
+  String chatRouteReceivedVia(String route) {
+    return 'Отримано: $route';
+  }
 }

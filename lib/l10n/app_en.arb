@@ -1778,5 +1778,24 @@
   "subProtection": "Protection",
   "subNotifications": "Notifications",
   "subCalls": "Calls",
-  "profileDiscoverableMeshOff": "Bluetooth mesh is off — turn it on in Connection."
+  "profileDiscoverableMeshOff": "Bluetooth mesh is off — turn it on in Connection.",
+  "chatRouteBluetoothDirect": "Bluetooth, direct",
+  "chatRouteMeshHops": "{n, plural, one{Mesh · {n} hop} other{Mesh · {n} hops}}",
+  "@chatRouteMeshHops": {
+    "placeholders": {
+      "n": {"type": "int"}
+    }
+  },
+  "chatRouteDeliveredVia": "Delivered: {route}",
+  "@chatRouteDeliveredVia": {
+    "placeholders": {
+      "route": {"type": "String"}
+    }
+  },
+  "chatRouteReceivedVia": "Received: {route}",
+  "@chatRouteReceivedVia": {
+    "placeholders": {
+      "route": {"type": "String"}
+    }
+  }
 }

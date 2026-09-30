@@ -51,6 +51,7 @@ import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../domain/message_preview.dart';
+import '../../domain/message_route_badge.dart';
 import '../../../call/data/call_controller.dart';
 import '../../../call/domain/call_record.dart';
 import '../../../call/presentation/call_screen.dart' show callClock;
@@ -1414,6 +1415,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
           style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
         ),
+        // The mark beside the time, said in words.
+        if (routeBadgeFor(m) case final badge?)
+          Text(
+            m.isMine
+                ? t.chatRouteDeliveredVia(messageRouteText(t, badge))
+                : t.chatRouteReceivedVia(messageRouteText(t, badge)),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+          ),
         if (readAt != null)
           Text(
             t.chatReadAt(formatMessageDetailsTime(context, readAt)),
@@ -3859,6 +3868,22 @@ class _SendProgressRing extends ConsumerWidget {
   }
 }
 
+/// The road a message took, in words: "Bluetooth напряму", "Меш · 3
+/// пересилання", "Інтернет". The same answer the mark beside the time gives,
+/// for the details under a long press and for a screen reader.
+String messageRouteText(
+  AppLocalizations t,
+  ({RouteBadgeKind kind, int? hops}) badge,
+) {
+  final hops = badge.hops;
+  return switch (badge.kind) {
+    RouteBadgeKind.bluetooth => t.chatRouteBluetoothDirect,
+    RouteBadgeKind.mesh =>
+      hops == null ? t.chatRouteMesh : t.chatRouteMeshHops(hops),
+    RouteBadgeKind.internet => t.chatRouteInternet,
+  };
+}
+
 class _BubbleMeta extends StatelessWidget {
   const _BubbleMeta({
     required this.message,
@@ -3929,6 +3954,31 @@ class _BubbleMeta extends StatelessWidget {
               color: _ink(message.isMine ? 0.7 : 0.45),
             ),
           ),
+          const SizedBox(width: 4),
+        ],
+        // Which way this message came — see [routeBadgeFor]. Small and as dim
+        // as the clock: a fact for whoever looks, not a status to read.
+        if (routeBadgeFor(message) case final badge?) ...[
+          Icon(
+            switch (badge.kind) {
+              RouteBadgeKind.bluetooth => Icons.bluetooth_rounded,
+              RouteBadgeKind.mesh => Icons.hub_rounded,
+              RouteBadgeKind.internet => Icons.public_rounded,
+            },
+            size: 10.5,
+            color: _ink(message.isMine ? 0.7 : 0.45),
+            semanticLabel: messageRouteText(t, badge),
+          ),
+          if (badge.hops != null) ...[
+            const SizedBox(width: 1),
+            Text(
+              '${badge.hops}',
+              style: TextStyle(
+                fontSize: 9.5,
+                color: _ink(message.isMine ? 0.7 : 0.45),
+              ),
+            ),
+          ],
           const SizedBox(width: 4),
         ],
         Text(

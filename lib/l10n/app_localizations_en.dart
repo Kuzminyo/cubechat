@@ -3642,4 +3642,28 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileDiscoverableMeshOff =>
       'Bluetooth mesh is off — turn it on in Connection.';
+
+  @override
+  String get chatRouteBluetoothDirect => 'Bluetooth, direct';
+
+  @override
+  String chatRouteMeshHops(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Mesh · $n hops',
+      one: 'Mesh · $n hop',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatRouteDeliveredVia(String route) {
+    return 'Delivered: $route';
+  }
+
+  @override
+  String chatRouteReceivedVia(String route) {
+    return 'Received: $route';
+  }
 }
