@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/haptics.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 
@@ -74,11 +75,14 @@ class StrangerReachSelector extends ConsumerWidget {
               ),
             ],
             selected: {reach},
-            onSelectionChanged: (v) => unawaited(
-              ref
-                  .read(privacySettingsProvider.notifier)
-                  .setStrangerReach(v.first),
-            ),
+            onSelectionChanged: (v) {
+              Haptics.tap();
+              unawaited(
+                ref
+                    .read(privacySettingsProvider.notifier)
+                    .setStrangerReach(v.first),
+              );
+            },
             style: ButtonStyle(
               visualDensity: VisualDensity.compact,
               padding: const WidgetStatePropertyAll(

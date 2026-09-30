@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/typography.dart';
+import '../../../../core/util/haptics.dart';
 import 'settings_section_icons.dart';
 
 /// One glass block holding a run of rows, with a hairline between them.
@@ -87,7 +88,10 @@ class SettingsSectionRow extends StatelessWidget {
     final value = this.value;
     final accent = danger ? AppColors.danger : AppColors.brandPrimary;
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        danger ? Haptics.warn() : Haptics.tap();
+        onTap();
+      },
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 54),
         child: Padding(

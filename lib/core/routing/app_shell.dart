@@ -9,6 +9,7 @@ import '../../features/chats/data/chat_selection_controller.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
+import '../util/haptics.dart';
 import '../util/platform_info.dart';
 import '../theme/colors.dart';
 import '../widgets/aurora_background.dart';
@@ -201,11 +202,16 @@ class AppShell extends ConsumerWidget {
                         // branches. This is the one place the two are
                         // translated, so a reordered bar cannot send a tap to
                         // somebody else's screen.
-                        onTabChanged: (i) => shell.goBranch(
-                          layout.branches[i],
-                          // Re-tapping a tab pops that branch to its root.
-                          initialLocation: i == currentIndex,
-                        ),
+                        onTabChanged: (i) {
+                          // A tick for a tab that changes; a re-tap only
+                          // scrolls home and needs none.
+                          if (i != currentIndex) Haptics.tap();
+                          shell.goBranch(
+                            layout.branches[i],
+                            // Re-tapping a tab pops that branch to its root.
+                            initialLocation: i == currentIndex,
+                          );
+                        },
                       ),
                     ),
                   ),

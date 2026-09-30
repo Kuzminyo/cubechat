@@ -20,6 +20,7 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/app_build.dart';
+import '../../../core/util/haptics.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 
 import '../../../core/widgets/confirm_dialog.dart';
@@ -120,7 +121,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // does without thinking. Neither costs the other anything: the face claims
     // only drags that start on it.
     if (px <= -_pullToOpen) {
-      if (_open.value < 1 && !_open.isAnimating) _open.forward();
+      if (_open.value < 1 && !_open.isAnimating) {
+        Haptics.tap();
+        _open.forward();
+      }
     } else if (px > 24) {
       // Scrolling into the content puts the photo away again; left open it
       // would sit under the settings and eat the screen.
@@ -147,6 +151,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // the accumulator resets so the same drag cannot toggle twice.
     if (_dragOnFace <= -_dragToOpen && _open.value < 1) {
       _dragOnFace = 0;
+      // The moment the drag becomes a decision, felt as well as seen.
+      Haptics.tap();
       _open.forward();
     } else if (_dragOnFace >= _dragToOpen && _open.value > 0) {
       _dragOnFace = 0;
@@ -1010,7 +1016,10 @@ class _SettingSwitch extends StatelessWidget {
         Switch(
           value: value,
           activeThumbColor: AppColors.brandPrimary,
-          onChanged: onChanged,
+          onChanged: (v) {
+            Haptics.toggle();
+            onChanged(v);
+          },
         ),
       ],
     );

@@ -52,6 +52,7 @@ import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../domain/message_preview.dart';
 import '../../domain/message_route_badge.dart';
+import '../../../../core/util/haptics.dart';
 import '../../../call/data/call_controller.dart';
 import '../../../call/domain/call_record.dart';
 import '../../../call/presentation/call_screen.dart' show callClock;
@@ -652,7 +653,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// which is now the last one *they* used, not a constant in this file.
   void _quickReact() {
     if (!_canReact) return;
-    HapticFeedback.lightImpact();
     _toggleReaction(
       ref.read(reactionEmojiControllerProvider.notifier).quickReaction,
     );
@@ -742,6 +742,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       widget.message.wireId != null;
 
   void _toggleReaction(String emoji) {
+    // One tick for every way in — the double-tap, the strip, the picker. It
+    // used to be the double-tap's alone, at this same strength.
+    Haptics.toggle();
     final mineSet = widget.message.reactions[emoji];
     final alreadyMine = mineSet != null && mineSet.contains('me');
     // Adding one is a choice worth learning from; taking one back is not, and

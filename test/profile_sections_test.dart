@@ -7,12 +7,14 @@ import 'package:cubechat/features/profile/data/discovery_settings_controller.dar
 import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 import 'package:cubechat/features/profile/presentation/customize_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
+import 'package:cubechat/features/profile/presentation/settings/settings_section_icons.dart';
 import 'package:cubechat/features/profile/presentation/settings/settings_tiles.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:cubechat/l10n/app_localizations_en.dart';
 import 'package:cubechat/l10n/app_localizations_uk.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -405,6 +407,51 @@ void main() {
     );
     await tester.pump();
     expect(find.text(t.profileDiscoverableMeshOff), findsOneWidget);
+  });
+
+  testWidgets('a switch, a section row and the reach choice all tick',
+      (tester) async {
+    final calls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          calls.add('${call.arguments}');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await pumpScreen(tester, const PrivacySectionScreen());
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+    expect(calls, isNotEmpty, reason: 'a settings switch');
+
+    calls.clear();
+    await tester.tap(find.text(t.strangerReachNone));
+    await tester.pump();
+    expect(calls, isNotEmpty, reason: 'the reach choice');
+
+    calls.clear();
+    var tapped = false;
+    await pumpScreen(
+      tester,
+      Scaffold(
+        body: SettingsSectionRow(
+          section: SettingsSection.data,
+          title: 'x',
+          onTap: () => tapped = true,
+        ),
+      ),
+    );
+    await tester.tap(find.text('x'));
+    await tester.pump();
+    expect(tapped, isTrue);
+    expect(calls, isNotEmpty, reason: 'a section row');
   });
 
   testWidgets('About carries the way into Diagnostics', (tester) async {
