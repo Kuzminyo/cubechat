@@ -2,7 +2,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
-import 'header_surface.dart';
+import '../theme/colors.dart';
 import 'morphing_search.dart';
 import 'scroll_hiding_island.dart';
 import 'section_switch.dart';
@@ -98,6 +98,9 @@ class _TabPageFrameState extends State<TabPageFrame> {
   double get _searchRoom =>
       widget.search == null ? 0 : TabPageFrame.searchRoom;
 
+  /// How far below the header its surface fades out over the page.
+  static const double _fade = 20;
+
   double get _collapse {
     if (_searchRoom == 0) return 0;
     final px = _offsets[widget.pageKey] ?? 0;
@@ -154,7 +157,12 @@ class _TabPageFrameState extends State<TabPageFrame> {
                   TabHeader.height + _searchRoom + TabPageFrame.islandHeight,
               child: NotificationListener<ScrollUpdateNotification>(
                 onNotification: _onScroll,
-                child: widget.child,
+                // Ink for the pages' own buttons, the half not on show
+                // included: it stays built (offstage) to keep its scroll.
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: widget.child,
+                ),
               ),
             ),
           ),
@@ -168,16 +176,49 @@ class _TabPageFrameState extends State<TabPageFrame> {
               offset: _islandShown ? Offset.zero : const Offset(0, -1),
               duration: motion,
               curve: Curves.easeOutCubic,
-              child: IgnorePointer(
-                ignoring: !_islandShown,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    TabPageFrame.sidePadding,
-                    TabPageFrame.islandTop,
-                    TabPageFrame.sidePadding,
-                    TabPageFrame.islandBottom,
+              // And fades as it goes: tucked behind a near-opaque surface its
+              // labels still showed through faintly. Fully hidden or fully
+              // shown costs nothing; only the 220 ms between is a layer.
+              child: AnimatedOpacity(
+                opacity: _islandShown ? 1 : 0,
+                duration: motion,
+                curve: Curves.easeOutCubic,
+                child: IgnorePointer(
+                  ignoring: !_islandShown,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      TabPageFrame.sidePadding,
+                      TabPageFrame.islandTop,
+                      TabPageFrame.sidePadding,
+                      TabPageFrame.islandBottom,
+                    ),
+                    child: widget.island,
                   ),
-                  child: widget.island,
+                ),
+              ),
+            ),
+          ),
+          // Solid under the header's own text, then a short fade below it:
+          // a surface that thinned out behind the subtitle let a row passing
+          // under it show through the words.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: headerHeight + _fade,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.bgDeep,
+                      AppColors.bgTop.withValues(alpha: 0.96),
+                      AppColors.bgTop.withValues(alpha: 0),
+                    ],
+                    stops: [0, headerHeight / (headerHeight + _fade), 1],
+                  ),
                 ),
               ),
             ),
@@ -187,8 +228,8 @@ class _TabPageFrameState extends State<TabPageFrame> {
             left: 0,
             right: 0,
             height: headerHeight,
-            child: HeaderSurface(
-              softBottom: true,
+            child: Material(
+              type: MaterialType.transparency,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [

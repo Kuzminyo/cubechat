@@ -42,6 +42,15 @@ class MorphingSearch extends StatelessWidget {
     // being squeezed into a circle.
     final textOpacity = (1 - collapse * 2.2).clamp(0.0, 1.0);
     final field = this.field;
+    // With a field in it there is no hint text to name the button, and a
+    // screen reader reached a tap target with nothing to call it.
+    return Semantics(
+      label: field != null ? hint : null,
+      child: _body(textOpacity, field),
+    );
+  }
+
+  Widget _body(double textOpacity, Widget? field) {
     return Material(
       color: Colors.transparent,
       child: InkWell(

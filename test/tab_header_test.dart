@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/widgets/more_button.dart';
 import 'package:cubechat/core/widgets/tab_header.dart';
+import 'package:cubechat/core/widgets/tab_page_frame.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/contacts/presentation/contacts_screen.dart';
 import 'package:cubechat/features/peers/presentation/nearby_screen.dart';
@@ -101,6 +102,29 @@ void main() {
       expect(other.title.topLeft.dx, closeTo(chats.title.topLeft.dx, 0.5));
       expect(other.mark, chats.mark);
     }
+  });
+
+  testWidgets('contacts: the search lives in the header and the halves slide',
+      (tester) async {
+    await pump(tester, const ContactsScreen());
+    // The search folds into a button like Chats' — it is the frame's.
+    expect(find.byKey(TabPageFrame.searchKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(TabPageFrame.searchKey),
+        matching: find.byType(TextField),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text(t.contactsTabCalls));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // Mid-slide both halves are on screen, as a strip.
+    expect(find.text(t.chatsMenuAddContact), findsOneWidget);
+    expect(find.text(t.callsFilterAll), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text(t.chatsMenuAddContact), findsNothing);
   });
 
   testWidgets('a header row is one height with or without buttons',

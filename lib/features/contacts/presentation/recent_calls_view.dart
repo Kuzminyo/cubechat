@@ -42,12 +42,23 @@ List<Widget> recentCallSlivers({
   required Widget Function(String label, bool selected, VoidCallback onTap)
       chip,
   required Widget Function(String title, String hint) empty,
+  String query = '',
 }) {
   final t = AppLocalizations.of(context);
   final all = ref.watch(recentCallsProvider);
-  final calls = missedOnly
-      ? recentCalls(ref.read(messagesControllerProvider), missedOnly: true)
-      : all;
+  final needle = query.trim().toLowerCase();
+  // The Contacts tab has one search for both halves, in its header; here it
+  // narrows the calls to the people whose name matches, as it narrows the
+  // contacts beside them.
+  final calls = (missedOnly
+          ? recentCalls(ref.read(messagesControllerProvider), missedOnly: true)
+          : all)
+      .where(
+        (c) =>
+            needle.isEmpty ||
+            _nameFor(ref, c.peerId).toLowerCase().contains(needle),
+      )
+      .toList(growable: false);
   final wrap = animate ?? (Widget child) => child;
   return [
     SliverToBoxAdapter(
@@ -71,7 +82,11 @@ List<Widget> recentCallSlivers({
         hasScrollBody: false,
         child: wrap(
           empty(
-            all.isEmpty ? t.callsEmptyTitle : t.callsMissedEmpty,
+            all.isEmpty
+                ? t.callsEmptyTitle
+                : needle.isNotEmpty
+                    ? t.contactsSearchEmpty
+                    : t.callsMissedEmpty,
             t.callsEmptyHint,
           ),
         ),

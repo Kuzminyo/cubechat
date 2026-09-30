@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show FloatingHeaderSnapConfiguration;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,8 +11,11 @@ import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/more_button.dart';
+import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../core/widgets/section_switch.dart';
+import '../../../core/widgets/strip_page_slide.dart';
 import '../../../core/widgets/tab_header.dart';
+import '../../../core/widgets/tab_page_frame.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
@@ -104,10 +106,38 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     vsync: this,
     duration: const Duration(milliseconds: 260),
     value: 1,
-  );
+  )..addStatusListener((status) {
+      if (status == AnimationStatus.completed && _leaving != null && mounted) {
+        setState(() => _leaving = null);
+      }
+    });
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+  final _contactsScroll = ScrollController();
+  final _callsScroll = ScrollController();
   double _slideFrom = 1;
   bool _hasSwitchedSection = false;
+
+  /// The half sliding out while [_slide] runs (true for calls), or null once
+  /// it has gone — on stage for the slide, so the halves move as a strip.
+  bool? _leaving;
+
+  /// The search, tapped. Folded into its button, it first brings the half on
+  /// show back to the top, where the search is a field again, then puts the
+  /// cursor in it.
+  Future<void> _openSearch() async {
+    final scroll = _calls ? _callsScroll : _contactsScroll;
+    if (scroll.hasClients && scroll.offset > 0) {
+      await scroll.animateTo(
+        0,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (mounted) _searchFocus.requestFocus();
+  }
 
   @override
   void didChangeDependencies() {
@@ -119,6 +149,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
   void dispose() {
     _slide.dispose();
     _searchController.dispose();
+    _searchFocus.dispose();
+    _contactsScroll.dispose();
+    _callsScroll.dispose();
     super.dispose();
   }
 
@@ -129,23 +162,17 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     setState(() {
       _slideFrom = (calls ? 1.0 : -1.0) *
           (Directionality.of(context) == TextDirection.rtl ? -1 : 1);
+      _leaving = _calls;
       _calls = calls;
       _hasSwitchedSection = true;
     });
     if (MediaQuery.disableAnimationsOf(context)) {
+      _leaving = null;
       _slide.value = 1;
     } else {
       _slide.forward(from: 0);
     }
   }
-
-  // Match chat folders: animate only incoming, visible boxes. Keeping the
-  // viewport mounted avoids duplicate list layout and preserves its scroll.
-  Widget _slideContent(Widget child) => _SectionSlide(
-        animation: _slide,
-        from: _slideFrom,
-        child: child,
-      );
   String _query = '';
 
   /// The calls half instead of the people - Telegram keeps its recent calls
@@ -178,225 +205,226 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       });
     }
 
-    return SafeArea(
-      child: CustomScrollView(
-        // Scrolling the list puts the search keyboard away. This screen is the
-        // one tab-root that owns a text field, so it is also the one that could
-        // strand a keyboard on top of the whole shell; dragging past the field
-        // is the gesture that says you are done with it.
+    // The header, the search and the Contacts | Calls island are drawn over
+    // the two halves, the way Chats draws its header: the search folds into a
+    // round button beside the megaphone as a half scrolls, the island slides
+    // away under the header and comes back on the slightest scroll up, and the
+    // halves themselves move as a strip. One search for both halves — it
+    // narrows the people here and the calls beside them — so the header is the
+    // same on either side and nothing jumps when you switch.
+    // Built under the frame (hence the Builders), which is what tells a page
+    // how far down to start: read from this screen's own context the inset
+    // is zero and the first row hides under the header.
+    final contactsPage = Builder(
+      builder: (context) =>
+          _contactsPage(context, t, all, contacts, tags, inUse),
+    );
+    final callsPage = Builder(
+      builder: (context) => CustomScrollView(
+        controller: _callsScroll,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TabHeader(
-                  mark: Icon(
-                    Icons.contacts_rounded,
-                    color: AppColors.brandPrimary,
-                    size: 30,
-                  ),
-                  title: t.contactsTitle,
-                  subtitle: t.contactsSubtitle,
-                  actions: [
-                    // A channel is the one thing here that is not a person,
-                    // so it gets the megaphone rather than a place in the
-                    // list. Same dialog the Chats menu opens.
-                    HeaderIconButton(
-                      icon: Icons.campaign_rounded,
-                      onPressed: () =>
-                          unawaited(openNewChannelScreen(context)),
-                      tooltip: t.chatsMenuNewChannel,
-                    ),
-                  ],
-                ),
-              ],
+          SliverToBoxAdapter(child: SizedBox(height: IslandInset.of(context))),
+          ...recentCallSlivers(
+            context: context,
+            ref: ref,
+            missedOnly: _missedOnly,
+            query: _query,
+            onMissedOnly: (value) => setState(() => _missedOnly = value),
+            chip: (label, selected, onTap) => _TagChip(
+              label: label,
+              selected: selected,
+              onTap: onTap,
+            ),
+            empty: (title, hint) => _ContactsEmptyState(
+              title: title,
+              hint: hint,
+              icon: Icons.call_rounded,
             ),
           ),
-          // Contacts or calls: two halves of one screen, the way Telegram
-          // pairs them. Floating: it scrolls away with the list and the
-          // slightest scroll back up brings the whole island back, the same
-          // as the switch on Nearby.
-          SliverPersistentHeader(
-            floating: true,
-            delegate: _FloatingIslandDelegate(
-              vsync: this,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-                child: SectionSwitch(
-                  labels: [t.contactsTabContacts, t.contactsTabCalls],
-                  selected: _calls ? 1 : 0,
-                  onSelect: _selectSection,
-                ),
-              ),
-            ),
-          ),
-          if (_calls)
-            ...recentCallSlivers(
-              context: context,
-              ref: ref,
-              missedOnly: _missedOnly,
-              animate: _slideContent,
-              onMissedOnly: (value) => setState(() => _missedOnly = value),
-              chip: (label, selected, onTap) => _TagChip(
-                label: label,
-                selected: selected,
-                onTap: onTap,
-              ),
-              empty: (title, hint) => _ContactsEmptyState(
-                title: title,
-                hint: hint,
-                icon: Icons.call_rounded,
-              ),
-            )
-          else ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _slideContent(
-                  _ContactsSearchField(
-                    hint: t.contactsSearchHint,
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _query = value),
-                  ),
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            // Above the list rather than behind a menu: this screen is the
-            // answer to "who do I know", so the way to add someone belongs in
-            // plain sight — and it stays put while the list below it filters.
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: _slideContent(
-                  FloatingGlass(
-                    blur: false,
-                    borderRadius: 18,
-                    onTap: () => context.push('/contact'),
-                    child: _AddContactRow(label: t.chatsMenuAddContact),
-                  ),
-                ),
-              ),
-            ),
-            // The labels in use, as a row of filters. Only when there are any:
-            // an empty bar is a control that explains nothing and costs a line.
-            if (inUse.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _slideContent(
-                  SizedBox(
-                    height: 44,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [
-                        _TagChip(
-                          label: AppLocalizations.of(context).contactTagAll,
-                          selected: _tag == null,
-                          onTap: () => setState(() => _tag = null),
-                        ),
-                        for (final tag in inUse)
-                          _TagChip(
-                            label: tag,
-                            selected: _tag == tag,
-                            onTap: () => setState(
-                              () => _tag = _tag == tag ? null : tag,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            if (contacts.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _slideContent(
-                  _ContactsEmptyState(
-                    title: all.isEmpty
-                        ? t.contactsEmptyTitle
-                        : t.contactsSearchEmpty,
-                    hint: all.isEmpty
-                        ? t.contactsEmptyHint
-                        : t.contactsSearchHint,
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
-                sliver: AppearOnce(
-                  builder: (context, animate) => SliverList.separated(
-                    itemCount: contacts.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final contact = contacts[index];
-                      return _slideContent(
-                        AppearAnimation(
-                          enabled: animate &&
-                              !_hasSwitchedSection &&
-                              !MediaQuery.disableAnimationsOf(context),
-                          delay: AppearAnimation.stagger(index),
-                          child: FloatingGlass(
-                            blur: false,
-                            borderRadius: 18,
-                            onTap: () =>
-                                context.push(routeForContactProfile(contact)),
-                            // Deleting somebody lived one screen in, at the bottom
-                            // of their profile, behind a panel that has to be
-                            // opened first — which is three steps away from the
-                            // list people look at when they want somebody gone.
-                            onLongPressAt: (at) => unawaited(
-                              _showContactMenu(context, ref, contact, at),
-                            ),
-                            child: _ContactTile(
-                              contact: contact,
-                              tag: tags[contact.peerId],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-          ],
         ],
       ),
     );
-  }
-}
 
-class _SectionSlide extends StatelessWidget {
-  const _SectionSlide({
-    required this.animation,
-    required this.from,
-    required this.child,
-  });
-
-  final Animation<double> animation;
-  final double from;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final travel = MediaQuery.sizeOf(context).width * 0.22;
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    return AnimatedBuilder(
-      animation: animation,
-      child: child,
-      builder: (context, inner) {
-        final t = reducedMotion
-            ? 1.0
-            : Curves.easeOutCubic.transform(animation.value);
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(
-            offset: Offset((1 - t) * from * travel, 0),
-            child: inner,
+    return SafeArea(
+      child: TabPageFrame(
+        header: TabHeader(
+          mark: Icon(
+            Icons.contacts_rounded,
+            color: AppColors.brandPrimary,
+            size: 30,
           ),
-        );
-      },
+          title: t.contactsTitle,
+          subtitle: t.contactsSubtitle,
+          actions: [
+            // Where the folded search lands.
+            const SizedBox(width: TabPageFrame.searchSlot),
+            // A channel is the one thing here that is not a person, so it
+            // gets the megaphone rather than a place in the list. Same dialog
+            // the Chats menu opens.
+            HeaderIconButton(
+              icon: Icons.campaign_rounded,
+              onPressed: () => unawaited(openNewChannelScreen(context)),
+              tooltip: t.chatsMenuNewChannel,
+            ),
+          ],
+        ),
+        trailingActionsWidth: HeaderIconButton.target,
+        search: TabFrameSearch(
+          hint: t.contactsSearchHint,
+          onTap: _openSearch,
+          field: TextField(
+            controller: _searchController,
+            focusNode: _searchFocus,
+            onChanged: (value) => setState(() => _query = value),
+            textCapitalization: TextCapitalization.words,
+            cursorColor: AppColors.brandPrimary,
+            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+            // Padded to the field's full height, so the whole field takes
+            // the tap (44 points at least, per the accessibility guideline),
+            // not a 21-point line of text in the middle of it.
+            decoration: InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12.5),
+              hintText: t.contactsSearchHint,
+              hintStyle: TextStyle(
+                color: AppColors.textOnGlassFaint,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+        pageKey: _calls,
+        // Contacts or calls: two halves of one screen, the way Telegram pairs
+        // them.
+        island: SectionSwitch(
+          labels: [t.contactsTabContacts, t.contactsTabCalls],
+          selected: _calls ? 1 : 0,
+          onSelect: _selectSection,
+        ),
+        child: Stack(
+          children: [
+            for (final calls in [false, true])
+              Offstage(
+                offstage: calls != _calls && calls != _leaving,
+                child: StripPageSlide(
+                  animation: _slide,
+                  from: _slideFrom,
+                  leaving: calls == _leaving && calls != _calls,
+                  child: calls ? callsPage : contactsPage,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The contacts half: adding someone, the labels, and the people.
+  Widget _contactsPage(
+    BuildContext context,
+    AppLocalizations t,
+    List<Chat> all,
+    List<Chat> contacts,
+    Map<String, String> tags,
+    List<String> inUse,
+  ) {
+    return CustomScrollView(
+      controller: _contactsScroll,
+      // Scrolling the list puts the search keyboard away. This screen is the
+      // one tab-root that owns a text field, so it is also the one that could
+      // strand a keyboard on top of the whole shell; dragging past the field
+      // is the gesture that says you are done with it.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        SliverToBoxAdapter(child: SizedBox(height: IslandInset.of(context))),
+        // Above the list rather than behind a menu: this screen is the answer
+        // to "who do I know", so the way to add someone belongs in plain sight
+        // — and it stays put while the list below it filters.
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: FloatingGlass(
+              blur: false,
+              borderRadius: 18,
+              onTap: () => context.push('/contact'),
+              child: _AddContactRow(label: t.chatsMenuAddContact),
+            ),
+          ),
+        ),
+        // The labels in use, as a row of filters. Only when there are any: an
+        // empty bar is a control that explains nothing and costs a line.
+        if (inUse.isNotEmpty)
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _TagChip(
+                    label: t.contactTagAll,
+                    selected: _tag == null,
+                    onTap: () => setState(() => _tag = null),
+                  ),
+                  for (final tag in inUse)
+                    _TagChip(
+                      label: tag,
+                      selected: _tag == tag,
+                      onTap: () => setState(
+                        () => _tag = _tag == tag ? null : tag,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (contacts.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _ContactsEmptyState(
+              title: all.isEmpty ? t.contactsEmptyTitle : t.contactsSearchEmpty,
+              hint: all.isEmpty ? t.contactsEmptyHint : t.contactsSearchHint,
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+            sliver: AppearOnce(
+              builder: (context, animate) => SliverList.separated(
+                itemCount: contacts.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final contact = contacts[index];
+                  return AppearAnimation(
+                    enabled: animate &&
+                        !_hasSwitchedSection &&
+                        !MediaQuery.disableAnimationsOf(context),
+                    delay: AppearAnimation.stagger(index),
+                    child: FloatingGlass(
+                      blur: false,
+                      borderRadius: 18,
+                      onTap: () =>
+                          context.push(routeForContactProfile(contact)),
+                      // Deleting somebody lived one screen in, at the bottom
+                      // of their profile, behind a panel that has to be opened
+                      // first — which is three steps away from the list people
+                      // look at when they want somebody gone.
+                      onLongPressAt: (at) => unawaited(
+                        _showContactMenu(context, ref, contact, at),
+                      ),
+                      child: _ContactTile(
+                        contact: contact,
+                        tag: tags[contact.peerId],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -554,52 +582,6 @@ class _AddContactRow extends StatelessWidget {
   }
 }
 
-class _ContactsSearchField extends StatelessWidget {
-  const _ContactsSearchField({
-    required this.hint,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  final String hint;
-  final ValueChanged<String> onChanged;
-  final TextEditingController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return FloatingGlass(
-      blur: false,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      borderRadius: 14,
-      child: TextField(
-        controller: controller,
-        onChanged: onChanged,
-        textCapitalization: TextCapitalization.words,
-        cursorColor: AppColors.brandPrimary,
-        style: TextStyle(
-          color: AppColors.textOnGlass,
-          fontSize: 14,
-        ),
-        decoration: InputDecoration(
-          icon: Icon(
-            Icons.search_rounded,
-            size: 18,
-            color: AppColors.textOnGlassFaint,
-          ),
-          border: InputBorder.none,
-          isCollapsed: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: AppColors.textOnGlassFaint,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ContactTile extends ConsumerWidget {
   const _ContactTile({required this.contact, this.tag});
 
@@ -743,43 +725,6 @@ class _ContactsEmptyState extends StatelessWidget {
 }
 
 /// One label in the filter row.
-/// The Contacts | Calls island as a floating sliver header: gone while you
-/// scroll down, fully back on the slightest scroll up (the snap), without the
-/// list underneath moving to make room.
-class _FloatingIslandDelegate extends SliverPersistentHeaderDelegate {
-  _FloatingIslandDelegate({required this.vsync, required this.child});
-
-  @override
-  final TickerProvider vsync;
-  final Widget child;
-
-  static const double _extent = 14 + SectionSwitch.height + 16;
-
-  @override
-  double get minExtent => _extent;
-
-  @override
-  double get maxExtent => _extent;
-
-  @override
-  FloatingHeaderSnapConfiguration get snapConfiguration =>
-      FloatingHeaderSnapConfiguration(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) =>
-      SizedBox(height: _extent, child: child);
-
-  @override
-  bool shouldRebuild(_FloatingIslandDelegate old) => old.child != child;
-}
-
 class _TagChip extends StatelessWidget {
   const _TagChip({
     required this.label,
