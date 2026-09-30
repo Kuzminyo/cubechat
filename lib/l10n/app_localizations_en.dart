@@ -3638,10 +3638,4 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get subCalls => 'Calls';
-
-  @override
-  String get subMyCard => 'My card';
-
-  @override
-  String get fingerprintCopy => 'Copy';
 }

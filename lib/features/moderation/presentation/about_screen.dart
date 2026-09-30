@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/colors.dart';
@@ -89,6 +90,13 @@ class AboutScreen extends StatelessWidget {
                 privacyDocumentUrl(context),
                 mode: LaunchMode.externalApplication,
               )),
+            ),
+            // Moved here from the profile, which is now a list of sections;
+            // what the app knows about itself sits with the version.
+            _AboutAction(
+              icon: Icons.bug_report_rounded,
+              label: t.diagnosticsTitle,
+              onTap: () => unawaited(context.push('/diagnostics')),
             ),
           ],
         ),

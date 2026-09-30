@@ -1285,7 +1285,5 @@
   "subWhoSeesMe": "Хто мене бачить",
   "subProtection": "Захист",
   "subNotifications": "Сповіщення",
-  "subCalls": "Дзвінки",
-  "subMyCard": "Моя картка",
-  "fingerprintCopy": "Копіювати"
+  "subCalls": "Дзвінки"
 }

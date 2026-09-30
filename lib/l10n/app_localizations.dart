@@ -6343,18 +6343,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calls'**
   String get subCalls;
-
-  /// No description provided for @subMyCard.
-  ///
-  /// In en, this message translates to:
-  /// **'My card'**
-  String get subMyCard;
-
-  /// No description provided for @fingerprintCopy.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy'**
-  String get fingerprintCopy;
 }
 
 class _AppLocalizationsDelegate

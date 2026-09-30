@@ -1777,7 +1777,5 @@
   "subWhoSeesMe": "Who sees me",
   "subProtection": "Protection",
   "subNotifications": "Notifications",
-  "subCalls": "Calls",
-  "subMyCard": "My card",
-  "fingerprintCopy": "Copy"
+  "subCalls": "Calls"
 }

@@ -71,9 +71,10 @@ void main() {
     // of a list does without thinking. Neither costs the other anything — the
     // face claims only drags that start on it.
     await pumpProfile(tester);
-    final t = await AppLocalizations.delegate.load(const Locale('en'));
 
-    final before = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+    // The fingerprint chip is the first thing under the cover.
+    final below = find.byIcon(Icons.fingerprint_rounded);
+    final before = tester.getTopLeft(below).dy;
     await tester.drag(
       find.byType(CustomScrollView),
       const Offset(0, 260),
@@ -81,8 +82,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(find.text(t.profileFingerprint)).dy,
-        greaterThan(before));
+    expect(tester.getTopLeft(below).dy, greaterThan(before));
   });
 
   testWidgets('the cover offers the three actions it advertises',
@@ -99,44 +99,23 @@ void main() {
 
   testWidgets('the settings below the cover survived the move to slivers',
       (tester) async {
-    // The screen changed from a ListView to a CustomScrollView; the cards must
-    // still be built rather than silently dropped outside the sliver.
+    // The screen changed from a ListView to a CustomScrollView; the rows must
+    // still be built rather than silently dropped outside the sliver. The
+    // settings are a list of sections now (see profile_sections_test), so the
+    // check is the first section row and, scrolled to, the last one.
     await pumpProfile(tester);
     final t = await AppLocalizations.delegate.load(const Locale('en'));
 
-    expect(find.text(t.profileFingerprint), findsOneWidget);
-    // The settings are four collapsible groups now rather than a flat run of
-    // cards, so the thing to check is that a group header is built — the
-    // uppercase section labels this used to look for are gone with the layout
-    // that needed them.
-    expect(find.text(t.profileGroupConnection), findsOneWidget);
-    // Scrolled to rather than expected on screen: Customisation now sits above
-    // this group, which pushed it past the fold of a test viewport, and a
-    // sliver does not build what is not visible. Reaching it by scrolling is
-    // also the stronger check — it proves the group is in the sliver at all,
-    // which is what this test is about.
+    expect(find.text(t.cubeIdTitle), findsOneWidget);
+    // Scrolled to rather than expected on screen: a sliver does not build what
+    // is past the fold of a test viewport, and reaching it by scrolling proves
+    // the row is in the sliver at all, which is what this test is about.
     await tester.scrollUntilVisible(
-      find.text(t.profileGroupApp),
+      find.text(t.sectionAbout),
       240,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text(t.profileGroupApp), findsOneWidget);
-  });
-
-  testWidgets('a group opens to reveal its settings', (tester) async {
-    // Closed by default is the whole point — thirteen cards became six rows —
-    // so the rows inside must genuinely be absent until asked for, not merely
-    // scrolled past.
-    await pumpProfile(tester);
-    final t = await AppLocalizations.delegate.load(const Locale('en'));
-
-    expect(find.text(t.profileTransportMesh), findsNothing);
-
-    await tester.tap(find.text(t.profileGroupConnection));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(find.text(t.profileTransportMesh), findsOneWidget);
+    expect(find.text(t.sectionAbout), findsOneWidget);
   });
 
   testWidgets('the header rests compact and opens on a swipe up the face',
@@ -150,9 +129,9 @@ void main() {
     // the list, which put "see the photo" and "read the settings" on the same
     // axis pulling opposite ways.
     await pumpProfile(tester);
-    final t = await AppLocalizations.delegate.load(const Locale('en'));
 
-    final before = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+    final below = find.byIcon(Icons.fingerprint_rounded);
+    final before = tester.getTopLeft(below).dy;
 
     await tester.drag(
       find.byKey(const ValueKey('profile-cover-face')),
@@ -161,7 +140,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final after = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+    final after = tester.getTopLeft(below).dy;
     expect(after, greaterThan(before),
         reason: 'swiping up the picture should open the cover');
 
@@ -173,8 +152,7 @@ void main() {
       touchSlopY: 0,
     );
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text(t.profileFingerprint)).dy,
-        closeTo(before, 1));
+    expect(tester.getTopLeft(below).dy, closeTo(before, 1));
   });
 
   testWidgets('nothing in the header overlaps once it is scrolled', (tester) async {

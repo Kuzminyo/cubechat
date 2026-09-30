@@ -3681,10 +3681,4 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get subCalls => 'Дзвінки';
-
-  @override
-  String get subMyCard => 'Моя картка';
-
-  @override
-  String get fingerprintCopy => 'Копіювати';
 }

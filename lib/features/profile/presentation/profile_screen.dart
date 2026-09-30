@@ -24,13 +24,11 @@ import 'package:saver_gallery/saver_gallery.dart';
 
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
-import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
-import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/call_routing_controller.dart';
@@ -56,6 +54,7 @@ import '../../peers/data/peer_discovery_controller.dart';
 import 'widgets/code_pad.dart';
 import '../data/dead_mans_switch_controller.dart';
 import '../../map/presentation/map_sharing_consent.dart';
+import 'settings/settings_section_icons.dart';
 import 'settings/settings_tiles.dart';
 
 // Each section screen is a part of this file so it can use the setting widgets
@@ -159,7 +158,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final locale = ref.watch(localeControllerProvider);
     final nickname = ref.watch(nicknameControllerProvider);
     final fingerprintAsync = ref.watch(identityFingerprintProvider);
     final fingerprint = fingerprintAsync.maybeWhen(
@@ -172,106 +170,120 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // `child`: the cover animates every frame it is opening, and without
     // this every settings card was rebuilt on each of those frames. The
     // CustomScrollView config is cheap to remake; its contents are not.
+    final cubeName = ref.watch(cubeIdControllerProvider).name;
+    final quiet = ref.watch(quietHoursControllerProvider);
+    String clock(int minutes) =>
+        TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
+    Widget row(
+      SettingsSection section,
+      String title,
+      String route, {
+      String? value,
+    }) =>
+        SettingsSectionRow(
+          section: section,
+          title: title,
+          value: value,
+          onTap: () => context.push(route),
+        );
+
+    // A short list of sections, each opening its own screen the way Customize
+    // always did. The four expandable groups before it still made you read
+    // everything inside one to find a switch, and the owner's verdict was
+    // "eyes run all over, and it doesn't look expensive". The grey word on
+    // each row is what keeps "did I change anything?" answerable without a
+    // tap. Rows are grouped by how often each is wanted, not alphabetically.
     final settings = SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
       sliver: SliverList.list(children: [
-        // Identity. The avatar and the name moved up onto the cover, so what
-        // is left here is the fingerprint — the part you actually read out
-        // loud to someone standing next to you.
-        GlassCard(
-          strong: true,
-          padding: const EdgeInsets.all(20),
-          borderRadius: 22,
-          child: _FingerprintRow(
-            label: t.profileFingerprint,
-            value: fingerprint,
-            ready: fingerprintReady,
-          ),
+        _IdentityChips(
+          cubeName: cubeName,
+          fingerprint: fingerprint,
+          fingerprintReady: fingerprintReady,
         ),
-
-        const SizedBox(height: 10),
-
-        // Four groups, all closed to start with. Flat, this screen was thirteen
-        // identical panes you had to read end to end to find anything; the
-        // summary line on each header is what keeps that from becoming four
-        // taps instead — coming here to *check* a setting needs none.
-        _ExpandableSection(
-          icon: Icons.radar_rounded,
-          title: t.profileGroupConnection,
-          summary: _connectionSummary(ref, t),
-          children: const [
-            _TransportRow(),
-            _BackgroundModeCard(framed: false),
-            _RelayFallbackCard(framed: false),
-          ],
-        ),
-
-        const SizedBox(height: 10),
-
-        _ExpandableSection(
-          icon: Icons.shield_rounded,
-          title: t.profileGroupPrivacy,
-          summary: _privacySummary(ref, t),
-          children: const [
-            _MeshSwitchCard(framed: false),
-            _DiscoverableCard(framed: false),
-            _PrivacyCard(framed: false),
-          ],
-        ),
-
-        const SizedBox(height: 10),
-
-        _ExpandableSection(
-          icon: Icons.swap_horiz_rounded,
-          title: t.profileGroupData,
-          summary: _dataSummary(ref, t),
-          children: const [
-            _CubeIdCard(framed: false),
-            _ContactCardRow(framed: false),
-            _FileTransfersCard(framed: false),
-            PhoneTransferCard(framed: false),
-            _BackupCard(framed: false),
-          ],
-        ),
-
-        const SizedBox(height: 10),
-
-        // Customisation above the app group, not below it. What is behind
-        // this row — the colours, the interface size, the nav bar — is what
-        // somebody opening this screen is usually looking for; the group under
-        // it is language, storage and the version, which are things you go to
-        // once. Asked for directly, and the order now matches how often each
-        // is wanted.
-        //
-        // One row, not a group with a single row in it named the same thing.
-        // None of what it holds is a preference picked from a list; they are
-        // the shape of the app, arranged on a screen with room to do it.
-        _CustomizeRow(summary: _customizeSummary(ref, t)),
-
-        const SizedBox(height: 10),
-
-        _ExpandableSection(
-          icon: Icons.tune_rounded,
-          title: t.profileGroupApp,
-          summary: t.profileVersion(appVersion),
+        const SizedBox(height: 18),
+        SettingsGroup(
           children: [
-            LanguageRow(locale: locale),
-            const _StorageRow(),
-            // Diagnostics above the signature, not below it. The name-and-
-            // version block reads as the end of a screen — everything under it
-            // looks like small print — and Diagnostics is a door, not a
-            // footer.
-            const _DiagnosticsRow(),
-            const _AboutRow(),
+            row(
+              SettingsSection.cubeId,
+              t.cubeIdTitle,
+              '/cube-id',
+              value: cubeName == null ? null : '@$cubeName',
+            ),
+            row(
+              SettingsSection.privacy,
+              t.sectionPrivacy,
+              '/settings/privacy',
+              value: switch (ref.watch(
+                privacySettingsProvider.select((s) => s.strangerReach),
+              )) {
+                StrangerReach.all => t.strangerReachAll,
+                StrangerReach.request => t.strangerReachRequest,
+                StrangerReach.none => t.strangerReachNone,
+              },
+            ),
+            row(
+              SettingsSection.notifications,
+              t.sectionNotifications,
+              '/settings/notifications',
+              value: quiet.enabled
+                  ? '${clock(quiet.fromMinutes)}–${clock(quiet.toMinutes)}'
+                  : null,
+            ),
+            row(
+              SettingsSection.connection,
+              t.sectionConnection,
+              '/settings/connection',
+              value: _connectionSummary(ref, t),
+            ),
           ],
         ),
-
-        const SizedBox(height: 14),
-
-        // Deliberately outside the groups and left last. It is the one control
-        // here you might need in a hurry, and a panic button behind a
-        // disclosure triangle is not one.
-        _EmergencyWipeCard(),
+        const SizedBox(height: 12),
+        SettingsGroup(
+          children: [
+            row(SettingsSection.chats, t.sectionChats, '/settings/chats'),
+            row(
+              SettingsSection.appearance,
+              t.sectionAppearance,
+              '/customize',
+              value: _customizeSummary(ref, t),
+            ),
+            row(
+              SettingsSection.data,
+              t.sectionData,
+              '/settings/data',
+              value: _dataSummary(ref, t),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SettingsGroup(
+          children: [
+            // Named "About" because App Review is pointed at Profile → About
+            // for the developer's contact.
+            SettingsSectionRow(
+              section: SettingsSection.about,
+              title: t.sectionAbout,
+              value: appVersion,
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Its own pane, last. The one control here you might need in a hurry;
+        // it acts in place — confirm, then wipe — rather than opening a screen.
+        SettingsGroup(
+          children: [
+            SettingsSectionRow(
+              section: SettingsSection.wipe,
+              title: t.profileEmergencyWipe,
+              danger: true,
+              onTap: () => unawaited(_confirmWipe(context, ref, t)),
+            ),
+          ],
+        ),
       ]),
     );
 
@@ -310,7 +322,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 class _BackgroundModeCard extends ConsumerWidget {
   const _BackgroundModeCard({this.framed = true});
 
-  /// False inside an [_ExpandableSection], which frames the group.
+  /// False inside a [SettingsGroup], which frames the section.
   final bool framed;
 
   @override
@@ -402,7 +414,7 @@ class _BackgroundModeCard extends ConsumerWidget {
 class _RelayFallbackCard extends ConsumerWidget {
   const _RelayFallbackCard({this.framed = true});
 
-  /// False inside an [_ExpandableSection], which frames the group.
+  /// False inside a [SettingsGroup], which frames the section.
   final bool framed;
 
   @override
@@ -464,7 +476,7 @@ class _RelayFallbackCard extends ConsumerWidget {
 class _FileTransfersCard extends ConsumerWidget {
   const _FileTransfersCard({this.framed = true});
 
-  /// False inside an [_ExpandableSection], which frames the group.
+  /// False inside a [SettingsGroup], which frames the section.
   final bool framed;
 
   @override
@@ -526,73 +538,10 @@ class _FileTransfersCard extends ConsumerWidget {
   }
 }
 
-/// Profile → Cube ID: the @name, or an invitation to take one.
-class _CubeIdCard extends ConsumerWidget {
-  const _CubeIdCard({this.framed = true});
-
-  /// False inside an [_ExpandableSection], which frames the group.
-  final bool framed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final name = ref.watch(cubeIdControllerProvider).name;
-    return _frame(
-      framed,
-      onTap: () => context.push('/cube-id'),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.brandPrimary.withValues(alpha: 0.18),
-              border: Border.all(
-                color: AppColors.brandPrimary.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Icon(
-              Icons.alternate_email_rounded,
-              color: AppColors.brandPrimary,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.cubeIdTitle,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  name == null ? t.cubeIdRowEmpty : '@$name',
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
-        ],
-      ),
-    );
-  }
-}
-
 class _BackupCard extends StatelessWidget {
   const _BackupCard({this.framed = true});
 
-  /// False inside an [_ExpandableSection], which frames the group.
+  /// False inside a [SettingsGroup], which frames the section.
   final bool framed;
 
   @override
@@ -689,7 +638,7 @@ class _MeshSwitchCard extends ConsumerWidget {
 class _DiscoverableCard extends ConsumerWidget {
   const _DiscoverableCard({this.framed = true});
 
-  /// False inside an [_ExpandableSection], which frames the group.
+  /// False inside a [SettingsGroup], which frames the section.
   final bool framed;
 
   @override
@@ -1319,85 +1268,9 @@ class _ClockButton extends StatelessWidget {
       );
 }
 
-class _PrivacyCard extends ConsumerWidget {
-  const _PrivacyCard({this.framed = true});
-
-  /// False inside an [_ExpandableSection], which frames the group.
-  final bool framed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    return _frame(
-      framed,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            t.profilePrivacy,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          const _AppLockTile(),
-          const SizedBox(height: 10),
-          const _DeadMansRow(),
-          const SizedBox(height: 14),
-          const _FilterTile(),
-          const SizedBox(height: 14),
-          const CircleLensTile(),
-          const SizedBox(height: 14),
-          const _MapLocationTile(),
-          const SizedBox(height: 14),
-          const _CallDirectTile(),
-          const SizedBox(height: 14),
-          if (PlatformInfo.isAndroid) ...[
-            const _CallFullScreenTile(),
-            const SizedBox(height: 14),
-            // Right under the switch it keeps on: an update installed from
-            // here does not switch lock-screen calls off. See [SelfUpdate].
-            const _InstallUpdateRow(),
-            const SizedBox(height: 14),
-          ],
-          const _LastSeenTile(),
-          const SizedBox(height: 14),
-          const _ReadReceiptsTile(),
-          const SizedBox(height: 14),
-          const _ForwardLinkTile(),
-          const SizedBox(height: 14),
-          const _AcceptCallsTile(),
-          const SizedBox(height: 14),
-          // Strangers from the internet: everyone, by request, or nobody.
-          // Three answers, so not a switch. Also on the card and Cube ID
-          // screens — one widget, see [StrangerReachSelector].
-          const StrangerReachSelector(),
-          const SizedBox(height: 10),
-          Text(
-            t.profilePrivacyExplainer,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 14),
-          const _QuietHoursRow(),
-          if (PlatformInfo.isMobile) ...[
-            const SizedBox(height: 14),
-            const _PushWakeRow(),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// The privacy card's switches, one widget each. They used to be one card; the
-// profile's sections put them on three different screens (privacy, calls,
-// chats), so each was cut out whole — body and comment moved as they were.
+// The old privacy card's switches, one widget each. The profile's sections put
+// them on three different screens (privacy, calls, chats), so each was cut out
+// whole — body and comment moved as they were — and the card itself is gone.
 
 class _AppLockTile extends ConsumerWidget {
   const _AppLockTile();
@@ -1736,88 +1609,16 @@ class _PushWakeRow extends ConsumerWidget {
   }
 }
 
-/// Way in to the off-mesh introduction flow — share your own identity bundle,
-/// or import someone else's, for a chat that starts without Bluetooth ever
-/// being involved.
-class _ContactCardRow extends StatelessWidget {
-  const _ContactCardRow({this.framed = true});
-
-  /// False inside an [_ExpandableSection], which frames the group.
-  final bool framed;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return _frame(
-      framed,
-      onTap: () => context.push('/contact'),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.glass(0.08),
-              border: Border.all(color: AppColors.glass(0.18)),
-            ),
-            child: Icon(Icons.person_add_alt_rounded,
-                color: AppColors.textOnGlass, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.profileContactCard,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  t.profileContactCardSubtitle,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
-        ],
-      ),
-    );
-  }
-}
-
-/// The one-line state a closed group reports.
+/// The grey word on a section's row on the profile.
 ///
-/// Each reads the same providers the rows inside do, so the header cannot drift
-/// out of step with what opening it would show.
+/// Each reads the same providers the screen behind it does, so the row cannot
+/// drift out of step with what opening it would show.
 String _connectionSummary(WidgetRef ref, AppLocalizations t) {
   final parts = <String>[
     ref.watch(relaySettingsProvider).isActive
         ? t.profileSummaryMeshInternet
         : t.profileSummaryMeshOnly,
     if (ref.watch(backgroundModeProvider)) t.profileSummaryBackgroundOn,
-  ];
-  return parts.join(' · ');
-}
-
-String _privacySummary(WidgetRef ref, AppLocalizations t) {
-  final parts = <String>[
-    ref.watch(discoverySettingsProvider).discoverable
-        ? t.profileSummaryDiscoverable
-        : t.profileSummaryHidden,
-    if (!ref.watch(privacySettingsProvider).shareLastSeen)
-      t.profileSummaryLastSeenHidden,
-    if (!ref.watch(privacySettingsProvider).shareMapLocation)
-      t.profileSummaryMapHidden,
   ];
   return parts.join(' · ');
 }
@@ -1927,52 +1728,6 @@ class LanguageRow extends ConsumerWidget {
   }
 }
 
-class _AboutRow extends StatelessWidget {
-  const _AboutRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return InkWell(
-      onTap: () => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
-      ),
-      child: _frame(
-        false,
-        child: Row(
-          children: [
-            const CubeLogo(size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Named for what it opens: App Review is pointed at
-                  // "Profile → About" for the developer's contact, and a row
-                  // reading only "Cubechat" did not say it was a way in.
-                  Text(
-                    t.aboutTitle,
-                    style: AppTypography.heading(
-                        size: 15, color: AppColors.textOnGlass),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Cubechat · ${t.profileVersion(appVersion)}',
-                    style: TextStyle(
-                        color: AppColors.textOnGlassDim, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded,
-                color: AppColors.textOnGlassFaint),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// "Interface size · 5 tabs" — enough to answer "did I change anything?"
 /// without opening the screen, which is what every summary here is for.
 String _customizeSummary(WidgetRef ref, AppLocalizations t) {
@@ -1987,34 +1742,23 @@ String _customizeSummary(WidgetRef ref, AppLocalizations t) {
   return '$size · ${layout.shown.length}/${NavDestination.values.length}';
 }
 
-/// A row that opens a screen — the shape a setting takes once it has outgrown
-/// a switch.
-///
-/// [framed] is the same distinction every card here draws: inside a group the
-/// group supplies the pane, and standing on its own it needs one of its own.
-/// [summary] is what a group header would have said, so a top-level row can
-/// still answer "did I change anything?" without being opened.
+/// A row inside a section that opens a screen of its own — the shape a setting
+/// takes once it has outgrown a switch.
 class _PushRow extends StatelessWidget {
   const _PushRow({
     required this.icon,
     required this.label,
     required this.route,
-    this.summary,
-    this.framed = false,
   });
 
   final IconData icon;
   final String label;
   final String route;
-  final String? summary;
-  final bool framed;
 
   @override
   Widget build(BuildContext context) {
-    final accent = framed ? AppColors.brandPrimary : AppColors.textOnGlass;
     return _frame(
-      framed,
-      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      false,
       onTap: () => context.push(route),
       child: Row(
         children: [
@@ -2023,44 +1767,20 @@ class _PushRow extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: framed
-                  ? AppColors.brandPrimary.withValues(alpha: 0.16)
-                  : AppColors.glass(0.08),
-              border: Border.all(
-                color: framed
-                    ? AppColors.brandPrimary.withValues(alpha: 0.36)
-                    : AppColors.glass(0.18),
-              ),
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
             ),
-            child: Icon(icon, color: accent, size: 18),
+            child: Icon(icon, color: AppColors.textOnGlass, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: framed ? 15 : 14,
-                    fontWeight: framed ? FontWeight.w600 : FontWeight.w500,
-                  ),
-                ),
-                if (summary != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    summary!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
@@ -2081,62 +1801,8 @@ class _StorageRow extends StatelessWidget {
       );
 }
 
-class _CustomizeRow extends StatelessWidget {
-  const _CustomizeRow({this.summary});
-
-  final String? summary;
-
-  @override
-  Widget build(BuildContext context) => _PushRow(
-        icon: Icons.dashboard_customize_rounded,
-        label: AppLocalizations.of(context).customizeTitle,
-        route: '/customize',
-        summary: summary,
-        framed: true,
-      );
-}
-
-class _DiagnosticsRow extends StatelessWidget {
-  const _DiagnosticsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return _frame(
-      false,
-      onTap: () => context.push('/diagnostics'),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.glass(0.08),
-              border: Border.all(color: AppColors.glass(0.18)),
-            ),
-            child: Icon(Icons.bug_report_rounded,
-                color: AppColors.textOnGlass, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              AppLocalizations.of(context).diagnosticsTitle,
-              style: TextStyle(
-                color: AppColors.textOnGlass,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
-        ],
-      ),
-    );
-  }
-}
-
-/// A settings row's own frame — or, inside an [_ExpandableSection], nothing,
-/// because the section already supplies one.
+/// A settings row's own frame — or, inside a [SettingsGroup], nothing, because
+/// the group already supplies one.
 ///
 /// Every card here was its own pane of glass, which is how the screen ended up
 /// as thirteen identical slabs with no shape to it. Grouped, the outer pane is
@@ -2164,133 +1830,6 @@ Widget _frame(
   );
 }
 
-/// One collapsible group of settings.
-///
-/// Collapsed by default and independent of its neighbours: an accordion that
-/// closes one thing to open another hides state the user was mid-way through
-/// comparing, and there is nothing here expensive enough to justify that.
-///
-/// [summary] is the point of the header. A group that only says "Connection"
-/// makes you open it to learn anything, which is a worse screen than the flat
-/// list it replaced; saying "Mesh · internet on" means the common case — coming
-/// to check a setting rather than change one — needs no tap at all.
-class _ExpandableSection extends StatefulWidget {
-  const _ExpandableSection({
-    required this.icon,
-    required this.title,
-    required this.children,
-    this.summary,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? summary;
-  final List<Widget> children;
-
-  @override
-  State<_ExpandableSection> createState() => _ExpandableSectionState();
-}
-
-class _ExpandableSectionState extends State<_ExpandableSection>
-    with SingleTickerProviderStateMixin {
-  bool _open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      borderRadius: 22,
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: () => setState(() => _open = !_open),
-              borderRadius: BorderRadius.circular(22),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.brandPrimary.withValues(alpha: 0.16),
-                        border: Border.all(
-                          color: AppColors.brandPrimary.withValues(alpha: 0.36),
-                        ),
-                      ),
-                      child: Icon(widget.icon,
-                          color: AppColors.brandPrimary, size: 18),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: TextStyle(
-                              color: AppColors.textOnGlass,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (widget.summary != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              widget.summary!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: AppColors.textOnGlassDim,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: _open ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(Icons.expand_more_rounded,
-                          color: AppColors.textOnGlassFaint),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // AnimatedSize over an if: the children keep their state across a
-            // collapse, so a switch mid-flight is not rebuilt from scratch when
-            // the group is reopened.
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: _open
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Divider(height: 1, color: Color(0x1FFFFFFF)),
-                          ...widget.children,
-                        ],
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _FingerprintRow extends StatelessWidget {
   const _FingerprintRow({
@@ -2356,6 +1895,125 @@ class _FingerprintRow extends StatelessWidget {
   }
 }
 
+/// Under the cover: the @name, then the key's fingerprint as a short chip.
+///
+/// The fingerprint used to be a pane of its own above every setting. It is
+/// identity, not a setting, so it sits with the name; the full fingerprint is
+/// one tap away, in a sheet with its copy button, for the moment somebody
+/// reads it out to a person beside them.
+class _IdentityChips extends StatelessWidget {
+  const _IdentityChips({
+    required this.cubeName,
+    required this.fingerprint,
+    required this.fingerprintReady,
+  });
+
+  final String? cubeName;
+  final String fingerprint;
+  final bool fingerprintReady;
+
+  /// "A3F2 · 9C1D" — the first two groups, enough to recognise a key by.
+  static String short(String fingerprint) {
+    final groups =
+        fingerprint.split(RegExp(r'\s+')).where((g) => g.isNotEmpty).toList();
+    return groups.take(2).join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final name = cubeName;
+    return Column(
+      children: [
+        if (name != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '@$name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: AppColors.brandPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        // No "My card" chip beside it, though the mock-up had one: the cover
+        // already carries a Card action to the same screen, and two doors to
+        // one room is the clutter this layout exists to remove.
+        _IdentityChip(
+          icon: Icons.fingerprint_rounded,
+          label: fingerprintReady ? short(fingerprint) : '… · …',
+          onTap: fingerprintReady
+              ? () => unawaited(
+                    showGlassSheet<void>(
+                      context: context,
+                      useRootNavigator: true,
+                      builder: (_) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: _FingerprintRow(
+                            label: t.profileFingerprint,
+                            value: fingerprint,
+                            ready: fingerprintReady,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _IdentityChip extends StatelessWidget {
+  const _IdentityChip({required this.icon, required this.label, this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(14);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: radius,
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.glass(0.07),
+            borderRadius: radius,
+            border: Border.all(color: AppColors.glass(0.09)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 17, color: AppColors.brandPrimary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  color: AppColors.textOnGlass,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LangPill extends StatelessWidget {
   const _LangPill({
     required this.label,
@@ -2399,97 +2057,55 @@ class _LangPill extends StatelessWidget {
   }
 }
 
-class _EmergencyWipeCard extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    return GlassCard(
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.danger.withValues(alpha: 0.18),
-              border:
-                  Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
-            ),
-            child: const Icon(Icons.warning_amber_rounded,
-                color: AppColors.danger, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.profileEmergencyWipe,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  t.profileEmergencyWipeHint,
-                  style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          PillButton(
-            label: t.profileEmergencyWipeAction,
-            onTap: () => _confirmWipe(context, ref, t),
-          ),
-        ],
+/// The emergency wipe: ask once, then wipe. Its row on the profile acts in
+/// place, as the card's button did; the dialog says what is lost.
+Future<void> _confirmWipe(
+  BuildContext context,
+  WidgetRef ref,
+  AppLocalizations t,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
-    );
-  }
-
-  Future<void> _confirmWipe(
-      BuildContext context, WidgetRef ref, AppLocalizations t) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: AppColors.glass(0.15)),
+      title: Text(
+        t.profileEmergencyWipeConfirm,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
         ),
-        title: Text(
-          t.profileEmergencyWipeConfirm,
-          style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 16,
-              fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          t.profileEmergencyWipeConfirmHint,
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel,
-                style: TextStyle(color: AppColors.textOnGlassDim)),
-          ),
-          TextButton(
-            onPressed: () async {
-              await emergencyWipe(ref);
-              if (!ctx.mounted) return;
-              Navigator.of(ctx).pop();
-            },
-            child: Text(t.profileEmergencyWipeAction,
-                style: const TextStyle(color: AppColors.danger)),
-          ),
-        ],
       ),
-    );
-  }
+      content: Text(
+        t.profileEmergencyWipeConfirmHint,
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(
+            t.cancel,
+            style: TextStyle(color: AppColors.textOnGlassDim),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            await emergencyWipe(ref);
+            if (!ctx.mounted) return;
+            Navigator.of(ctx).pop();
+          },
+          child: Text(
+            t.profileEmergencyWipeAction,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// The profile header: a circle at rest, a full-bleed photo when pulled open.

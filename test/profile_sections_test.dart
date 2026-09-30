@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cubechat/features/cube_id/presentation/stranger_reach_selector.dart';
+import 'package:cubechat/features/moderation/presentation/about_screen.dart';
+import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 import 'package:cubechat/features/profile/presentation/customize_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/profile/presentation/settings/settings_tiles.dart';
@@ -10,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -170,6 +174,114 @@ void main() {
       expect(find.text(gone), findsNothing, reason: gone);
     }
     expect(tester.takeException(), isNull);
+  });
+
+  group('the profile itself', () {
+    Future<GoRouter> pumpProfile(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      Widget stub(String name) => Scaffold(body: Text('stub:$name'));
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (_, __) => const ProfileScreen()),
+          for (final p in [
+            'cube-id',
+            'settings/privacy',
+            'settings/notifications',
+            'settings/connection',
+            'settings/chats',
+            'customize',
+            'settings/data',
+            'contact',
+          ])
+            GoRoute(path: '/$p', builder: (_, __) => stub(p)),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            locale: const Locale('uk'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: ThemeData.dark(useMaterial3: true),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      return router;
+    }
+
+    testWidgets('eight sections and the wipe row', (tester) async {
+      await pumpProfile(tester);
+      for (final title in [
+        t.cubeIdTitle,
+        t.sectionPrivacy,
+        t.sectionNotifications,
+        t.sectionConnection,
+        t.sectionChats,
+        t.sectionAppearance,
+        t.sectionData,
+        t.sectionAbout,
+        t.profileEmergencyWipe,
+      ]) {
+        expect(find.text(title), findsOneWidget, reason: title);
+      }
+      expect(find.byType(SettingsSectionRow), findsNWidgets(9));
+      expect(find.byIcon(Icons.fingerprint_rounded), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a section row opens its route', (tester) async {
+      await pumpProfile(tester);
+      await tester.tap(find.text(t.sectionPrivacy));
+      // Not pumpAndSettle: the profile keeps a ticker alive (the cover), so
+      // it never settles.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('stub:settings/privacy'), findsOneWidget);
+    });
+
+    testWidgets('the privacy row says who may write, and follows a change',
+        (tester) async {
+      await pumpProfile(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProfileScreen)),
+      );
+      // Not awaited: the state changes at once, and the write behind it waits
+      // on a real Hive open that fake time never completes.
+      unawaited(
+        container
+            .read(privacySettingsProvider.notifier)
+            .setStrangerReach(StrangerReach.request),
+      );
+      await tester.pump();
+      final row = find.ancestor(
+        of: find.text(t.sectionPrivacy),
+        matching: find.byType(SettingsSectionRow),
+      );
+      expect(
+        find.descendant(of: row, matching: find.text(t.strangerReachRequest)),
+        findsOneWidget,
+      );
+
+      unawaited(
+        container
+            .read(privacySettingsProvider.notifier)
+            .setStrangerReach(StrangerReach.none),
+      );
+      await tester.pump();
+      expect(
+        find.descendant(of: row, matching: find.text(t.strangerReachNone)),
+        findsOneWidget,
+      );
+    });
+  });
+
+  testWidgets('About carries the way into Diagnostics', (tester) async {
+    await pumpScreen(tester, const AboutScreen());
+    expect(find.text(t.diagnosticsTitle), findsOneWidget);
   });
 
   testWidgets('data & storage: storage, transfers, backup, new phone',
