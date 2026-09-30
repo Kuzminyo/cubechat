@@ -420,6 +420,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         ),
       ),
       GoRoute(
+        path: '/settings/chats',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: ChatsSectionScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
         path: '/settings/notifications',
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(

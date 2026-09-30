@@ -255,7 +255,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupApp,
           summary: t.profileVersion(appVersion),
           children: [
-            _LanguageRow(locale: locale),
+            LanguageRow(locale: locale),
             const _StorageRow(),
             // Diagnostics above the signature, not below it. The name-and-
             // version block reads as the end of a screen — everything under it
@@ -1348,7 +1348,7 @@ class _PrivacyCard extends ConsumerWidget {
           const SizedBox(height: 14),
           const _FilterTile(),
           const SizedBox(height: 14),
-          const _CircleLensTile(),
+          const CircleLensTile(),
           const SizedBox(height: 14),
           const _MapLocationTile(),
           const SizedBox(height: 14),
@@ -1449,8 +1449,10 @@ class _FilterTile extends ConsumerWidget {
   }
 }
 
-class _CircleLensTile extends ConsumerWidget {
-  const _CircleLensTile();
+/// Public for one caller: the Chats & media section, which lives in
+/// customize_screen.dart beside the other things a circle does.
+class CircleLensTile extends ConsumerWidget {
+  const CircleLensTile({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1885,8 +1887,9 @@ class _TransportRow extends StatelessWidget {
 // preferences you pick from a fixed list; how the app *looks* is arranged
 // somewhere with room for it.
 
-class _LanguageRow extends ConsumerWidget {
-  const _LanguageRow({required this.locale});
+/// Public because it moves to Appearance, which is customize_screen.dart.
+class LanguageRow extends ConsumerWidget {
+  const LanguageRow({super.key, required this.locale});
 
   final Locale locale;
 

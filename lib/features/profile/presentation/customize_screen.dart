@@ -14,6 +14,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/hue_strip.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/locale/locale_controller.dart';
 import '../../chat/data/reaction_emoji_controller.dart';
 import '../../chat/data/transcription_language.dart';
 import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
@@ -25,6 +26,12 @@ import '../data/media_download_settings_controller.dart';
 import '../data/media_quality_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
+import 'profile_screen.dart' show CircleLensTile, LanguageRow;
+import 'settings/settings_tiles.dart';
+
+// Chats & media is a part of this file so it can use the cards below as they
+// are; those cards were here before the profile had sections.
+part 'chats_section.dart';
 
 /// The bits of the app that are the user's to arrange.
 ///
@@ -48,7 +55,7 @@ class CustomizeScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         leading: BackButton(color: AppColors.textOnGlass),
         title: Text(
-          t.customizeTitle,
+          t.sectionAppearance,
           style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
         ),
         actions: [
@@ -78,25 +85,29 @@ class CustomizeScreen extends ConsumerWidget {
             // phone" rather than a preference about the app.
             const _GlassCard(),
             const SizedBox(height: 12),
-            const _SwipeCard(),
-            const SizedBox(height: 12),
-            // Next to the swipe, because archiving is what the swipe does by
-            // default and this decides whether the result is visible.
-            const _ArchiveRowCard(),
-            const SizedBox(height: 12),
-            const _QuickReactionCard(),
-            const SizedBox(height: 12),
-            const _CircleAudioCard(),
-            const SizedBox(height: 12),
-            // Beside the circle's sound: both are about what a message you
-            // send costs, not about how the app looks.
-            const _MediaQualityCard(),
-            const SizedBox(height: 12),
-            const _TranscribeLanguageCard(),
-            const SizedBox(height: 12),
-            const _MediaDownloadCard(),
-            const SizedBox(height: 12),
+            // The swipe, the archive row, reactions, circles and media moved
+            // to Chats & media ([ChatsSectionScreen]): they are about what a
+            // message does and costs, and this screen is how the app looks.
             _NavBarCard(layout: layout),
+            const SizedBox(height: 12),
+            // From the profile's old App group: the words the interface is in
+            // are part of how it looks.
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.profileLanguage,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  LanguageRow(locale: ref.watch(localeControllerProvider)),
+                ],
+              ),
+            ),
           ],
         ),
       ),

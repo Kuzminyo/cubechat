@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/features/cube_id/presentation/stranger_reach_selector.dart';
+import 'package:cubechat/features/profile/presentation/customize_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/profile/presentation/settings/settings_tiles.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
@@ -128,6 +129,45 @@ void main() {
       t.relaysTitle,
     ]) {
       expect(find.text(title), findsOneWidget, reason: title);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chats & media gathers what a message does and costs',
+      (tester) async {
+    await pumpScreen(tester, const ChatsSectionScreen());
+
+    expect(find.text(t.sectionChats), findsOneWidget);
+    for (final title in [
+      t.customizeSwipeTitle,
+      'Рядок архіву',
+      t.customizeQuickReaction,
+      t.customizeCircleAudioTitle,
+      t.customizeMediaQualityTitle,
+      t.customizeDeferMediaTitle,
+      t.customizeTranscribeLanguageTitle,
+      t.circleLensTitle,
+    ]) {
+      expect(find.text(title), findsOneWidget, reason: title);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('appearance keeps the look and gains the language',
+      (tester) async {
+    await pumpScreen(tester, const CustomizeScreen());
+
+    expect(find.text(t.sectionAppearance), findsOneWidget);
+    expect(find.text(t.customizeBarTitle), findsOneWidget);
+    expect(find.text(t.profileGlass), findsOneWidget);
+    expect(find.text(t.profileLanguageUk), findsOneWidget);
+    expect(find.text(t.profileLanguageEn), findsOneWidget);
+    for (final gone in [
+      t.customizeSwipeTitle,
+      t.customizeMediaQualityTitle,
+      t.customizeQuickReaction,
+    ]) {
+      expect(find.text(gone), findsNothing, reason: gone);
     }
     expect(tester.takeException(), isNull);
   });
