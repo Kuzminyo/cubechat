@@ -126,6 +126,38 @@ void main() {
     expect(withMenu, bare);
   });
 
+  testWidgets('a pill beside the subtitle does not make the header taller',
+      (tester) async {
+    // Nearby shows "scanning" beside its subtitle on the people page only;
+    // taller than the line, it moved the island and the page down on that
+    // page and back up on AirDrop and Files — the height jump reported.
+    Future<double> height({required bool pill}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: TabHeader(
+                mark: const Icon(Icons.star),
+                title: 'T',
+                subtitle: 'S',
+                subtitleTrailing: pill
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: const Text('scanning'),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        ),
+      );
+      return tester.getSize(find.byType(TabHeader)).height;
+    }
+
+    expect(await height(pill: true), await height(pill: false));
+  });
+
   testWidgets('every three-dots button is the same size', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

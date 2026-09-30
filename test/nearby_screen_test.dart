@@ -163,6 +163,26 @@ void main() {
     return container;
   }
 
+  testWidgets('the pages move as a strip: both on screen mid-slide',
+      (tester) async {
+    await pump(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('uk'));
+
+    await tester.tap(find.text(t.airdropTab));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // The old page is still on stage, on its way out to the left; the new
+    // one is on its way in from the right. It used to vanish on the tap.
+    expect(find.text('page 0'), findsOneWidget);
+    expect(find.text('page 1'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('page 0')).dx, lessThan(0));
+    expect(tester.getTopLeft(find.text('page 1')).dx, greaterThan(20));
+
+    await tester.pumpAndSettle();
+    expect(find.text('page 0'), findsNothing);
+    expect(find.text('page 1'), findsOneWidget);
+  });
+
   // The real three pages, for the layout question the stand-ins above can't
   // answer: whether a page still draws its own display title next to the
   // shell's.

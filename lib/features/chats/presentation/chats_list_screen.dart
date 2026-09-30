@@ -28,7 +28,9 @@ import '../../../core/widgets/bar_glass.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/header_surface.dart';
 import '../../../core/widgets/more_button.dart';
+import '../../../core/widgets/morphing_search.dart';
 import '../../../core/widgets/tab_header.dart';
 import '../../../core/widgets/unread_badge.dart';
 import '../../../l10n/app_localizations.dart';
@@ -1725,10 +1727,16 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   /// The title row: logo, name over subtitle, and the two controls.
   ///
-  /// 90 since the shared [TabHeader] (12 + 44 + a subtitle ≈ 73): the search
-  /// field starts at `titleHeight - 4`, and at 84 it sat 7 points under the
-  /// subtitle where Contacts and Nearby leave 14 before their switch.
-  static const double titleHeight = 90;
+  /// The shared [TabHeader] is 84 tall (12 + a 44 row + a 28 subtitle line),
+  /// and Contacts and Nearby put their switch 14 under it. The search field
+  /// starts at `titleHeight - 4`, so 102 puts it exactly where their switch
+  /// is — the thing under the header lands on the same line on all three.
+  static const double titleHeight =
+      TabHeader.topPadding +
+          TabHeader.rowHeight +
+          TabHeader.subtitleRowHeight +
+          14 +
+          4;
 
   /// What the search field adds on top of it while the list is at rest.
   static const double searchHeight = 58;
@@ -1777,7 +1785,8 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
     // catches it on the frame the selection starts.
     return SizedBox(
       height: (maxExtent - shrinkOffset).clamp(minExtent, maxExtent),
-      child: _HeaderSurface(
+      child: HeaderSurface(
+        key: const ValueKey('chats-top-layer'),
         topInset: topInset,
         softBottom: softBottom,
         // Both rows, stacked and cross-faded. Laying only one out at a time is
@@ -1837,53 +1846,6 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.subtitle != subtitle ||
       old.searchHint != searchHint ||
       old.selectionBar != selectionBar;
-}
-
-/// What the header is drawn on.
-///
-/// A gradient in the palette's own colours rather than a flat fill or a pane of
-/// glass: the screen behind it is an aurora, and a header that ignores the
-/// palette reads as a strip cut out of a different app. It runs from the
-/// palette's deepest tone at the status bar to its mid tone at the bottom edge,
-/// so rows scrolling under it fade out rather than sliding under a lid.
-class _HeaderSurface extends StatelessWidget {
-  const _HeaderSurface({
-    required this.topInset,
-    required this.child,
-    this.softBottom = false,
-  });
-
-  final double topInset;
-  final Widget child;
-
-  /// When true, the surface fades to nearly transparent at its bottom edge
-  /// rather than ending at bgTop@0.88 — the soft landing for when no folder
-  /// row follows it to do the fade. Costs no height, so the first chat does
-  /// not move; only the colour of the last few pixels changes.
-  final bool softBottom;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      key: const ValueKey('chats-top-layer'),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.bgDeep,
-            AppColors.bgTop,
-            AppColors.bgTop.withValues(alpha: softBottom ? 0.30 : 0.88),
-          ],
-          stops: const [0, 0.62, 1],
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(top: topInset),
-        child: child,
-      ),
-    );
-  }
 }
 
 /// The title row and the search, sharing one box so the search can travel
@@ -1976,7 +1938,7 @@ class _TitleRowWithSearch extends StatelessWidget {
               top: top,
               width: width,
               height: height,
-              child: _MorphingSearch(
+              child: MorphingSearch(
                 radius: radius,
                 collapse: t,
                 hint: searchHint,
@@ -1986,79 +1948,6 @@ class _TitleRowWithSearch extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// The search itself: a field at one end of the journey, a round button at the
-/// other, and the same widget throughout.
-class _MorphingSearch extends StatelessWidget {
-  const _MorphingSearch({
-    required this.radius,
-    required this.collapse,
-    required this.hint,
-    required this.onTap,
-  });
-
-  final double radius;
-  final double collapse;
-  final String hint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // The hint is gone well before the shape is, so the words are never seen
-    // being squeezed into a circle.
-    final textOpacity = (1 - collapse * 2.2).clamp(0.0, 1.0);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(radius),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: AppColors.glass(0.07),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: AppColors.glass(0.12)),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: lerpDouble(14, 0, collapse)!,
-            ),
-            child: Row(
-              mainAxisAlignment: collapse > 0.5
-                  ? MainAxisAlignment.center
-                  : MainAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.search_rounded,
-                  key: const ValueKey('chats-header-search-button'),
-                  size: 19,
-                  color: AppColors.textOnGlassFaint,
-                ),
-                if (textOpacity > 0) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Opacity(
-                      opacity: textOpacity,
-                      child: Text(
-                        hint,
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        softWrap: false,
-                        style: TextStyle(
-                          color: AppColors.textOnGlassFaint,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

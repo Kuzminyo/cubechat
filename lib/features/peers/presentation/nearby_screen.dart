@@ -41,11 +41,20 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
 
   int _page = 0;
   double _from = 1;
+
+  /// The page sliding out while [_slide] runs, or null once it has gone. Kept
+  /// on stage for the slide so the two pages move as a strip — the way the
+  /// main tabs do — instead of the old one vanishing and the new one fading in.
+  int? _leaving;
   late final AnimationController _slide = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 260),
     value: 1,
-  );
+  )..addStatusListener((status) {
+      if (status == AnimationStatus.completed && _leaving != null && mounted) {
+        setState(() => _leaving = null);
+      }
+    });
 
   /// Whether this tab is on screen, as of the last build — tickers are off
   /// for a tab the strip has moved away from and for a route covered by
@@ -162,9 +171,12 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _from = page > _page ? 1 : -1;
+      _leaving = _page;
       _page = page;
     });
     if (MediaQuery.disableAnimationsOf(context)) {
+      // No slide, so nothing is leaving; the build this frame already sees it.
+      _leaving = null;
       _slide.value = 1;
     } else {
       unawaited(_slide.forward(from: 0));
@@ -234,13 +246,15 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                 children: [
                   for (var i = 0; i < pages.length; i++)
                     Offstage(
-                      offstage: i != _page,
+                      offstage: i != _page && i != _leaving,
                       child: TickerMode(
                         enabled: visible && i == _page,
                         child: _PageSlide(
-                          animation:
-                              i == _page ? _slide : kAlwaysCompleteAnimation,
+                          animation: i == _page || i == _leaving
+                              ? _slide
+                              : kAlwaysCompleteAnimation,
                           from: _from,
+                          leaving: i == _leaving && i != _page,
                           child: pages[i],
                         ),
                       ),
@@ -255,22 +269,35 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 }
 
-/// The incoming page eases in from the side it came from — the same motion
-/// the Contacts | Calls switch uses.
+/// The pages move as a strip, the way the main tabs do: the three sit side
+/// by side, and picking one slides the old one out as the new one slides in,
+/// a full width each.
+///
+/// It used to bring only the new page in — 22% of the width with a fade —
+/// while the old one simply vanished, which read as a cut with a flourish
+/// rather than as moving along a row. Translation only now: an opacity would
+/// cost an offscreen pass over a full page each frame, a translation moves
+/// an already painted layer (see [BranchContainer] for the same argument).
 class _PageSlide extends StatelessWidget {
   const _PageSlide({
     required this.animation,
     required this.from,
     required this.child,
+    this.leaving = false,
   });
 
   final Animation<double> animation;
+
+  /// +1 when the new page is to the right of the old one, -1 to the left.
   final double from;
+
+  /// This is the old page on its way out.
+  final bool leaving;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final travel = MediaQuery.sizeOf(context).width * 0.22;
+    final width = MediaQuery.sizeOf(context).width;
     final reduced = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: animation,
@@ -278,13 +305,8 @@ class _PageSlide extends StatelessWidget {
       builder: (context, inner) {
         final t =
             reduced ? 1.0 : Curves.easeOutCubic.transform(animation.value);
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(
-            offset: Offset((1 - t) * from * travel, 0),
-            child: inner,
-          ),
-        );
+        final dx = leaving ? -t * from * width : (1 - t) * from * width;
+        return Transform.translate(offset: Offset(dx, 0), child: inner);
       },
     );
   }

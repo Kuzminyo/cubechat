@@ -40,6 +40,12 @@ class TabHeader extends StatelessWidget {
   static const double rowHeight = 44;
   static const double subtitleSize = 13;
 
+  /// The subtitle line's height, fixed: tall enough for a pill beside it (the
+  /// scanning pulse on Nearby), so a page that shows the pill and one that
+  /// does not leave the header — and everything under it — at one height.
+  /// Measured: the pill made the header 11 points taller on one page only.
+  static const double subtitleRowHeight = 28;
+
   /// On the mark's box, so a test can find where it landed.
   static const markKey = ValueKey('tab-header-mark');
 
@@ -102,25 +108,28 @@ class TabHeader extends StatelessWidget {
             ),
           ),
           if (subtitle != null)
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    subtitle,
-                    key: subtitleKey,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: subtitleSize,
+            SizedBox(
+              height: subtitleRowHeight,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      subtitle,
+                      key: subtitleKey,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: subtitleSize,
+                      ),
                     ),
                   ),
-                ),
-                if (subtitleTrailing != null) ...[
-                  const SizedBox(width: 10),
-                  subtitleTrailing!,
+                  if (subtitleTrailing != null) ...[
+                    const SizedBox(width: 10),
+                    subtitleTrailing!,
+                  ],
                 ],
-              ],
+              ),
             ),
         ],
       ),
