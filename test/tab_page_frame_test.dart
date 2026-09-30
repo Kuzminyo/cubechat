@@ -85,6 +85,17 @@ void main() {
     expect(button.center.dy, closeTo(TabHeader.topPadding + 22, 0.5));
   });
 
+  testWidgets('at rest the header sits on the background; its surface comes '
+      'only with a row under it', (tester) async {
+    await pump(tester);
+    // Drawn all the time it was a dark block with an edge across the aurora.
+    expect(find.byKey(TabPageFrame.veilKey), findsNothing);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(TabPageFrame.veilKey), findsOneWidget);
+  });
+
   testWidgets('the island leaves on the way down and returns on the way up',
       (tester) async {
     await pump(tester);

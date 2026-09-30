@@ -81,6 +81,9 @@ class TabPageFrame extends StatefulWidget {
   /// On the search, so a test can find where it landed.
   static const searchKey = ValueKey('tab-frame-search');
 
+  /// On the header's surface, drawn only while a row is under the header.
+  static const veilKey = ValueKey('tab-frame-veil');
+
   @override
   State<TabPageFrame> createState() => _TabPageFrameState();
 }
@@ -148,6 +151,12 @@ class _TabPageFrameState extends State<TabPageFrame> {
 
   Widget _layout(BuildContext context, double collapse, Duration motion) {
     final headerHeight = TabHeader.height + _searchRoom * (1 - collapse);
+    // The page's first row starts below the search and the island; it
+    // reaches the header once the page has scrolled past both.
+    final px = _offsets[widget.pageKey] ?? 0;
+    final veil =
+        ((px - (_searchRoom + TabPageFrame.islandHeight - _fade)) / _fade)
+            .clamp(0.0, 1.0);
     return ClipRect(
       child: Stack(
         children: [
@@ -201,28 +210,37 @@ class _TabPageFrameState extends State<TabPageFrame> {
           // Solid under the header's own text, then a short fade below it:
           // a surface that thinned out behind the subtitle let a row passing
           // under it show through the words.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: headerHeight + _fade,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.bgDeep,
-                      AppColors.bgTop.withValues(alpha: 0.96),
-                      AppColors.bgTop.withValues(alpha: 0),
-                    ],
-                    stops: [0, headerHeight / (headerHeight + _fade), 1],
+          //
+          // And only once a row is actually on its way under the header. Drawn
+          // all the time it was a dark block with an edge across the aurora
+          // at rest — "why is this here, it was beautiful, put it back" — so
+          // at rest there is no surface at all, the header sits on the aurora
+          // as it always did, and the surface fades in over the last [_fade]
+          // points before the first row reaches the header.
+          if (veil > 0)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: headerHeight + _fade,
+              child: IgnorePointer(
+                key: TabPageFrame.veilKey,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppColors.bgDeep.withValues(alpha: veil),
+                        AppColors.bgTop.withValues(alpha: 0.96 * veil),
+                        AppColors.bgTop.withValues(alpha: 0),
+                      ],
+                      stops: [0, headerHeight / (headerHeight + _fade), 1],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           Positioned(
             top: 0,
             left: 0,
