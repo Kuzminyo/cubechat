@@ -281,6 +281,8 @@
     "chatSessionFingerprintPending":  "Відбиток з\u0027явиться після завершення рукостискання.",
     "chatEmptyEstablished":  "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
     "chatEmptyHandshaking":  "Очікуємо, поки інший бік завершить рукостискання…",
+    "chatEmptyTitle": "Тут ще немає повідомлень",
+    "chatEmptyGreetHint": "Напишіть повідомлення або торкніться Кубі, щоб привітатися.",
     "profileTitle":  "Профіль",
     "profileNickname":  "Нікнейм",
     "profileNicknameEditTitle":  "Встановіть нікнейм",

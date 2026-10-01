@@ -1280,6 +1280,18 @@ abstract class AppLocalizations {
   /// **'Waiting for the other side to finish the handshake…'**
   String get chatEmptyHandshaking;
 
+  /// No description provided for @chatEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages here yet'**
+  String get chatEmptyTitle;
+
+  /// No description provided for @chatEmptyGreetHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a message, or tap Kubi to say hello.'**
+  String get chatEmptyGreetHint;
+
   /// No description provided for @profileTitle.
   ///
   /// In en, this message translates to:

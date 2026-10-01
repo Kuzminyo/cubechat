@@ -681,6 +681,13 @@ class AppLocalizationsUk extends AppLocalizations {
       'Очікуємо, поки інший бік завершить рукостискання…';
 
   @override
+  String get chatEmptyTitle => 'Тут ще немає повідомлень';
+
+  @override
+  String get chatEmptyGreetHint =>
+      'Напишіть повідомлення або торкніться Кубі, щоб привітатися.';
+
+  @override
   String get profileTitle => 'Профіль';
 
   @override

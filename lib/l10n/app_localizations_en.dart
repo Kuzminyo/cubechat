@@ -676,6 +676,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Waiting for the other side to finish the handshake…';
 
   @override
+  String get chatEmptyTitle => 'No messages here yet';
+
+  @override
+  String get chatEmptyGreetHint => 'Send a message, or tap Kubi to say hello.';
+
+  @override
   String get profileTitle => 'Profile';
 
   @override

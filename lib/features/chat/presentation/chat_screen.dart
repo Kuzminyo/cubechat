@@ -55,6 +55,7 @@ import '../../peers/data/peer_activity.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
+import '../../stickers/data/builtin_stickers.dart';
 import '../../stickers/data/sticker_library.dart';
 import '../data/chat_scroll_memory.dart';
 import '../data/composer_panel.dart';
@@ -70,6 +71,7 @@ import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/drafts_controller.dart';
 import '../data/messages_controller.dart';
+import 'widgets/empty_chat_greeting.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
@@ -1663,6 +1665,35 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
+  /// Kubi's wave, sent from the empty chat's panel as the first message.
+  ///
+  /// The same pack sticker the picker sends, down the same image path with
+  /// the same marker — so it arrives as an ordinary sticker, an older build
+  /// included. A second tap while the first is on its way would send two.
+  bool _greeting = false;
+
+  Future<void> _greet() async {
+    if (_greeting) return;
+    _greeting = true;
+    try {
+      const name = EmptyChatGreeting.sticker;
+      final path = await BuiltinStickers.materialize(name);
+      if (path == null) return;
+      final bytes = await File(path).readAsBytes();
+      await ref.read(messagingServiceProvider).sendImage(
+            widget.chatId,
+            bytes: bytes,
+            mime: 'image/webp',
+            cachedPath: path,
+            caption: Message.stickerMarkerFor(BuiltinStickers.emojiFor(name)),
+          );
+    } catch (e) {
+      DebugLog.instance.log('STICKER', 'greeting failed: $e');
+    } finally {
+      _greeting = false;
+    }
+  }
+
   @override
   void dispose() {
     for (final timer in _smoothSendTimers.values) {
@@ -2462,7 +2493,23 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                 )
             : null,
         listBuilder: (padding) => messages.isEmpty
-            ? _EmptyConversationState(canSend: widget.canSend)
+            // Inside the header and the composer, a little above the middle
+            // of what is left — where Telegram puts its own empty-chat panel.
+            ? Padding(
+                padding: padding,
+                child: Align(
+                  alignment: const Alignment(0, -0.35),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: EmptyChatGreeting(
+                      waiting: !widget.canSend,
+                      onGreet: saved || widget.chatId.startsWith('#')
+                          ? null
+                          : _greet,
+                    ),
+                  ),
+                ),
+              )
             : Stack(
                 children: [
                   ListView.builder(
@@ -5779,39 +5826,6 @@ class _ReplyComposeBar extends StatelessWidget {
               color: AppColors.textOnGlassDim,
               tooltip: t.cancel,
               onPressed: onCancel,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyConversationState extends StatelessWidget {
-  const _EmptyConversationState({required this.canSend});
-
-  final bool canSend;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              canSend ? Icons.lock_rounded : Icons.hourglass_top_rounded,
-              color:
-                  canSend ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
-              size: 36,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              canSend ? t.chatEmptyEstablished : t.chatEmptyHandshaking,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
           ],
         ),

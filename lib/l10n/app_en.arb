@@ -349,6 +349,8 @@
   "chatSessionFingerprintPending": "Fingerprint will appear once the handshake completes.",
   "chatEmptyEstablished": "The secure channel is up. Send a message to start the conversation.",
   "chatEmptyHandshaking": "Waiting for the other side to finish the handshake…",
+  "chatEmptyTitle": "No messages here yet",
+  "chatEmptyGreetHint": "Send a message, or tap Kubi to say hello.",
   "profileTitle": "Profile",
   "profileNickname": "Nickname",
   "profileNicknameEditTitle": "Set your nickname",
