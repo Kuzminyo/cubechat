@@ -40,10 +40,15 @@ const AnimationStyle glassSheetMotion = AnimationStyle(
 /// So: no background of its own, no scrim of fill behind the content — the
 /// caller's content sits inside one [BarGlass] island with air on all sides,
 /// which is not merely *like* the nav bar's surface, it is the same widget.
+///
+/// Over the nav bar by default. Opened from a tab, a sheet on the tab's own
+/// navigator came up *under* the floating bar, which cut across its last rows
+/// ("Чекають на відправку", 2026-10-01) — and ten sheets had already been
+/// opting out of that one by one. A sheet is modal; nothing belongs above it.
 Future<T?> showGlassSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
-  bool useRootNavigator = false,
+  bool useRootNavigator = true,
   bool isScrollControlled = true,
   EdgeInsets margin = const EdgeInsets.fromLTRB(10, 0, 10, 10),
 }) {
