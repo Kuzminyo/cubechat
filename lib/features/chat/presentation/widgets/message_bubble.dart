@@ -1834,17 +1834,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           : null,
     );
 
-    final footer = inBubble(
-      _BubbleFooter(
-        reactions: reacted
-            ? _ReactionsRow(
-                reactions: message.reactions,
-                onTap: _canReact ? _toggleReaction : null,
-              )
-            : null,
-        meta: meta,
-      ),
-    );
+    Widget footerOf({required bool spread}) => inBubble(
+          _BubbleFooter(
+            reactions: reacted
+                ? _ReactionsRow(
+                    reactions: message.reactions,
+                    onTap: _canReact ? _toggleReaction : null,
+                  )
+                : null,
+            meta: meta,
+            spread: spread,
+          ),
+        );
+    final footer = footerOf(spread: false);
 
     // **The clock in the bottom-right corner, as every messenger has it.**
     // "Перемести час отправки в правий угол смс, а не в лівий" — it sat at the
@@ -1932,7 +1934,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             : Border.all(color: AppColors.glass(0.16)),
                       ),
             child: _FooterAtEnd(
-              footer: footerAtEnd ? footer : null,
+              footer: footerAtEnd ? footerOf(spread: !mine) : null,
               child: Column(
                 // Left inside a bubble, right when there is no bubble and the
                 // message is ours.
@@ -3046,14 +3048,41 @@ class _FooterAtEnd extends StatelessWidget {
 }
 
 class _BubbleFooter extends StatelessWidget {
-  const _BubbleFooter({required this.meta, this.reactions});
+  const _BubbleFooter({
+    required this.meta,
+    this.reactions,
+    this.spread = false,
+  });
 
   final Widget meta;
   final Widget? reactions;
 
+  /// Reactions against the left edge and the clock against the right, across
+  /// the whole bubble. Only for the copy [_FooterAtEnd] draws, whose width is
+  /// the bubble's: the invisible copy that sizes the bubble must stay as
+  /// narrow as its content, or every reacted bubble would stretch full width.
+  ///
+  /// For somebody else's message, where Telegram puts a reaction: at the start
+  /// of the line the text starts on. Huddled against the clock it sat a whole
+  /// line's width from the text on a long message ("реакція зліва смс або
+  /// фото", 2026-10-01).
+  final bool spread;
+
   @override
   Widget build(BuildContext context) {
     if (reactions == null) return meta;
+    if (spread) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Align(alignment: Alignment.centerLeft, child: reactions),
+          ),
+          const SizedBox(width: 8),
+          meta,
+        ],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
