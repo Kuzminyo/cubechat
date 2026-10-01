@@ -209,9 +209,19 @@ class _TabPageFrameState extends State<TabPageFrame> {
                 onNotification: _onScroll,
                 // Ink for the pages' own buttons, the half not on show
                 // included: it stays built (offstage) to keep its scroll.
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: widget.child,
+                //
+                // And the status bar taken away from them: the frame has
+                // already allowed for it in [IslandInset], so a page that
+                // also wraps itself in a SafeArea (Nearby's people page)
+                // would add the same height again — a gap the size of the
+                // status bar under the island.
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: widget.child,
+                  ),
                 ),
               ),
             ),

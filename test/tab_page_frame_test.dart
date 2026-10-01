@@ -155,6 +155,49 @@ void main() {
     expect(tester.getTopLeft(find.byKey(TabPageFrame.veilKey)).dy, 0);
   });
 
+  testWidgets('a page with its own SafeArea is not pushed down twice',
+      (tester) async {
+    // The frame takes the status bar into account itself; a page that also
+    // wrapped itself in a SafeArea (Nearby's people page) added the same
+    // height again — a gap under the island the height of the status bar.
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 30),
+          ),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: TabPageFrame(
+            header: const TabHeader(
+              mark: Icon(Icons.star),
+              title: 'Title',
+              subtitle: 'Sub',
+            ),
+            island: const SizedBox(height: SectionSwitch.height),
+            pageKey: 0,
+            child: Builder(
+              builder: (context) => SafeArea(
+                child: ListView(
+                  padding: EdgeInsets.only(top: IslandInset.of(context)),
+                  children: const [Text('row 0')],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.text('row 0')).dy,
+      30 + TabHeader.height + TabPageFrame.islandHeight,
+    );
+  });
+
   testWidgets('the island leaves on the way down and returns on the way up',
       (tester) async {
     await pump(tester);
