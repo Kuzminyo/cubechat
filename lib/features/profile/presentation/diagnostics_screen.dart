@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/theme/glass.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/cpu_probe.dart';
@@ -900,6 +901,16 @@ class _FramePanelState extends State<_FramePanel> {
                 color: AppColors.brandPrimary,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          // Which glass these frames were drawn with. A "GPU-bound" verdict
+          // means one thing with the blur on and another without it, and a
+          // screenshot of this panel did not say which.
+          Text(
+            AppBlur.panes
+                ? 'glass: full (panes blur)'
+                : 'glass: light (no blur)',
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
           ),
           const SizedBox(height: 2),
           Text(

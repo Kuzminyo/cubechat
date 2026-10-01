@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
@@ -111,10 +113,7 @@ class GlassTierController extends Notifier<GlassTier> {
 
   @override
   GlassTier build() {
-    ref.onDispose(() {
-      _measure?.cancel();
-      _measure = null;
-    });
+    ref.onDispose(_stopSampling);
     unawaited(_load());
     return GlassTier.auto;
   }
@@ -159,35 +158,83 @@ class GlassTierController extends Notifier<GlassTier> {
   /// phone that stutters while decoding a photo has not become a different
   /// phone, and an interface that changes appearance on its own is the flicker
   /// this whole design avoids.
+  ///
+  /// **The frames are its own.** It used to read [FrameStats], which collects
+  /// only while the Diagnostics screen is open — so in ordinary use it counted
+  /// nothing, took the "too few frames" branch, and rescheduled for ever. Auto
+  /// glass never decided anything on any phone, and a Mali phone drawing at
+  /// raster avg 25 / p90 38.7 ms (30 fps) kept the full blur (2026-10-01).
   void _scheduleMeasurement() {
-    _measure?.cancel();
-    _measure = Timer(_measureAfter, () async {
+    _stopSampling();
+    _measure = Timer(_settleAfter, () {
       _measure = null;
-      final stats = FrameStats.instance;
-      if (stats.totalFrames < _minFrames) {
-        // Too little happened to judge. Try again rather than guess.
-        _scheduleMeasurement();
-        return;
-      }
-      final p90 = stats.p90RasterMs;
-      final worst = stats.worstRasterMs;
-      final verdict = p90 > _rasterP90Ceiling || worst > _rasterWorstCeiling
-          ? GlassTier.light
-          : GlassTier.full;
-      DebugLog.instance.log(
-        'GLASS',
-        'raster p90 ${p90.toStringAsFixed(1)} ms, worst '
-            '${worst.toStringAsFixed(1)} ms over ${stats.totalFrames} '
-            'frames — ${verdict.name} glass',
-      );
-      try {
-        await _box?.put(_autoVerdictKey, verdict.name);
-      } catch (e) {
-        debugPrint('glass verdict persist failed: $e');
-      }
-      if (state == GlassTier.auto) _apply(GlassTier.auto, remembered: verdict.name);
+      _window = RasterWindow();
+      SchedulerBinding.instance.addTimingsCallback(_onTimings);
+      _measure = Timer(_measureAfter, _judge);
     });
   }
+
+  RasterWindow? _window;
+
+  void _onTimings(List<FrameTiming> timings) {
+    final window = _window;
+    if (window == null) return;
+    for (final t in timings) {
+      window.add(t.rasterDuration);
+    }
+  }
+
+  void _stopSampling() {
+    _measure?.cancel();
+    _measure = null;
+    if (_window != null) {
+      SchedulerBinding.instance.removeTimingsCallback(_onTimings);
+      _window = null;
+    }
+  }
+
+  Future<void> _judge() async {
+    _measure = null;
+    final window = _window;
+    if (window == null) return;
+    if (window.count < _minFrames) {
+      // Too little happened to judge. Keep watching rather than guess.
+      _measure = Timer(_measureAfter, _judge);
+      return;
+    }
+    _stopSampling();
+    final verdict =
+        verdictFor(p90Ms: window.p90Ms, worstMs: window.worstMs);
+    DebugLog.instance.log(
+      'GLASS',
+      'raster p90 ${window.p90Ms.toStringAsFixed(1)} ms, worst '
+          '${window.worstMs.toStringAsFixed(1)} ms over ${window.count} '
+          'frames — ${verdict.name} glass',
+    );
+    try {
+      await _box?.put(_autoVerdictKey, verdict.name);
+    } catch (e) {
+      debugPrint('glass verdict persist failed: $e');
+    }
+    if (state == GlassTier.auto) {
+      _apply(GlassTier.auto, remembered: verdict.name);
+    }
+  }
+
+  /// The verdict on one window of use. See [_rasterP90Ceiling] and
+  /// [_rasterWorstCeiling] for why it asks both.
+  static GlassTier verdictFor({
+    required double p90Ms,
+    required double worstMs,
+  }) =>
+      p90Ms > _rasterP90Ceiling || worstMs > _rasterWorstCeiling
+          ? GlassTier.light
+          : GlassTier.full;
+
+  /// Before sampling starts: the first seconds of a launch compile shaders
+  /// and build every tab, and a single 100 ms frame among them would judge the
+  /// phone on its boot rather than on its use.
+  static const Duration _settleAfter = Duration(seconds: 10);
 
   /// Choose by hand. Never silently overridden afterwards — somebody who picked
   /// the full glass on a slow phone meant it.
@@ -215,6 +262,37 @@ class GlassTierController extends Notifier<GlassTier> {
       // of a failed write rather than a reason to ignore the tap.
       debugPrint('glass tier persist failed: $e');
     }
+  }
+}
+
+/// Raster times of one measuring window, kept by [GlassTierController] itself.
+///
+/// Bounded: a window that runs long because the phone sat idle keeps the most
+/// recent frames, which is what the verdict should be about anyway.
+class RasterWindow {
+  static const int _capacity = 4000;
+
+  final List<int> _us = <int>[];
+  int _worstUs = 0;
+  int _count = 0;
+
+  void add(Duration raster) {
+    final us = raster.inMicroseconds;
+    _count++;
+    if (us > _worstUs) _worstUs = us;
+    _us.add(us);
+    if (_us.length > _capacity) _us.removeAt(0);
+  }
+
+  int get count => _count;
+
+  double get worstMs => _worstUs / 1000;
+
+  double get p90Ms {
+    if (_us.isEmpty) return 0;
+    final sorted = List<int>.of(_us)..sort();
+    final i = ((sorted.length - 1) * 0.9).round();
+    return sorted[i] / 1000;
   }
 }
 
