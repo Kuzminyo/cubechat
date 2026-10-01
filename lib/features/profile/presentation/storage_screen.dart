@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/storage_usage.dart';
+import 'sweeping_cat.dart';
 
 /// What cubechat is using the phone's disk for, and what it costs to get any of
 /// it back.
@@ -36,6 +37,9 @@ class _StorageScreenState extends State<StorageScreen> {
   final Set<StorageCategory> _selected = {StorageCategory.cache};
 
   bool _working = false;
+
+  /// The shortest a clear is shown for — see [SweepingCat].
+  static const Duration _minSweep = Duration(milliseconds: 2400);
 
   @override
   void initState() {
@@ -79,8 +83,14 @@ class _StorageScreenState extends State<StorageScreen> {
     }
 
     setState(() => _working = true);
+    final started = DateTime.now();
     final freed = await clearStorage(_selected, roots);
     await _scan();
+    // A cache clears in a fraction of a second, and a cat that sweeps for a
+    // tenth of one was not seen sweeping at all: hold the busy state until it
+    // has done one stroke and back.
+    final left = _minSweep - DateTime.now().difference(started);
+    if (left > Duration.zero) await Future<void>.delayed(left);
     if (!mounted) return;
     setState(() => _working = false);
     showGlassToast(
@@ -173,7 +183,9 @@ class _StorageScreenState extends State<StorageScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
+                  Center(child: SweepingCat(sweeping: _working)),
+                  const SizedBox(height: 6),
                   _ClearButton(
                     label: _selectedBytes == 0
                         ? t.storageClearNothing
@@ -223,16 +235,17 @@ class _StorageScreenState extends State<StorageScreen> {
   }
 }
 
-/// The palette's own colour, rotated for this slice. See
-/// [StorageCategory.hue] for why it is derived rather than picked.
+/// The palette's own colour, lighter or darker for this slice. See
+/// [StorageCategory.shade] for why shades rather than hues.
 Color storageColor(StorageCategory category) {
   final base = HSLColor.fromColor(AppColors.brandPrimary);
   return base
-      .withHue((base.hue + category.hue) % 360)
       // Pinned rather than inherited: some palettes are nearly grey, and a
-      // chart of eight indistinguishable slices is not a chart.
+      // chart of nine indistinguishable slices is not a chart.
       .withSaturation(0.62)
-      .withLightness(0.58)
+      // 0.80 down to 0.40: light enough at the top to read as a tint, dark
+      // enough at the bottom to stay off the background.
+      .withLightness(0.80 - 0.05 * category.shade)
       .toColor();
 }
 

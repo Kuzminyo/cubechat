@@ -18,14 +18,14 @@ enum StorageCategory {
   photos(
     dirs: ['cubechat-images', 'cubechat-sent'],
     icon: Icons.photo_rounded,
-    hue: 0,
+    shade: 0,
     recovery: StorageRecovery.gone,
   ),
 
   voice(
     dirs: ['cubechat-audio'],
     icon: Icons.mic_rounded,
-    hue: 42,
+    shade: 4,
     recovery: StorageRecovery.gone,
   ),
 
@@ -35,7 +35,7 @@ enum StorageCategory {
   files(
     dirs: ['cubechat-inbox'],
     icon: Icons.insert_drive_file_rounded,
-    hue: 84,
+    shade: 8,
     recovery: StorageRecovery.askSender,
   ),
 
@@ -45,28 +45,28 @@ enum StorageCategory {
   outbox(
     dirs: ['cubechat-outbox'],
     icon: Icons.outbox_rounded,
-    hue: 126,
+    shade: 2,
     recovery: StorageRecovery.costsThem,
   ),
 
   stickers(
     dirs: ['cubechat-stickers'],
     icon: Icons.emoji_emotions_rounded,
-    hue: 168,
+    shade: 6,
     recovery: StorageRecovery.gone,
   ),
 
   saved(
     dirs: ['cubechat-saved'],
     icon: Icons.bookmark_rounded,
-    hue: 210,
+    shade: 1,
     recovery: StorageRecovery.gone,
   ),
 
   wallpapers(
     dirs: ['cubechat-wallpaper'],
     icon: Icons.wallpaper_rounded,
-    hue: 252,
+    shade: 5,
     recovery: StorageRecovery.gone,
   ),
 
@@ -76,7 +76,7 @@ enum StorageCategory {
   history(
     dirs: <String>[],
     icon: Icons.forum_rounded,
-    hue: 294,
+    shade: 3,
     recovery: StorageRecovery.never,
   ),
 
@@ -86,14 +86,14 @@ enum StorageCategory {
   cache(
     dirs: <String>[],
     icon: Icons.cached_rounded,
-    hue: 336,
+    shade: 7,
     recovery: StorageRecovery.free,
   );
 
   const StorageCategory({
     required this.dirs,
     required this.icon,
-    required this.hue,
+    required this.shade,
     required this.recovery,
   });
 
@@ -103,13 +103,14 @@ enum StorageCategory {
 
   final IconData icon;
 
-  /// Degrees to rotate the palette's own colour by for this slice.
+  /// How light this slice is, 0 (lightest) to 8, in the palette's own colour.
   ///
-  /// Derived rather than hard-coded so the chart follows the theme: on the
-  /// emerald palette it is a wheel of greens through to magenta, on rose a
-  /// wheel starting from rose. Fixed offsets keep a category the same relative
-  /// colour whatever the theme, which is what makes the legend learnable.
-  final double hue;
+  /// It was a hue — the palette's colour rotated round the wheel — and on a
+  /// violet theme that made pink, orange and green rows on a violet screen;
+  /// the owner asked for them "под тему". Shades of one colour instead, and
+  /// out of order on purpose: consecutive categories are the ring's
+  /// neighbours, so they are kept at least two steps apart.
+  final int shade;
 
   final StorageRecovery recovery;
 
