@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui show Image;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -9,6 +10,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import '../theme/colors.dart';
 import '../util/motion.dart';
 import '../util/ui_activity.dart';
+import 'aurora_textures.dart';
 
 /// Full-screen aurora gradient with slowly drifting blobs.
 ///
@@ -363,7 +365,9 @@ class _AuroraPainter extends CustomPainter {
     required this.focus,
     required this.focusFrom,
     required this.focusTo,
-  }) : super(repaint: Listenable.merge([drift, focus]));
+  }) : super(
+          repaint: Listenable.merge([drift, focus, AuroraTextures.instance]),
+        );
 
   final ValueListenable<double> drift;
   final Animation<double> focus;
@@ -456,14 +460,25 @@ class _AuroraPainter extends CustomPainter {
       AppColors.aurora3,
       AppColors.aurora4,
     );
-    if (_baseShader == null ||
-        _baseShaderSize != size ||
-        _baseShaderPalette != paletteStamp) {
-      _baseShader = _base.createShader(rect);
-      _baseShaderSize = size;
-      _baseShaderPalette = paletteStamp;
+    // From a texture once it is made — see [AuroraTextures] for why not the
+    // gradient shader — and from the shader for the frame or two before.
+    final baseImage = AuroraTextures.instance.base(
+      _dim(AppColors.bgTop),
+      _dim(AppColors.bgBottom),
+      size,
+    );
+    if (baseImage != null) {
+      _drawStretched(canvas, baseImage, rect);
+    } else {
+      if (_baseShader == null ||
+          _baseShaderSize != size ||
+          _baseShaderPalette != paletteStamp) {
+        _baseShader = _base.createShader(rect);
+        _baseShaderSize = size;
+        _baseShaderPalette = paletteStamp;
+      }
+      canvas.drawRect(rect, Paint()..shader = _baseShader!);
     }
-    canvas.drawRect(rect, Paint()..shader = _baseShader!);
 
     final t = drift.value * 2 * math.pi;
     final f = lerpDouble(
@@ -604,6 +619,19 @@ class _AuroraPainter extends CustomPainter {
     double radius,
     double alpha,
   ) {
+    // A texture, once made, at the blob's exact place: nothing is rebuilt as
+    // it moves, so the stepping below is only for the shader fallback.
+    final image = AuroraTextures.instance.blob(_dim(color), alpha);
+    if (image != null) {
+      final circle = Rect.fromCircle(
+        center: center.withinRect(rect),
+        radius: radius * rect.shortestSide,
+      );
+      if (!circle.overlaps(rect)) return;
+      _drawStretched(canvas, image, circle);
+      return;
+    }
+
     // Rounded to whole steps and kept as ints, so the cache comparison is
     // exact rather than a float equality that is right most of the time.
     final kx = (center.x / _centreStep).round();
@@ -648,6 +676,18 @@ class _AuroraPainter extends CustomPainter {
     // A blob can drift far enough for its circle to miss the screen entirely.
     if (bounds.isEmpty) return;
     canvas.drawRect(bounds, Paint()..shader = shader);
+  }
+
+  /// Bilinear: the textures are a few dozen texels stretched over hundreds of
+  /// pixels, and filtering is what makes that a smooth ramp rather than the
+  /// blocks a gradient scaled up from unit space came out in (see [_blob]).
+  static void _drawStretched(Canvas canvas, ui.Image image, Rect dst) {
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst,
+      Paint()..filterQuality = FilterQuality.low,
+    );
   }
 
   /// Alignment units. Half the screen is 1, so this is about 2 pt on a 400 pt
