@@ -38,9 +38,6 @@ class _StorageScreenState extends State<StorageScreen> {
 
   bool _working = false;
 
-  /// The shortest a clear is shown for — see [SweepingCat].
-  static const Duration _minSweep = Duration(milliseconds: 2400);
-
   @override
   void initState() {
     super.initState();
@@ -83,14 +80,10 @@ class _StorageScreenState extends State<StorageScreen> {
     }
 
     setState(() => _working = true);
-    final started = DateTime.now();
+    // Kubi finishes his round on his own, so a clear that takes a tenth of a
+    // second is still seen being swept — see [SweepingCat].
     final freed = await clearStorage(_selected, roots);
     await _scan();
-    // A cache clears in a fraction of a second, and a cat that sweeps for a
-    // tenth of one was not seen sweeping at all: hold the busy state until it
-    // has done one stroke and back.
-    final left = _minSweep - DateTime.now().difference(started);
-    if (left > Duration.zero) await Future<void>.delayed(left);
     if (!mounted) return;
     setState(() => _working = false);
     showGlassToast(
@@ -128,7 +121,21 @@ class _StorageScreenState extends State<StorageScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
                 children: [
-                  _Donut(report: report),
+                  // Kubi beside the ring rather than under the list: it is
+                  // the ring he is tidying. Scaled down as one on a narrow
+                  // phone instead of either of them being pushed off.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _Donut(report: report),
+                        const SizedBox(width: 6),
+                        SweepingCat(sweeping: _working, size: 112),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   Text(
                     t.storageHeadline,
@@ -183,9 +190,7 @@ class _StorageScreenState extends State<StorageScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Center(child: SweepingCat(sweeping: _working)),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 14),
                   _ClearButton(
                     label: _selectedBytes == 0
                         ? t.storageClearNothing
