@@ -3950,6 +3950,24 @@ abstract class AppLocalizations {
   /// **'Backup restored'**
   String get backupRestored;
 
+  /// No description provided for @backupPackingWait.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating the backup…'**
+  String get backupPackingWait;
+
+  /// No description provided for @backupUnpackingWait.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring the backup…'**
+  String get backupUnpackingWait;
+
+  /// No description provided for @backupWaitHint.
+  ///
+  /// In en, this message translates to:
+  /// **'With photos and videos this can take a few minutes. Keep the app open.'**
+  String get backupWaitHint;
+
   /// No description provided for @backupInvalid.
   ///
   /// In en, this message translates to:

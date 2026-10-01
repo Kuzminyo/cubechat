@@ -2279,6 +2279,16 @@ class AppLocalizationsUk extends AppLocalizations {
   String get backupRestored => 'Резервну копію відновлено';
 
   @override
+  String get backupPackingWait => 'Створюємо резервну копію…';
+
+  @override
+  String get backupUnpackingWait => 'Відновлюємо резервну копію…';
+
+  @override
+  String get backupWaitHint =>
+      'З фото й відео це може тривати кілька хвилин. Не закривайте застосунок.';
+
+  @override
   String get backupInvalid =>
       'Неправильний пароль, пошкоджений файл або непідтримувана копія';
 

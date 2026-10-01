@@ -2258,6 +2258,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backupRestored => 'Backup restored';
 
   @override
+  String get backupPackingWait => 'Creating the backup…';
+
+  @override
+  String get backupUnpackingWait => 'Restoring the backup…';
+
+  @override
+  String get backupWaitHint =>
+      'With photos and videos this can take a few minutes. Keep the app open.';
+
+  @override
   String get backupInvalid =>
       'Wrong password, damaged file, or unsupported backup';
 

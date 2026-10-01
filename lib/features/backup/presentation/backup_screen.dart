@@ -28,8 +28,17 @@ class BackupScreen extends ConsumerStatefulWidget {
   ConsumerState<BackupScreen> createState() => _BackupScreenState();
 }
 
+/// The slow part on show, so the spinner can say what it is waiting for.
+enum _Stage { packing, unpacking }
+
 class _BackupScreenState extends ConsumerState<BackupScreen> {
   bool _busy = false;
+
+  /// Set only while the archive itself is being written or read — the part
+  /// that takes minutes with photos and video in it. A bare spinner for that
+  /// long read as the app having hung; the "where to save" sheet and the
+  /// share screen that follow are the person's own pace and say nothing.
+  _Stage? _stage;
 
   Future<void> _create() async {
     if (_busy) return;
@@ -39,7 +48,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       builder: (_) => const _BackupPasswordDialog(confirm: true),
     );
     if (password == null || !mounted) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _stage = _Stage.packing;
+    });
     try {
       final day = DateTime.now().toIso8601String().substring(0, 10);
       final name = 'cubechat-$day.cchatbackup';
@@ -51,6 +63,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             .read(backupServiceProvider)
             .createFile(archive, password: password);
         if (!mounted) return;
+        setState(() => _stage = null);
         if (PlatformInfo.isMobile) {
           // Two different acts, and the phone path had lost one of them.
           //
@@ -89,7 +102,12 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       if (!mounted) return;
       showGlassToast(context, t.backupFailed, tone: ToastTone.danger);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _stage = null;
+        });
+      }
     }
   }
 
@@ -195,7 +213,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     );
     if (!confirmed || !mounted) return;
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _stage = _Stage.unpacking;
+    });
     try {
       await ref.read(backupServiceProvider).restoreFile(
             File(file.path!),
@@ -213,7 +234,12 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       if (!mounted) return;
       showGlassToast(context, t.backupFailed, tone: ToastTone.danger);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _stage = null;
+        });
+      }
     }
   }
 
@@ -274,6 +300,30 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             Center(
               child: CircularProgressIndicator(color: AppColors.brandPrimary),
             ),
+            if (_stage case final stage?) ...[
+              const SizedBox(height: 14),
+              Text(
+                stage == _Stage.packing
+                    ? t.backupPackingWait
+                    : t.backupUnpackingWait,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                t.backupWaitHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 12.5,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ],
       ),
