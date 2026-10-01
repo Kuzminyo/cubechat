@@ -3544,6 +3544,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lookupNotFound => 'No one with that @name';
 
   @override
+  String searchFindCubeName(String name) {
+    return 'Find @$name';
+  }
+
+  @override
+  String get searchFindCubeNameHint => 'Look up on Cube ID and add';
+
+  @override
   String get addContactHintName => 'Paste a card or type @name';
 
   @override

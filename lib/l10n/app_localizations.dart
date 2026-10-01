@@ -6158,6 +6158,18 @@ abstract class AppLocalizations {
   /// **'No one with that @name'**
   String get lookupNotFound;
 
+  /// No description provided for @searchFindCubeName.
+  ///
+  /// In en, this message translates to:
+  /// **'Find @{name}'**
+  String searchFindCubeName(String name);
+
+  /// No description provided for @searchFindCubeNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Look up on Cube ID and add'**
+  String get searchFindCubeNameHint;
+
   /// No description provided for @addContactHintName.
   ///
   /// In en, this message translates to:

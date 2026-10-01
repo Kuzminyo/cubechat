@@ -1255,6 +1255,8 @@
   "cubeIdFailed": "Не вдалося зберегти ім’я. Спробуйте ще раз.",
   "cubeIdOffline": "Немає інтернету",
   "lookupNotFound": "Нікого з таким @ім’ям",
+  "searchFindCubeName": "Знайти @{name}",
+  "searchFindCubeNameHint": "Пошук у Cube ID і додати",
   "addContactHintName": "Вставте картку або введіть @ім’я",
   "strangerReachTitle": "Хто може писати мені з інтернету",
   "strangerReachAll": "Усі",

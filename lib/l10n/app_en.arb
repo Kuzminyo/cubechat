@@ -1747,6 +1747,13 @@
   "cubeIdFailed": "Couldn't save the name. Try again.",
   "cubeIdOffline": "No internet",
   "lookupNotFound": "No one with that @name",
+  "searchFindCubeName": "Find @{name}",
+  "@searchFindCubeName": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "searchFindCubeNameHint": "Look up on Cube ID and add",
   "addContactHintName": "Paste a card or type @name",
   "strangerReachTitle": "Who can message me from the internet",
   "strangerReachAll": "Everyone",

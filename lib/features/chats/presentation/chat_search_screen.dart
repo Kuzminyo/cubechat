@@ -9,6 +9,10 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
+import '../../cube_id/data/cube_id_controller.dart';
+import '../../cube_id/data/known_names_controller.dart';
+import '../../cube_id/domain/name_search.dart';
+import '../../cube_id/presentation/cube_name_lookup_tile.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/recent_searches_controller.dart';
 import '../domain/message_hits.dart';
@@ -130,9 +134,25 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
     final chats = ref.watch(chatsProvider);
     final query = _query.trim().toLowerCase();
 
+    // By the saved name or the @name a person was found by — "@dima" found
+    // nobody while only display names were compared.
+    final knownNames = ref.watch(knownNamesProvider);
     final results = query.isEmpty
         ? const <Chat>[]
-        : chats.where((c) => c.peerName.toLowerCase().contains(query)).toList();
+        : chats
+            .where(
+              (c) => matchesPeerSearch(
+                query: _query,
+                peerName: c.peerName,
+                cubeName: c.isChannel ? null : knownNames[c.peerId],
+              ),
+            )
+            .toList();
+    final lookUp = cubeNameToLookUp(
+      _query,
+      knownNames: knownNames.values,
+      ownName: ref.watch(cubeIdControllerProvider.select((s) => s.name)),
+    );
 
     // The words, across every conversation. Watched here rather than inside the
     // result list so the sweep runs once per keystroke, not once per row.
@@ -199,6 +219,7 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
               onOpen: _open,
               onOpenMessage: _openAt,
               emptyLabel: t.chatsSearchEmpty,
+              lookUp: lookUp,
             ),
     );
   }
@@ -313,6 +334,7 @@ class _Results extends StatelessWidget {
     required this.onOpen,
     required this.onOpenMessage,
     required this.emptyLabel,
+    this.lookUp,
   });
 
   final List<Chat> results;
@@ -322,10 +344,13 @@ class _Results extends StatelessWidget {
   final void Function(MessageHit) onOpenMessage;
   final String emptyLabel;
 
+  /// An @name nobody here has, offered for lookup above the results.
+  final String? lookUp;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    if (results.isEmpty && hits.isEmpty) {
+    if (results.isEmpty && hits.isEmpty && lookUp == null) {
       return Center(
         child: Text(
           emptyLabel,
@@ -341,6 +366,11 @@ class _Results extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        if (lookUp != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: CubeNameLookupTile(name: lookUp!),
+          ),
         if (labelled) _SectionLabel(text: t.chatsSearchChatsSection),
         for (final chat in results)
           Padding(

@@ -3587,6 +3587,14 @@ class AppLocalizationsUk extends AppLocalizations {
   String get lookupNotFound => 'Нікого з таким @ім’ям';
 
   @override
+  String searchFindCubeName(String name) {
+    return 'Знайти @$name';
+  }
+
+  @override
+  String get searchFindCubeNameHint => 'Пошук у Cube ID і додати';
+
+  @override
   String get addContactHintName => 'Вставте картку або введіть @ім’я';
 
   @override

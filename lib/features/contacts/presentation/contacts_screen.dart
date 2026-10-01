@@ -25,6 +25,10 @@ import '../../chat/data/messages_controller.dart';
 import '../../chats/data/hidden_chats_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import '../../cube_id/data/cube_id_controller.dart';
+import '../../cube_id/data/known_names_controller.dart';
+import '../../cube_id/domain/name_search.dart';
+import '../../cube_id/presentation/cube_name_lookup_tile.dart';
 import 'recent_calls_view.dart';
 
 /// Who belongs in Contacts: people you have actually corresponded with, and
@@ -190,14 +194,26 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     final all = ref.watch(contactChatsProvider);
     final tags = ref.watch(contactTagsControllerProvider);
     final inUse = ref.read(contactTagsControllerProvider.notifier).tagsInUse;
-    final query = _query.trim().toLowerCase();
+    final knownNames = ref.watch(knownNamesProvider);
     // Name first, then label. Both are filters over the same list rather than
     // two lists — a search inside a label is the ordinary way somebody looks
-    // for "the one from work whose name starts with M".
+    // for "the one from work whose name starts with M". The name is either
+    // one: the saved name or the @name they were found by.
     final contacts = all
-        .where((c) => query.isEmpty || c.peerName.toLowerCase().contains(query))
+        .where(
+          (c) => matchesPeerSearch(
+            query: _query,
+            peerName: c.peerName,
+            cubeName: knownNames[c.peerId],
+          ),
+        )
         .where((c) => _tag == null || tags[c.peerId] == _tag)
         .toList(growable: false);
+    final lookUp = cubeNameToLookUp(
+      _query,
+      knownNames: knownNames.values,
+      ownName: ref.watch(cubeIdControllerProvider.select((s) => s.name)),
+    );
     // A label that no longer exists cannot go on filtering the list.
     if (_tag != null && !inUse.contains(_tag)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -217,7 +233,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     // is zero and the first row hides under the header.
     final contactsPage = Builder(
       builder: (context) =>
-          _contactsPage(context, t, all, contacts, tags, inUse),
+          _contactsPage(context, t, all, contacts, tags, inUse, lookUp),
     );
     final callsPage = Builder(
       builder: (context) => CustomScrollView(
@@ -331,6 +347,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
     List<Chat> contacts,
     Map<String, String> tags,
     List<String> inUse,
+    String? lookUp,
   ) {
     return CustomScrollView(
       controller: _contactsScroll,
@@ -382,7 +399,19 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
               ),
             ),
           ),
-        if (contacts.isEmpty)
+        // An @name nobody here has: the way to go and find them, above
+        // whatever the list still shows.
+        if (lookUp != null)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            sliver: SliverToBoxAdapter(
+              child: CubeNameLookupTile(name: lookUp),
+            ),
+          ),
+        // "Nobody found" under "Find @olga" would contradict the row above it.
+        if (contacts.isEmpty && lookUp != null)
+          const SliverToBoxAdapter(child: SizedBox(height: 140))
+        else if (contacts.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: _ContactsEmptyState(
