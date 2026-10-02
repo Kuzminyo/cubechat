@@ -28,5 +28,12 @@
 	<array>
 		<string>applinks:cubechat.tech</string>
 	</array>
+	<!-- Where the share extension leaves what was shared for the app to pick
+	     up (CubechatSharePlugin). On app.cubechat and app.cubechat.share
+	     both, and in the `cubechat App Store` profile since 2026-10-02. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.cubechat</string>
+	</array>
 </dict>
 </plist>

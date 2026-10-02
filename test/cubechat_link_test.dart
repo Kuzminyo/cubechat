@@ -59,4 +59,8 @@ void main() {
     expect(
         parseCubechatLink(Uri.parse('https://cubechat.tech/c1#hello')), isNull);
   });
+
+  test('the share extension opening the app is not a link to follow', () {
+    expect(parseCubechatLink(Uri.parse('cubechat://share')), isNull);
+  });
 }

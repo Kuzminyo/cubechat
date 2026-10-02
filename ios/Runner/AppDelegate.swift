@@ -12,6 +12,7 @@ import UserNotifications
   private var audioTrimPlugin: CubechatAudioTrimPlugin?
   private var transcribePlugin: CubechatTranscribePlugin?
   private var openInPlugin: CubechatOpenInPlugin?
+  private var sharePlugin: CubechatSharePlugin?
 
   /// Held for the life of the app, like the others: it captures the platform
   /// thread's mach port in its initialiser and would hand that port back on
@@ -161,6 +162,7 @@ import UserNotifications
       audioTrimPlugin = CubechatAudioTrimPlugin(messenger: messenger)
       transcribePlugin = CubechatTranscribePlugin(messenger: messenger)
       openInPlugin = CubechatOpenInPlugin(messenger: messenger)
+      sharePlugin = CubechatSharePlugin(messenger: messenger)
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       pushPlugin = CubechatPushPlugin(messenger: messenger)
       CubechatCallKit.shared.attach(messenger: messenger)

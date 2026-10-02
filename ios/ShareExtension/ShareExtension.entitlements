@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    The one right the share extension needs: the App Group it and the app both
+    see, where it leaves what was shared for the app to pick up. Granted by the
+    `cubechat Share App Store` profile (app.cubechat.share, 2026-10-02).
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.cubechat</string>
+	</array>
+</dict>
+</plist>

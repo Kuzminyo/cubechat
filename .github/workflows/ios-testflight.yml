@@ -169,6 +169,24 @@ jobs:
           security cms -D -i "$DIR/cubechat.mobileprovision" \
             | plutil -extract Name raw -
 
+      # The share extension (app.cubechat.share) is signed on its own, with
+      # its own profile — `cubechat Share App Store` in ExportOptions.plist.
+      - name: Install the share extension's provisioning profile
+        env:
+          PROFILE: ${{ secrets.IOS_SHARE_PROVISION_PROFILE }}
+        run: |
+          set -e
+          if [ -z "$PROFILE" ]; then
+            echo "::error::IOS_SHARE_PROVISION_PROFILE is empty"
+            exit 1
+          fi
+          DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$DIR"
+          echo "$PROFILE" | base64 --decode > "$DIR/cubechat-share.mobileprovision"
+          echo "profile installed:"
+          security cms -D -i "$DIR/cubechat-share.mobileprovision" \
+            | plutil -extract Name raw -
+
       - name: Build signed IPA
         run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 

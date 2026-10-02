@@ -27,5 +27,10 @@
 	<array>
 		<string>applinks:cubechat.tech</string>
 	</array>
+	<!-- See RunnerRelease.entitlements: the share extension's drop box. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.cubechat</string>
+	</array>
 </dict>
 </plist>

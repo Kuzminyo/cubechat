@@ -44,6 +44,9 @@
 	<dict>
 		<key>app.cubechat</key>
 		<string>cubechat App Store</string>
+		<!-- "Share → CubeChat", embedded in the app (ios/ShareExtension). -->
+		<key>app.cubechat.share</key>
+		<string>cubechat Share App Store</string>
 	</dict>
 
 	<!--

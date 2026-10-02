@@ -34,6 +34,9 @@ CubechatLink? parseCubechatLink(Uri uri) {
   if (uri.scheme == 'cubechat') {
     if (uri.host == 'u') return _name(uri.queryParameters['n'] ?? '');
     if (uri.host == 'c1') return _card(uri.queryParameters['c'] ?? '');
+    // The share extension opening the app (ios/ShareExtension): arriving is
+    // the whole message, and the share itself comes through ShareInbox.
+    if (uri.host == 'share') return null;
     return _card(uri.toString());
   }
   if (uri.scheme != 'https' || uri.host != _host) return null;

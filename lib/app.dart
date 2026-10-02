@@ -213,8 +213,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Route to the conversation when a message notification is tapped.
     NotificationService.instance.onSelectChat = _openChat;
     // "Share → CubeChat" from another app: into chats, the way forwarding
-    // goes, with AirDrop still offered for files. See [shareIntoChats].
-    if (PlatformInfo.isAndroid) {
+    // goes, with AirDrop still offered for files. See [shareIntoChats]. On
+    // iPhone the share extension leaves it for `CubechatSharePlugin`, which
+    // answers on the same channel.
+    if (PlatformInfo.isMobile) {
       ShareInbox.listen((bundle) => unawaited(_onShare(bundle)));
     }
     // Send an inline reply typed into a message notification straight over the
