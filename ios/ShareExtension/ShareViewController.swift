@@ -172,18 +172,25 @@ final class ShareViewController: UIViewController {
 
   // MARK: - Opening the app
 
-  /// Extensions may not call `UIApplication.shared`, but the application
-  /// object is in this view controller's responder chain, and asking it to
-  /// open our own scheme is how a share extension hands off to its app. This
-  /// target is built with APPLICATION_EXTENSION_API_ONLY off for exactly this
-  /// call. `cubechat://share` is not a link the app follows anywhere; arriving
-  /// is the whole message.
+  /// Extensions may not call `UIApplication.shared` or its `open`, but the
+  /// application object is in this view controller's responder chain, and
+  /// asking it to open our own scheme is how a share extension hands off to
+  /// its app. The call goes through the Objective-C runtime because the target
+  /// must be built with APPLICATION_EXTENSION_API_ONLY — Xcode refuses an
+  /// extension without it ("Application extensions ... must be built with
+  /// APPLICATION_EXTENSION_API_ONLY set to YES", the first CI run of 1138) —
+  /// and that setting hides `open` from the compiler, not from the object.
+  /// `cubechat://share` is not a link the app follows anywhere; arriving is
+  /// the whole message.
   private func openHost() {
     guard let url = URL(string: "cubechat://share") else { return }
+    let selector = NSSelectorFromString("openURL:options:completionHandler:")
+    typealias OpenURL = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, AnyObject?) -> Void
     var responder: UIResponder? = self
     while let current = responder {
-      if let application = current as? UIApplication {
-        application.open(url, options: [:], completionHandler: nil)
+      if current.responds(to: selector) {
+        let open = unsafeBitCast(current.method(for: selector), to: OpenURL.self)
+        open(current, selector, url as NSURL, NSDictionary(), nil)
         return
       }
       responder = current.next
