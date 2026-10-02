@@ -1994,6 +1994,36 @@ abstract class AppLocalizations {
   /// **'Forward to'**
   String get chatForwardTitle;
 
+  /// No description provided for @shareIntoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to'**
+  String get shareIntoTitle;
+
+  /// No description provided for @shareNearbyAirDrop.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby over AirDrop'**
+  String get shareNearbyAirDrop;
+
+  /// No description provided for @shareNearbyAirDropHint.
+  ///
+  /// In en, this message translates to:
+  /// **'No internet needed — to people next to you'**
+  String get shareNearbyAirDropHint;
+
+  /// No description provided for @shareSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get shareSent;
+
+  /// No description provided for @shareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Some of it could not be sent'**
+  String get shareFailed;
+
   /// No description provided for @chatForwardEmpty.
   ///
   /// In en, this message translates to:

@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
 
     /** Files from the share sheet, copied into our cache, until Dart takes them. */
     private var pendingShare: List<Map<String, String>>? = null
+    private var pendingShareText: String? = null
     private var shareChannel: MethodChannel? = null
 
     private class PendingSave(val source: File, val result: MethodChannel.Result)
@@ -74,6 +75,10 @@ class MainActivity : FlutterActivity() {
                     "takeShared" -> {
                         result.success(pendingShare)
                         pendingShare = null
+                    }
+                    "takeSharedText" -> {
+                        result.success(pendingShareText)
+                        pendingShareText = null
                     }
                     else -> result.notImplemented()
                 }
@@ -219,13 +224,18 @@ class MainActivity : FlutterActivity() {
                 ) ?: emptyList()
             else -> return
         }
+        // A link or a line of text from a browser or a notes app arrives as
+        // EXTRA_TEXT with no stream at all. It used to be dropped here, so
+        // sharing a link to CubeChat just opened the app.
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
         // Spent, so a recreate does not share the same files again.
         intent.action = null
-        if (uris.isEmpty()) return
+        if (uris.isEmpty() && text == null) return
         Thread {
             val copied = uris.take(50).mapNotNull { copyShared(it) }
             runOnUiThread {
                 pendingShare = copied
+                pendingShareText = text
                 shareChannel?.invokeMethod("shared", null)
             }
         }.start()

@@ -554,6 +554,11 @@
   "chatCopied": "Copied",
   "chatForwardAction": "Forward",
   "chatForwardTitle": "Forward to",
+  "shareIntoTitle": "Send to",
+  "shareNearbyAirDrop": "Nearby over AirDrop",
+  "shareNearbyAirDropHint": "No internet needed — to people next to you",
+  "shareSent": "Sent",
+  "shareFailed": "Some of it could not be sent",
   "chatForwardEmpty": "No other chats yet",
   "chatForwardSendCount": "Send ({count})",
   "@chatForwardSendCount": {

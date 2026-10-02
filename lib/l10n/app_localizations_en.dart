@@ -1088,6 +1088,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatForwardTitle => 'Forward to';
 
   @override
+  String get shareIntoTitle => 'Send to';
+
+  @override
+  String get shareNearbyAirDrop => 'Nearby over AirDrop';
+
+  @override
+  String get shareNearbyAirDropHint =>
+      'No internet needed — to people next to you';
+
+  @override
+  String get shareSent => 'Sent';
+
+  @override
+  String get shareFailed => 'Some of it could not be sent';
+
+  @override
   String get chatForwardEmpty => 'No other chats yet';
 
   @override

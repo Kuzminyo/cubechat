@@ -407,6 +407,11 @@
     "chatCopied":  "Скопійовано",
     "chatForwardAction":  "Переслати",
     "chatForwardTitle":  "Переслати в",
+    "shareIntoTitle": "Надіслати в",
+    "shareNearbyAirDrop": "Поруч через AirDrop",
+    "shareNearbyAirDropHint": "Без інтернету — тим, хто поруч",
+    "shareSent": "Надіслано",
+    "shareFailed": "Частину не вдалося надіслати",
     "chatForwardEmpty":  "Інших чатів поки немає",
     "chatForwardSendCount":  "Надіслати ({count})",
     "@chatForwardSendCount":  {

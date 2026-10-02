@@ -7,6 +7,7 @@ import 'features/airdrop/data/airdrop_controller.dart';
 import 'features/airdrop/data/share_inbox.dart';
 import 'features/airdrop/presentation/airdrop_banner.dart';
 import 'features/airdrop/presentation/airdrop_navigation.dart';
+import 'features/share/presentation/share_into_chats.dart';
 import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -108,6 +109,28 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// field uses — then go to the conversation. A link that is not ours, a
   /// name nobody holds, or no network: a line in the log and nothing else,
   /// since the person tapped a link and is looking at the app, not at errors.
+  /// A share from another app. On a cold start it arrives before the router
+  /// has drawn anything to put the picker over, so it waits for a frame — and
+  /// for a few more, briefly, while the first screen is still being built.
+  Future<void> _onShare(SharedBundle bundle) async {
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final context = _router.routerDelegate.navigatorKey.currentContext;
+      if (context != null) {
+        await shareIntoChats(
+          context,
+          ref,
+          bundle,
+          onAirDrop: () =>
+              unawaited(_router.push('/airdrop/share', extra: bundle.files)),
+        );
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+  }
+
   Future<void> _openCubechatLink(Uri uri) async {
     final link = parseCubechatLink(uri);
     if (link == null) return;
@@ -189,11 +212,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     // Route to the conversation when a message notification is tapped.
     NotificationService.instance.onSelectChat = _openChat;
-    // "Share → CubeChat" from another app hands files to AirDrop.
+    // "Share → CubeChat" from another app: into chats, the way forwarding
+    // goes, with AirDrop still offered for files. See [shareIntoChats].
     if (PlatformInfo.isAndroid) {
-      ShareInbox.listen(
-        (files) => _router.push('/airdrop/share', extra: files),
-      );
+      ShareInbox.listen((bundle) => unawaited(_onShare(bundle)));
     }
     // Send an inline reply typed into a message notification straight over the
     // mesh, without opening the app.

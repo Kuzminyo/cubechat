@@ -35,6 +35,11 @@ Future<List<Chat>> showChatPicker(
   /// Saved, first in the list, even while it is empty. For forwarding:
   /// "перекидывать в другие чаты и в избранное кнопкой переслать".
   bool includeSaved = false,
+
+  /// A row above the chats for a way out that is not a chat — "nearby over
+  /// AirDrop" for files shared in from another app. Built with the picker's
+  /// own context, so it can pop the picker before doing its thing.
+  WidgetBuilder? header,
 }) async {
   final chosen = await Navigator.of(context, rootNavigator: true).push<List<Chat>>(
     screenRoute<List<Chat>>(
@@ -43,6 +48,7 @@ Future<List<Chat>> showChatPicker(
         exceptChatId: exceptChatId,
         includeChannels: includeChannels,
         includeSaved: includeSaved,
+        header: header,
       ),
     ),
   );
@@ -55,12 +61,14 @@ class _ChatPickerScreen extends ConsumerStatefulWidget {
     required this.exceptChatId,
     required this.includeChannels,
     required this.includeSaved,
+    this.header,
   });
 
   final String title;
   final String? exceptChatId;
   final bool includeChannels;
   final bool includeSaved;
+  final WidgetBuilder? header;
 
   @override
   ConsumerState<_ChatPickerScreen> createState() => _ChatPickerScreenState();
@@ -170,6 +178,11 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
                   ),
                 ),
               ),
+              if (widget.header case final header?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: header(context),
+                ),
               if (chats.isEmpty)
                 Expanded(
                   child: Center(

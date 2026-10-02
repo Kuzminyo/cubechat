@@ -1096,6 +1096,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatForwardTitle => 'Переслати в';
 
   @override
+  String get shareIntoTitle => 'Надіслати в';
+
+  @override
+  String get shareNearbyAirDrop => 'Поруч через AirDrop';
+
+  @override
+  String get shareNearbyAirDropHint => 'Без інтернету — тим, хто поруч';
+
+  @override
+  String get shareSent => 'Надіслано';
+
+  @override
+  String get shareFailed => 'Частину не вдалося надіслати';
+
+  @override
   String get chatForwardEmpty => 'Інших чатів поки немає';
 
   @override
