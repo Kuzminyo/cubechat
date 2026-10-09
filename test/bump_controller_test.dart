@@ -622,6 +622,86 @@ void main() {
     });
   });
 
+  test('a quiet-side phone needs a drop of its own, not the absolute -55', () {
+    // iPhone against an Android, 2026-10-09: the iPhone hears the Android
+    // 12-19 dB quieter than the Android hears it, so it "touched" at -55 and a
+    // blip to -57 (one dial, a gap in adverts) read as "moved apart" under the
+    // fixed -55. It re-armed while the Android - which never reads below -55
+    // within half a metre - stayed disarmed, and the pair sat out of step with
+    // nothing sent in either direction. The way out of a bump is a drop from
+    // where this side fired, which is the same physical movement on both.
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -55);
+      port.deliver(_bob, bump: _bump(70));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>(), reason: 'answered at -55');
+      c.read(bumpControllerProvider.notifier).dismiss();
+
+      // Past the cooldown, lying where it fired, then a blip two dB quieter.
+      feed(async, c, _bob, const Duration(seconds: 6), rssi: -55);
+      feed(async, c, _bob, const Duration(milliseconds: 2200), rssi: -57);
+      feed(async, c, _bob, const Duration(milliseconds: 1200), rssi: -55);
+      port.deliver(_bob, bump: _bump(71));
+      async.flushMicrotasks();
+      expect(
+        event(c),
+        isNull,
+        reason: 'two dB under where it fired is not a movement',
+      );
+
+      // Taken properly apart (ten dB under the touch), then together again.
+      feed(async, c, _bob, const Duration(milliseconds: 2200), rssi: -70);
+      feed(async, c, _bob, const Duration(milliseconds: 1200), rssi: -55);
+      port.deliver(_bob, bump: _bump(72));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>(), reason: 'a real second bump');
+      c.dispose();
+    });
+  });
+
+  test('after one bump the two phones agree on the distance', () {
+    // The iPhone side of 2026-10-09: it hears the Android at -55 from where
+    // the Android hears it at -40. On its own, -55 is never "touching" here,
+    // so it could only ever answer. Told the Android's reading in the bump,
+    // it meets it halfway: -55 is now -47, close, and it bumps first itself.
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -55);
+      port.deliver(
+        _bob,
+        bump: NearbyBump(
+          bumpId: _id(80),
+          hasFiles: false,
+          card: _theirCard,
+          rssi: -40,
+        ),
+      );
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>());
+      c.read(bumpControllerProvider.notifier).dismiss();
+      expect(
+        port.bumpsTo(_bob).last.rssi,
+        -55,
+        reason: 'ours tells them how we hear them, raw',
+      );
+      final firstBumps = port.bumpsTo(_bob).length;
+
+      // Apart past the cooldown, then back to where they bumped.
+      feed(async, c, _bob, const Duration(seconds: 3), rssi: -80);
+      feed(async, c, _bob, const Duration(milliseconds: 2200), rssi: -80);
+      feed(async, c, _bob, const Duration(milliseconds: 1200), rssi: -55);
+      expect(
+        port.bumpsTo(_bob).length,
+        firstBumps + 1,
+        reason: '-55 here is the same distance as -40 there: touching',
+      );
+      c.dispose();
+    });
+  });
+
   test('a replayed bumpId is not a fresh bump', () {
     fakeAsync((async) {
       final port = _Port()..direct.add(_bob);

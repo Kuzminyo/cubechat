@@ -317,7 +317,11 @@ class NearbyBump {
     required this.bumpId,
     required this.hasFiles,
     required this.card,
+    this.rssi,
   }) {
+    if (rssi != null && (rssi! > -1 || rssi! < -127)) {
+      throw ArgumentError.value(rssi, 'rssi', 'not in -127..-1');
+    }
     if (bumpId.length != nearbyIdLen) {
       throw ArgumentError.value(bumpId.length, 'bumpId', 'not $nearbyIdLen');
     }
@@ -339,11 +343,25 @@ class NearbyBump {
   final bool hasFiles;
   final Uint8List card;
 
+  /// How loud the sender hears the receiver, dBm, or null from a build that
+  /// does not say.
+  ///
+  /// Two phones read the same gap differently — an iPhone and an Android 12
+  /// to 19 dB apart (2026-10-09) — so neither one's reading alone says how far
+  /// apart they are. With both, each side can move its own reading halfway
+  /// towards the other's and the two agree. See `BumpController`.
+  ///
+  /// Carried in the flags byte's upper seven bits, as the magnitude. Bit 0 is
+  /// hasFiles, and that is the only bit an old build reads — so an old build
+  /// decodes the same bump unchanged, and its own bumps read as null here.
+  final int? rssi;
+
   Uint8List encode() {
+    final level = rssi == null ? 0 : (-rssi!) & 0x7F;
     final out = BytesBuilder(copy: false)
       ..addByte(nearbyVersion)
       ..add(bumpId)
-      ..addByte(hasFiles ? 0x01 : 0x00)
+      ..addByte((hasFiles ? 0x01 : 0x00) | (level << 1))
       ..addByte(card.length >> 8)
       ..addByte(card.length & 0xFF)
       ..add(card);
@@ -363,7 +381,13 @@ class NearbyBump {
     }
     final card = r.bytes(cardLen);
     if (!r.done) throw const FormatException('nearby bump: trailing bytes');
-    return NearbyBump(bumpId: bumpId, hasFiles: flags & 0x01 != 0, card: card);
+    final level = flags >> 1;
+    return NearbyBump(
+      bumpId: bumpId,
+      hasFiles: flags & 0x01 != 0,
+      card: card,
+      rssi: level == 0 ? null : -level,
+    );
   }
 }
 

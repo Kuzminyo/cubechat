@@ -382,6 +382,36 @@ void main() {
       }
     });
 
+    test('carries how the sender hears us, in bits an old build ignores', () {
+      final bump = NearbyBump(
+        bumpId: _id(51),
+        hasFiles: true,
+        card: card(40, seed: 2),
+        rssi: -55,
+      );
+      final bytes = bump.encode();
+      final back = NearbyBump.decode(bytes);
+      expect(back.rssi, -55);
+      expect(back.hasFiles, isTrue);
+      // An old build reads the flags byte as `flags & 0x01` and nothing else:
+      // the reading must leave that bit exactly as hasFiles set it.
+      final flags = bytes[1 + nearbyIdLen];
+      expect(flags & 0x01, 1);
+      // A bump from an old build has no reading.
+      final old = NearbyBump(bumpId: _id(52), hasFiles: false, card: card(5));
+      expect(NearbyBump.decode(old.encode()).rssi, isNull);
+      // The loudest and quietest a radio reports both survive.
+      for (final rssi in [-1, -127]) {
+        expect(
+          NearbyBump.decode(
+            NearbyBump(bumpId: _id(53), hasFiles: false, card: card(5), rssi: rssi)
+                .encode(),
+          ).rssi,
+          rssi,
+        );
+      }
+    });
+
     test('refuses to encode a card past the 2048-byte limit', () {
       expect(
         () => NearbyBump(

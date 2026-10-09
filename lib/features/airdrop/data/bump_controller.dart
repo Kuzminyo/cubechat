@@ -221,6 +221,78 @@ class BumpController extends Notifier<BumpState> {
   /// September 25 logs. Until then the phones are still lying together, and
   /// the five-second [cooldown] alone fired them a second time.
   static const int _rearmRssi = -55;
+
+  /// …or, if lower, this many dB under the level this side fired at.
+  ///
+  /// An iPhone and an Android read the same gap 12-19 dB apart (2026-10-09:
+  /// the Android heard the iPhone at -35..-43 from 15 cm, the iPhone heard the
+  /// Android at -54..-57). The iPhone fired at -55, and the fixed -55 then
+  /// re-armed it on a 2 dB blip while the Android never got under -55 at all —
+  /// out of step, so neither side's second bump was ever answered. A drop
+  /// measured from this side's own touch is the same movement on both phones:
+  /// the offset between them cancels. Ten dB is two to three times farther
+  /// apart than where they bumped. For a pair that touches at the -45 the
+  /// Android-to-Android logs read, this gives -55: nothing changes there.
+  static const int _rearmDrop = 10;
+
+  /// Where each bumped person was read at the moment of the bump.
+  final Map<String, int> _firedLevel = {};
+
+  /// Each person's newest reading as the radio gave it, before [_shift]: what
+  /// our bump tells them.
+  final Map<String, int> _raw = {};
+
+  /// How much louder they hear us than we hear them, smoothed over bumps.
+  final Map<String, int> _offset = {};
+
+  /// Added to every reading of a person before the tracker sees it: half of
+  /// [_offset], so both phones land on the same number.
+  ///
+  /// Every threshold here was measured between two Androids, which hear each
+  /// other alike. An iPhone and an Android do not: 2026-10-09, 15 cm apart,
+  /// the Android heard -35..-43 and the iPhone -54..-57. So the Android called
+  /// half a metre "touching" and the iPhone could only ever answer, never bump
+  /// first — the gesture went by whichever phone was louder. Each bump now
+  /// carries the sender's raw reading of us; we move ours halfway towards it,
+  /// they move theirs halfway towards ours, and one distance means one number
+  /// on both. Kept across page visits — a pair of phones does not change —
+  /// and dropped with everything else on a wipe.
+  final Map<String, int> _shift = {};
+
+  /// Bigger than any gap measured between two models; anything past it is a
+  /// broken reading, not a calibration.
+  static const int _maxOffset = 30;
+
+  /// Learns from [theirs], their raw reading of us carried in a bump.
+  void _calibrate(String hex, int? theirs) {
+    final mine = _raw[hex];
+    if (theirs == null || mine == null) return;
+    final measured = (theirs - mine).clamp(-_maxOffset, _maxOffset);
+    final before = _offset[hex];
+    // Smoothed: one bump read across a hand that moved should not swing it.
+    final offset =
+        before == null ? measured : ((before * 3 + measured) / 4).round();
+    _offset[hex] = offset;
+    final shift = (offset / 2).round();
+    final was = _shift[hex] ?? 0;
+    if (shift == was) return;
+    _shift[hex] = shift;
+    // Readings already held were taken on the old scale; mixing the two in
+    // one window would read as a step that never happened.
+    _tracker.forget(hex);
+    final fired = _firedLevel[hex];
+    if (fired != null) _firedLevel[hex] = fired + shift - was;
+    DebugLog.instance.log(
+      'BUMP',
+      '${_short(hex)} hears us at $theirs, we hear them at $mine — '
+          'readings ${shift >= 0 ? '+' : ''}$shift dB from now on',
+    );
+  }
+
+  int _rearmThreshold(String hex) {
+    final fired = _firedLevel[hex];
+    return fired == null ? _rearmRssi : min(_rearmRssi, fired - _rearmDrop);
+  }
   static const Duration dialEvery = Duration(seconds: 10);
 
   /// Smallest warmth step the glow is moved by. The warmth spans the 17 dB
@@ -331,6 +403,9 @@ class BumpController extends Notifier<BumpState> {
     _readings = null;
     _tracker.clear();
     _fed.clear();
+    // A reading from the last visit is not one to tell anybody now. The
+    // calibration itself stays: it belongs to the pair of phones.
+    _raw.clear();
     _keyOfDevice.clear();
     _deviceOfKey.clear();
     _identityOfDevice.clear();
@@ -394,7 +469,8 @@ class BumpController extends Notifier<BumpState> {
   /// as the one touching. Who may be *bumped* is checked in [_evaluate].
   void sample(String peerHex, int rssi) {
     if (_tick == null) return;
-    _tracker.add(peerHex, rssi, _now);
+    _raw[peerHex] = rssi;
+    _tracker.add(peerHex, rssi + (_shift[peerHex] ?? 0), _now);
   }
 
   void dismiss() {
@@ -408,6 +484,10 @@ class BumpController extends Notifier<BumpState> {
   void wipe() {
     _quietUntil.clear();
     _disarmed.clear();
+    _firedLevel.clear();
+    _raw.clear();
+    _offset.clear();
+    _shift.clear();
     _seenIds.clear();
     _dialledAt.clear();
     _tracker.clear();
@@ -479,13 +559,15 @@ class BumpController extends Notifier<BumpState> {
     if (_disarmed.isEmpty) return;
     _disarmed.removeWhere((hex) {
       if (!_tracker.hasFreshSample(hex, now)) return false;
-      final quiet = _tracker.samplesIn(hex, now) -
-          _tracker.loudSamples(hex, _rearmRssi, now);
-      if (quiet < ProximityTracker.minCloseSamples ||
-          _tracker.loudSamples(hex, _rearmRssi, now) > 0) {
-        return false;
-      }
-      DebugLog.instance.log('BUMP', '${_short(hex)} moved apart — re-armed');
+      final threshold = _rearmThreshold(hex);
+      final loud = _tracker.loudSamples(hex, threshold, now);
+      final quiet = _tracker.samplesIn(hex, now) - loud;
+      if (quiet < ProximityTracker.minCloseSamples || loud > 0) return false;
+      DebugLog.instance.log(
+        'BUMP',
+        '${_short(hex)} moved apart (under $threshold dBm) — re-armed',
+      );
+      _firedLevel.remove(hex);
       return true;
     });
   }
@@ -533,11 +615,16 @@ class BumpController extends Notifier<BumpState> {
     final hasFiles =
         vetAirDropFiles(ref.read(airdropStagedProvider)).files.isNotEmpty;
     final card = _ownCard ??= _loadCard();
+    final raw = _raw[hex];
     try {
       final ok = await port.send(
         hex,
-        bump:
-            NearbyBump(bumpId: _newId(), hasFiles: hasFiles, card: await card),
+        bump: NearbyBump(
+          bumpId: _newId(),
+          hasFiles: hasFiles,
+          card: await card,
+          rssi: raw == null || raw >= 0 ? null : max(raw, -127),
+        ),
       );
       if (!ok) DebugLog.instance.log('BUMP', 'could not reach ${_short(hex)}');
     } catch (e) {
@@ -561,6 +648,14 @@ class BumpController extends Notifier<BumpState> {
     if (ref.read(banListProvider).isBannedIdentity(hex)) return;
     final at = _now;
     if (!_remember(nearbyHex(bump.bumpId), at)) return;
+    _decide(hex, bump, at);
+    // After the decision, not before: this bump was judged on the readings it
+    // arrived among, and recalibrating first would have emptied them. Learnt
+    // in the pause too — a bump there is still a fresh pair of readings.
+    _calibrate(hex, bump.rssi);
+  }
+
+  void _decide(String hex, NearbyBump bump, DateTime at) {
     // Quiet means quiet: a bump from them in the pause is the same pair of
     // phones still lying together, not a new gesture waiting to happen.
     if (_quiet(hex, at)) return;
@@ -602,6 +697,10 @@ class BumpController extends Notifier<BumpState> {
   void _fire(String hex, NearbyBump theirs, DateTime now) {
     _quietUntil[hex] = now.add(cooldown);
     _disarmed.add(hex);
+    final level = _tracker.read(now);
+    final firedAt =
+        level.closest == hex ? level.closestRssi : _tracker.latest(hex);
+    if (firedAt != null) _firedLevel[hex] = firedAt;
     // The ledger is a door for *their* offer, auto-accepted: opened only when
     // their bump said files are coming. A bump without files is a contact
     // swap, and a stranger must not get a free offer out of it too.
@@ -758,7 +857,13 @@ class BumpController extends Notifier<BumpState> {
           'heard ${_tracker.samplesIn(hex, now)}/2s, '
           'scan ${ref.read(bumpScanAdvertsProvider)()} adv/s, '
           'samples $loud/${ProximityTracker.minCloseSamples}, '
-          'link ${bumpable ? 'ready' : 'waiting'}${r.isClose ? ' CLOSE' : ''}',
+          'link ${bumpable ? 'ready' : 'waiting'}${r.isClose ? ' CLOSE' : ''}'
+          // Bumped and not moved apart since: what the reading has to fall
+          // under before this person can be bumped again. Without it, a log
+          // of a pair that stopped bumping read exactly like one that never
+          // came close (2026-10-09).
+          '${_disarmed.contains(hex) ? ', held until under ${_rearmThreshold(hex)}' : ''}'
+          '${(_shift[hex] ?? 0) != 0 ? ', cal ${_shift[hex]! > 0 ? '+' : ''}${_shift[hex]}' : ''}',
     );
   }
 
