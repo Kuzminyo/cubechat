@@ -21,6 +21,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
 import '../../chat/presentation/widgets/held_media_entry.dart';
+import '../../desktop/desktop_split_view.dart' show openChat;
 import '../../chat/presentation/widgets/send_queue_sheet.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -923,7 +924,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
               // opening on them.
               onTap: () {
                 if (!selecting) {
-                  context.push(routeForChat(chat));
+                  openChat(context, ref, chat);
                   return;
                 }
                 ref.read(chatSelectionProvider.notifier).toggle(chat.id);
@@ -950,7 +951,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                           showChatPeek(
                             context,
                             chat,
-                            onOpen: () => context.push(routeForChat(chat)),
+                            onOpen: () => openChat(context, ref, chat),
                             onDelete: () => unawaited(
                               _confirmAndDeleteChat(
                                 context,

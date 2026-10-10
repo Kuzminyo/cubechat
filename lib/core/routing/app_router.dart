@@ -13,11 +13,13 @@ import '../../features/profile/presentation/storage_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/backup/presentation/backup_screen.dart';
 import '../../features/cube_id/presentation/cube_id_screen.dart';
+import '../../features/backup/presentation/desktop_link_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
 import '../../features/channels/presentation/channel_info_screen.dart';
 import '../../features/chat/presentation/chat_wallpaper_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/chats/presentation/chat_folders_screen.dart';
+import '../../features/desktop/desktop_split_view.dart';
 import '../../features/chats/presentation/archive_screen.dart';
 import '../../features/chats/presentation/requests_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
@@ -202,8 +204,10 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
       // rebuild the screen — so switching is instant and scroll positions and
       // in-flight animations are preserved.
       StatefulShellRoute(
+        // On a wide computer window the open chat sits to the right of all
+        // of this; everywhere else this is the shell and nothing more.
         builder: (context, state, navigationShell) =>
-            AppShell(shell: navigationShell),
+            DesktopSplitView(list: AppShell(shell: navigationShell)),
         // The strip follows the user's own tab order, not the router's.
         //
         // Both have to, or they contradict each other: the bar would show
@@ -497,6 +501,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: CubeIdScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/desktop-link',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: DesktopLinkScreen()),
           state: state,
         ),
       ),
