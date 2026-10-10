@@ -140,14 +140,6 @@ class DesktopSplitView extends ConsumerWidget {
     final detailWidth =
         media.size.width - DesktopRail.width - middle - 1;
 
-    Widget sized(double width, Widget child) => SizedBox(
-          width: width,
-          child: MediaQuery(
-            data: media.copyWith(size: Size(width, media.size.height)),
-            child: child,
-          ),
-        );
-
     return DesktopChrome(
       mode: mode,
       // The shell sits under its own Scaffold; the rail, the faces and the
@@ -163,7 +155,14 @@ class DesktopSplitView extends ConsumerWidget {
               onBranch: onBranch ?? (_) {},
               canCollapse: mode == DesktopMode.wide,
             ),
-            sized(middle, faces ? const _ChatFaces() : list),
+            _MiddleColumn(
+              width: middle,
+              faces: faces,
+              list: MediaQuery(
+                data: media.copyWith(size: Size(listWidth, media.size.height)),
+                child: list,
+              ),
+            ),
             ColoredBox(
               color: AppColors.glass(0.10),
               child: const SizedBox(width: 1),
@@ -197,6 +196,62 @@ class DesktopSplitView extends ConsumerWidget {
           onClose: close,
         ),
       );
+}
+
+/// The column between the rail and the chat: the shell, or the faces over it.
+///
+/// It used to swap one for the other, and switching tabs with the list folded
+/// made the column jump from 76 to 360 px in one frame with the bar inside it
+/// blinking out and back ("бар пропадає"). Now the width eases and the faces
+/// fade over the list. The shell is never taken out of the tree — it holds the
+/// tabs' navigators, and remounting it would throw away where each tab was.
+class _MiddleColumn extends StatelessWidget {
+  const _MiddleColumn({
+    required this.width,
+    required this.faces,
+    required this.list,
+  });
+
+  final double width;
+  final bool faces;
+  final Widget list;
+
+  static const Duration duration = Duration(milliseconds: 240);
+  static const Curve curve = Curves.easeOutCubic;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: duration,
+      curve: curve,
+      width: width,
+      child: ClipRect(
+        child: Stack(
+          children: [
+            // Laid out at full width always, and cut by the column: the list
+            // does not re-flow through every width on the way.
+            OverflowBox(
+              alignment: Alignment.topLeft,
+              minWidth: DesktopSplitView.listWidth,
+              maxWidth: DesktopSplitView.listWidth,
+              child: IgnorePointer(ignoring: faces, child: list),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !faces,
+                child: AnimatedOpacity(
+                  duration: duration,
+                  curve: curve,
+                  opacity: faces ? 1 : 0,
+                  child: const _ChatFaces(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Nothing open yet: the backdrop, and one line saying what to do.

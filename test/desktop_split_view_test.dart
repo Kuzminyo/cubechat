@@ -82,6 +82,17 @@ void main() {
     return container;
   }
 
+  double columnWidth(WidgetTester tester) => tester
+      .getSize(
+        find
+            .ancestor(
+              of: find.textContaining('list'),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      )
+      .width;
+
   testWidgets('wide: rail, list and the open chat side by side',
       (tester) async {
     final c = await pump(tester, width: 1200);
@@ -117,11 +128,18 @@ void main() {
   testWidgets('the list folds down to faces and back', (tester) async {
     final c = await pump(tester, width: 1200);
     await tester.tap(find.byTooltip(t.desktopListCollapse));
-    await tester.pump();
-    expect(find.textContaining('list'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(columnWidth(tester), DesktopSplitView.compactWidth);
     expect(c.read(desktopListCollapsedProvider), isTrue);
+    expect(
+      find.textContaining('list'),
+      findsOneWidget,
+      reason: 'the shell stays mounted under the faces, so the tabs keep '
+          'their place',
+    );
     await tester.tap(find.byTooltip(t.desktopListExpand));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(columnWidth(tester), DesktopSplitView.listWidth);
     expect(
       find.text('list ${DesktopSplitView.listWidth.round()} rail'),
       findsOneWidget,
@@ -130,7 +148,8 @@ void main() {
 
   testWidgets('middling: faces instead of the list on Chats', (tester) async {
     await pump(tester, width: 760);
-    expect(find.textContaining('list'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(columnWidth(tester), DesktopSplitView.compactWidth);
     expect(find.text(t.desktopPickChat), findsOneWidget);
   });
 
