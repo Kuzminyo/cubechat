@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:local_notifier/local_notifier.dart';
 
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
@@ -52,6 +53,20 @@ class NotificationService {
 
   Future<void> init() async {
     if (_ready) return;
+    // A computer raises Windows' own toast through local_notifier; the plugin
+    // below has no Windows side at this version.
+    if (PlatformInfo.isWindows) {
+      try {
+        await localNotifier.setup(
+          appName: 'CubeChat',
+          shortcutPolicy: ShortcutPolicy.requireCreate,
+        );
+        _ready = true;
+      } catch (e) {
+        debugPrint('Windows notifications unavailable: $e');
+      }
+      return;
+    }
     // The silhouette, not the launcher icon.
     //
     // Android draws a notification's small icon from its alpha channel alone:
@@ -167,6 +182,15 @@ class NotificationService {
     // Quiet hours. The thread is not even opened: nothing here is worth doing
     // for a banner that will not be raised.
     if (quietNow?.call(DateTime.now()) ?? false) return;
+
+    if (PlatformInfo.isWindows) {
+      // One toast per message, no stacked thread: Windows groups an app's
+      // toasts in its own action centre. A click opens the chat.
+      final toast = LocalNotification(title: title, body: body)
+        ..onClick = () => onSelectChat?.call(threadKey);
+      await toast.show();
+      return;
+    }
 
     final thread = _threads.putIfAbsent(threadKey, () => _Thread());
     // Build (once) a stable avatar for this sender.
