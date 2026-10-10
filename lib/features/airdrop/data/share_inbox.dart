@@ -49,21 +49,27 @@ bool isPicture(SharedFile file) => file.mime.toLowerCase().startsWith('image/');
 /// or instead of them — a link from a browser is text and nothing else.
 @immutable
 class SharedBundle {
-  const SharedBundle({this.files = const [], this.text});
+  const SharedBundle({this.files = const [], this.text, this.targetChatId});
 
   factory SharedBundle.fromPlatform({
     required Object? files,
     required Object? text,
+    Object? target,
   }) {
     final trimmed = text is String ? text.trim() : '';
     return SharedBundle(
       files: parseSharedFiles(files),
       text: trimmed.isEmpty ? null : trimmed,
+      targetChatId: target is String && target.isNotEmpty ? target : null,
     );
   }
 
   final List<SharedFile> files;
   final String? text;
+
+  /// The chat the person tapped in the system share sheet, when the share came
+  /// from one of the tiles [DirectShare] published; null for a plain share.
+  final String? targetChatId;
 
   bool get isEmpty => files.isEmpty && text == null;
 
@@ -84,7 +90,17 @@ abstract final class ShareInbox {
       } on MissingPluginException {
         text = null;
       }
-      return SharedBundle.fromPlatform(files: files, text: text);
+      Object? target;
+      try {
+        target = await _channel.invokeMethod<Object?>('takeSharedTarget');
+      } on MissingPluginException {
+        target = null;
+      }
+      return SharedBundle.fromPlatform(
+        files: files,
+        text: text,
+        target: target,
+      );
     } catch (_) {
       return const SharedBundle();
     }

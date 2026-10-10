@@ -8,6 +8,8 @@ import 'features/airdrop/data/share_inbox.dart';
 import 'features/airdrop/presentation/airdrop_banner.dart';
 import 'features/airdrop/presentation/airdrop_navigation.dart';
 import 'features/backup/data/desktop_link_service.dart' show isTransferLink;
+import 'features/chats/models/chat.dart';
+import 'features/share/data/direct_share.dart';
 import 'features/share/presentation/share_into_chats.dart';
 import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
@@ -25,6 +27,7 @@ import 'core/util/app_lifecycle.dart';
 import 'features/profile/data/app_lock_controller.dart';
 import 'core/identity/wipe_service.dart';
 import 'features/profile/data/dead_mans_switch_controller.dart';
+import 'features/profile/data/privacy_settings_controller.dart';
 import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
 import 'features/moderation/presentation/terms_gate.dart';
@@ -132,6 +135,18 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     }
   }
 
+  /// Hand the system share sheet its tiles, or none. Waits for the setting to
+  /// be read off disk first: acting on the default would clear tiles somebody
+  /// switched on, on every launch, before putting them back.
+  Future<void> _publishDirectShare() async {
+    await ref.read(privacySettingsProvider.notifier).loaded;
+    if (!mounted) return;
+    final on = ref.read(privacySettingsProvider).shareChatsToSystem;
+    await DirectShare.publish(
+      on ? pickDirectShareTargets(ref.read(visibleChatsProvider)) : const [],
+    );
+  }
+
   Future<void> _openCubechatLink(Uri uri) async {
     // A phone-to-phone transfer or a computer's sign-in code, opened from
     // Google Lens or the camera rather than the in-app scanner: handed to the
@@ -230,6 +245,17 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // answers on the same channel.
     if (PlatformInfo.isMobile) {
       ShareInbox.listen((bundle) => unawaited(_onShare(bundle)));
+      // The same chats as tiles in the system share sheet (Android) — only
+      // while Privacy says so, and taken back the moment it stops saying so.
+      ref.listenManual<List<Chat>>(
+        visibleChatsProvider,
+        (_, __) => unawaited(_publishDirectShare()),
+      );
+      ref.listenManual<bool>(
+        privacySettingsProvider.select((s) => s.shareChatsToSystem),
+        (_, __) => unawaited(_publishDirectShare()),
+      );
+      unawaited(_publishDirectShare());
     }
     // Send an inline reply typed into a message notification straight over the
     // mesh, without opening the app.

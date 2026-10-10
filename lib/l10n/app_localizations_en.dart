@@ -944,6 +944,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.';
 
   @override
+  String get privacyShareSheetTitle => 'Chats in the share sheet';
+
+  @override
+  String get privacyShareSheetOnHint =>
+      'The names of your four latest chats are given to Android, so you can send to them from any app. The app lock does not hide them.';
+
+  @override
+  String get privacyShareSheetOffHint =>
+      'Nothing is given to Android. Sharing into CubeChat asks you to pick the chat.';
+
+  @override
   String get privacyCallsTitle => 'Accept calls';
 
   @override

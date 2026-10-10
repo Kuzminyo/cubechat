@@ -53,6 +53,15 @@ whose key is held in the Android Keystore or the iOS Keychain:
 - pinned, archived, hidden and foldered conversations;
 - the in-app diagnostic log (the most recent 1000 lines).
 
+**One optional exception, off by default (Android).** If you switch on
+*Privacy → Chats in the share sheet*, the display names of your four most
+recent conversations with people are given to Android's own shortcut store, so
+that they appear as tiles in the system "Share" menu of other apps. They stay
+on the phone, are not sent anywhere by Cubechat, and are not shown on the home
+screen, but Android shows them to any app's share menu and the app lock does
+not hide them. Archived, hidden and not-yet-accepted conversations are never
+given. Switching the setting off, or erasing the app's data, removes them.
+
 This history stays on the phone unless you choose a message and tap Report; that report sends only the selected excerpt described below. Local copies are removed when you uninstall the app, use
 **Emergency Wipe**, or when the **dead man's switch** you configured fires.
 
@@ -339,6 +348,15 @@ choose, and both stay under your control — the file goes wherever you put it.
 
 If you lose the passphrase, the backup cannot be recovered. We do not hold a
 key.
+
+**Phone to phone, and phone to computer.** A transfer between two phones, or
+copying your account to the Windows app (*Data → Connect a computer*), goes
+directly between the two devices over the local Wi-Fi network; it does not pass
+through any server of ours. It is encrypted with a random password and a
+one-time token that exist only in the QR code shown on the receiving screen,
+and the code works once. A computer that receives your account holds a copy of
+your keys and can read what is addressed to you, as your phone can; the phone
+keeps working.
 
 ---
 

@@ -18,6 +18,7 @@ import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../profile/data/media_quality_controller.dart';
+import '../data/direct_share.dart';
 import '../domain/share_plan.dart';
 
 /// "Share → CubeChat" from another app: choose chats, the way forwarding does,
@@ -39,22 +40,28 @@ Future<void> shareIntoChats(
   required VoidCallback onAirDrop,
 }) async {
   final t = AppLocalizations.of(context);
-  final targets = await showChatPicker(
-    context,
-    title: t.shareIntoTitle,
-    includeSaved: true,
-    // Rooms take text and pictures; they are offered only when nothing in
-    // the share would be left behind.
-    includeChannels: bundle.roomsCanTakeAll,
-    header: bundle.files.isEmpty
-        ? null
-        : (picker) => _AirDropRow(
-              onTap: () {
-                Navigator.of(picker).pop();
-                onAirDrop();
-              },
-            ),
-  );
+  // A tile in the system share sheet already said where it goes: no picker.
+  // A chat that has since gone falls through to the picker rather than
+  // dropping the share.
+  final named = chatForDirectShare(ref.read(chatsProvider), bundle.targetChatId);
+  final targets = named != null
+      ? [named]
+      : await showChatPicker(
+          context,
+          title: t.shareIntoTitle,
+          includeSaved: true,
+          // Rooms take text and pictures; they are offered only when nothing
+          // in the share would be left behind.
+          includeChannels: bundle.roomsCanTakeAll,
+          header: bundle.files.isEmpty
+              ? null
+              : (picker) => _AirDropRow(
+                    onTap: () {
+                      Navigator.of(picker).pop();
+                      onAirDrop();
+                    },
+                  ),
+        );
   if (targets.isEmpty) return;
   var failed = 0;
   for (final target in targets) {

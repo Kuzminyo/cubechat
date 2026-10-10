@@ -11,6 +11,18 @@ void main() {
       expect(PrivacySettings.initial.shareMapLocation, isFalse);
     });
 
+    test('chats stay out of the system share sheet until the user opts in',
+        () {
+      // The names of the people you talk to, handed to Android for its share
+      // sheet, are the one thing in this app that leaves it by design. Off by
+      // default, in an app whose whole point is that nothing does unasked.
+      expect(PrivacySettings.initial.shareChatsToSystem, isFalse);
+      final on = PrivacySettings.initial.copyWith(shareChatsToSystem: true);
+      expect(on.shareChatsToSystem, isTrue);
+      expect(on.shareLastSeen, isTrue);
+      expect(on, isNot(equals(PrivacySettings.initial)));
+    });
+
     test('copyWith leaves the other switch alone', () {
       // The two are independent: turning off read receipts must not silently
       // take last-seen with it.

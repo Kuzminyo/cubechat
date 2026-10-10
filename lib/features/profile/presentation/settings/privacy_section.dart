@@ -19,6 +19,8 @@ class PrivacySectionScreen extends ConsumerWidget {
             _inset(const _ForwardLinkTile()),
             _inset(const _DiscoverableCard(framed: false), vertical: 0),
             _inset(const _MapLocationTile()),
+            // Android's share sheet only; no other platform has one to give.
+            if (PlatformInfo.isAndroid) _inset(const _ShareSheetTile()),
           ],
         ),
         // Under the group it explains — last seen and read receipts — rather

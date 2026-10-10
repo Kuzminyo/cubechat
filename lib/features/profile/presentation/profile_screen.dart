@@ -1529,6 +1529,28 @@ class _ForwardLinkTile extends ConsumerWidget {
   }
 }
 
+/// Whether the few chats you use most are offered in Android's share sheet.
+/// See [PrivacySettings.shareChatsToSystem] for why this one starts off.
+class _ShareSheetTile extends ConsumerWidget {
+  const _ShareSheetTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return _SettingSwitch(
+      icon: Icons.ios_share_rounded,
+      title: t.privacyShareSheetTitle,
+      hint: s.shareChatsToSystem
+          ? t.privacyShareSheetOnHint
+          : t.privacyShareSheetOffHint,
+      value: s.shareChatsToSystem,
+      onChanged: n.setShareChatsToSystem,
+    );
+  }
+}
+
 class _AcceptCallsTile extends ConsumerWidget {
   const _AcceptCallsTile();
 

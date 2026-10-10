@@ -147,6 +147,9 @@
             <meta-data
               android:name="flutter_deeplinking_enabled"
               android:value="false" />
+            <!-- Direct Share: the chats DirectShareTargets publishes. The launcher
+                 entry is an alias (below), so the same declaration is on each. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <!-- "Share → CubeChat" from any app: the files go to AirDrop. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -201,6 +204,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -212,6 +216,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_indigo"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -223,6 +228,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_amber"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -234,6 +240,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_rose"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -245,6 +252,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_fuchsia"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -256,6 +264,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_violet"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -267,6 +276,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_ocean"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -278,6 +288,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_slate"
             android:targetActivity=".MainActivity">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

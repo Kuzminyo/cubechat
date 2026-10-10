@@ -950,6 +950,17 @@ class AppLocalizationsUk extends AppLocalizations {
       'Коли хтось пересилає ваше повідомлення, рядок над ним може відкривати ваш профіль. Вимкнено — вони бачать лише ім\'я, натиснути нема на що. Це прохання до їхнього застосунку, а не те, що цей може змусити.';
 
   @override
+  String get privacyShareSheetTitle => 'Чати в меню «Поділитися»';
+
+  @override
+  String get privacyShareSheetOnHint =>
+      'Імена чотирьох останніх чатів передаються Android, щоб надсилати їм з будь-якого застосунку. Блокування застосунку їх не ховає.';
+
+  @override
+  String get privacyShareSheetOffHint =>
+      'Android нічого не отримує. Надсилаючи в CubeChat, ви обираєте чат зі списку.';
+
+  @override
   String get privacyCallsTitle => 'Приймати дзвінки';
 
   @override

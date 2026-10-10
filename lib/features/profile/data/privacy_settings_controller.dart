@@ -52,6 +52,7 @@ class PrivacySettings {
     required this.shareMapLocation,
     this.allowForwardLink = true,
     this.acceptCalls = true,
+    this.shareChatsToSystem = false,
     this.strangerReach = StrangerReach.all,
   });
 
@@ -66,6 +67,18 @@ class PrivacySettings {
   /// the wire, and the caller learns no more than that the call did not
   /// connect.
   final bool acceptCalls;
+
+  /// True: the names of the few people you talk to most are handed to Android
+  /// as tiles for the system share sheet, so a photo can be sent to one in a
+  /// tap. False: nothing is handed over, and anything already published is
+  /// taken back.
+  ///
+  /// **Off by default**, unlike the other switches here. It is the one thing
+  /// in the app that puts names of your contacts in a store the system owns —
+  /// kept on the phone, but read by the share sheet of every app, and not
+  /// covered by the app lock. In an app whose point is that nothing leaves
+  /// unasked, that is opt-in. Android only.
+  final bool shareChatsToSystem;
 
   /// True: publish the presence beacon, and show peers' online state.
   /// False: publish nothing, and treat every peer's presence as unknown.
@@ -103,6 +116,7 @@ class PrivacySettings {
     bool? shareMapLocation,
     bool? allowForwardLink,
     bool? acceptCalls,
+    bool? shareChatsToSystem,
     StrangerReach? strangerReach,
   }) =>
       PrivacySettings(
@@ -111,6 +125,7 @@ class PrivacySettings {
         shareMapLocation: shareMapLocation ?? this.shareMapLocation,
         allowForwardLink: allowForwardLink ?? this.allowForwardLink,
         acceptCalls: acceptCalls ?? this.acceptCalls,
+        shareChatsToSystem: shareChatsToSystem ?? this.shareChatsToSystem,
         strangerReach: strangerReach ?? this.strangerReach,
       );
 
@@ -122,11 +137,13 @@ class PrivacySettings {
       other.shareMapLocation == shareMapLocation &&
       other.allowForwardLink == allowForwardLink &&
       other.acceptCalls == acceptCalls &&
+      other.shareChatsToSystem == shareChatsToSystem &&
       other.strangerReach == strangerReach;
 
   @override
   int get hashCode => Object.hash(shareLastSeen, shareReadReceipts,
-      shareMapLocation, allowForwardLink, acceptCalls, strangerReach);
+      shareMapLocation, allowForwardLink, acceptCalls, shareChatsToSystem,
+      strangerReach);
 }
 
 class PrivacySettingsController extends Notifier<PrivacySettings> {
@@ -135,6 +152,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   static const _keyMapLocation = 'privacy.shareMapLocation';
   static const _keyForwardLink = 'privacy.allowForwardLink';
   static const _keyAcceptCalls = 'privacy.acceptCalls';
+  static const _keyShareChatsToSystem = 'privacy.shareChatsToSystem';
   static const _keyStrangerReach = 'privacy.strangerReach';
 
   Box<dynamic>? _box;
@@ -177,6 +195,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
         shareMapLocation: box.get(_keyMapLocation) as bool? ?? false,
         allowForwardLink: box.get(_keyForwardLink) as bool? ?? true,
         acceptCalls: box.get(_keyAcceptCalls) as bool? ?? true,
+        shareChatsToSystem: box.get(_keyShareChatsToSystem) as bool? ?? false,
         strangerReach:
             StrangerReach.fromWire(box.get(_keyStrangerReach) as String?),
       );
@@ -208,6 +227,11 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   Future<void> setAcceptCalls(bool value) async {
     state = state.copyWith(acceptCalls: value);
     await _put(_keyAcceptCalls, value);
+  }
+
+  Future<void> setShareChatsToSystem(bool value) async {
+    state = state.copyWith(shareChatsToSystem: value);
+    await _put(_keyShareChatsToSystem, value);
   }
 
   Future<void> setStrangerReach(StrangerReach value) async {

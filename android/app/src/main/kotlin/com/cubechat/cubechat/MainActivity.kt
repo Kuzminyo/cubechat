@@ -41,6 +41,9 @@ class MainActivity : FlutterActivity() {
     /** Files from the share sheet, copied into our cache, until Dart takes them. */
     private var pendingShare: List<Map<String, String>>? = null
     private var pendingShareText: String? = null
+
+    /** The chat a Direct Share tap named, if the share came from one. */
+    private var pendingShareTarget: String? = null
     private var shareChannel: MethodChannel? = null
 
     private class PendingSave(val source: File, val result: MethodChannel.Result)
@@ -79,6 +82,27 @@ class MainActivity : FlutterActivity() {
                     "takeSharedText" -> {
                         result.success(pendingShareText)
                         pendingShareText = null
+                    }
+                    "takeSharedTarget" -> {
+                        result.success(pendingShareTarget)
+                        pendingShareTarget = null
+                    }
+                    "publishTargets" -> {
+                        val rows = call.argument<List<Map<String, String>>>("targets")
+                        val targets = rows.orEmpty().mapNotNull { row ->
+                            val id = row["id"]
+                            val name = row["name"]
+                            if (id.isNullOrEmpty() || name.isNullOrBlank()) null else id to name
+                        }
+                        result.success(
+                            try {
+                                DirectShareTargets.publish(this, targets)
+                                true
+                            } catch (error: Exception) {
+                                android.util.Log.w(TAG, "direct share publish failed", error)
+                                false
+                            },
+                        )
                     }
                     else -> result.notImplemented()
                 }
@@ -228,6 +252,9 @@ class MainActivity : FlutterActivity() {
         // EXTRA_TEXT with no stream at all. It used to be dropped here, so
         // sharing a link to CubeChat just opened the app.
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
+        // Set when the share came from a chat's tile in the share sheet; the
+        // id is the chat's, put there by DirectShareTargets.
+        val target = intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)
         // Spent, so a recreate does not share the same files again.
         intent.action = null
         if (uris.isEmpty() && text == null) return
@@ -236,6 +263,7 @@ class MainActivity : FlutterActivity() {
             runOnUiThread {
                 pendingShare = copied
                 pendingShareText = text
+                pendingShareTarget = target
                 shareChannel?.invokeMethod("shared", null)
             }
         }.start()
