@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
@@ -183,7 +184,8 @@ class _CallRow extends ConsumerWidget {
               formatChatListTime(context, call.at),
               style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 12),
             ),
-            IconButton(
+            if (ref.watch(platformCapabilitiesProvider).calls)
+              IconButton(
               tooltip: t.callsCallBack,
               icon: Icon(Icons.call_rounded, color: AppColors.brandPrimary),
               onPressed: () =>

@@ -10,6 +10,7 @@ import '../../../core/theme/glass_tier.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/image_encode.dart' show MediaQuality;
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/hue_strip.dart';

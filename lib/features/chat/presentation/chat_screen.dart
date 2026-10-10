@@ -14,6 +14,7 @@ import '../../../core/transport/file_reassembly.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/util/motion.dart';
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -233,6 +234,7 @@ class ChatScreen extends ConsumerWidget {
     required this.peerLabel,
     this.initialMessageId,
     this.returnToChats = false,
+    this.onClose,
   });
 
   final String peerId;
@@ -240,7 +242,15 @@ class ChatScreen extends ConsumerWidget {
   final String? initialMessageId;
   final bool returnToChats;
 
+  /// Set when the chat sits in the right-hand column of a wide computer
+  /// window rather than on a page of its own: back empties the column.
+  final VoidCallback? onClose;
+
   void _goBack(BuildContext context) {
+    if (onClose case final close?) {
+      close();
+      return;
+    }
     if (returnToChats) {
       context.go('/chats');
       return;
@@ -2715,6 +2725,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       onForward: () => unawaited(_forwardSelection(selection)),
                       onDelete: () => unawaited(_deleteSelection(selection)),
                       onTranslate: singleSelected == null ||
+                              !ref.read(platformCapabilitiesProvider)
+                                  .translation ||
                               _translatableText(singleSelected) == null ||
                               ref.read(
                                       translationProvider)[singleSelected.id] !=
@@ -4646,6 +4658,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   }
 
   Future<void> _pickAndSendImage() async {
+    // A computer has no phone gallery and no camera: the attach button is the
+    // system's own file dialog, and what comes back goes the way a dropped
+    // file does.
+    if (!ref.read(platformCapabilitiesProvider).gallery) {
+      final picked = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (picked == null || !mounted) return;
+      await sendComputerFiles([
+        for (final f in picked.files)
+          if (f.path != null) (path: f.path!, name: f.name),
+      ]);
+      return;
+    }
     // Custom in-app picker: a photo grid (multi-select) with a camera tile.
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
@@ -4941,14 +4965,36 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   /// sender chose, byte for byte, and the receiver checks it against the
   /// manifest's signed hash. That is the whole difference from the photo path,
   /// which shrinks its input to fit the mesh.
+  /// Files from a computer — its file dialog or a drop onto the window.
+  ///
+  /// A picture goes as a photo, fitted to the mesh budget like one from the
+  /// camera; anything else as a file, except in a channel, which carries no
+  /// files.
+  Future<void> sendComputerFiles(List<({String path, String name})> files) async {
+    for (final (i, f) in files.indexed) {
+      if (!mounted) return;
+      if (isPictureFileName(f.name)) {
+        final bytes = await File(f.path).readAsBytes();
+        await _encodeAndSend(
+          bytes,
+          'pc-${DateTime.now().millisecondsSinceEpoch}-$i',
+        );
+      } else if (!widget.isChannel) {
+        await _sendFileAt(f.path, f.name);
+      }
+    }
+  }
+
   Future<void> _pickAndSendFile() async {
-    final t = AppLocalizations.of(context);
     final picked = await FilePicker.platform.pickFiles(withReadStream: false);
     final path = picked?.files.single.path;
     if (path == null || !mounted) return;
+    await _sendFileAt(path, picked!.files.single.name);
+  }
 
+  Future<void> _sendFileAt(String path, String name) async {
+    final t = AppLocalizations.of(context);
     try {
-      final name = picked!.files.single.name;
       if (isSavedChat(widget.canonicalId)) {
         await ref.read(savedMessagesControllerProvider).saveFile(
               File(path),
@@ -5530,7 +5576,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
             }
           : null,
       recordMode: _recordMode,
-      onToggleRecordMode: mediaEnabled
+      // No circles without a camera: the record button stays a voice note.
+      onToggleRecordMode: mediaEnabled &&
+              ref.read(platformCapabilitiesProvider).camera
           ? () => setState(
                 () => _recordMode = _recordMode == RecordMode.voice
                     ? RecordMode.circle

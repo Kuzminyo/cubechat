@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'dart:ui' show AppLifecycleState;
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cubechat/core/transport/call_signal.dart';
 import 'package:cubechat/core/transport/control_delivery.dart';
@@ -477,6 +479,17 @@ void main() {
       expect(call.phase, isNot(CallPhase.incoming));
       expect(call.active, isFalse);
       expect(sent, isEmpty, reason: 'no ringing, and no busy either');
+    });
+
+    test('a computer neither rings nor answers busy for an invite', () async {
+      // Signed in with a phone's account, the computer gets the phone's
+      // invite too; a busy from it would end the call the phone is ringing
+      // for.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      receive(inviteFor(id(9)));
+      expect(call.active, isFalse);
+      expect(sent, isEmpty);
     });
 
     test('an invite delivered again after its call ended does not ring again',

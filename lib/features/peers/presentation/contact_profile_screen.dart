@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/routing/back_gesture.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -862,7 +863,9 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           onBack: () => Navigator.of(context).maybePop(),
                           onMore: () => setMenuState(() => actionsOpen = true),
                           onChat: () => context.push(_chatRoute()),
-                          onCall: peer == null || peer.isBlocked
+                          onCall: peer == null ||
+                                  peer.isBlocked ||
+                                  !ref.read(platformCapabilitiesProvider).calls
                               ? null
                               : () => unawaited(ref
                                   .read(callControllerProvider)

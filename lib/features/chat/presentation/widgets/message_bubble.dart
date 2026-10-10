@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
 import '../../../../core/routing/back_gesture.dart';
+import '../../../../core/util/platform_capabilities.dart';
 import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
@@ -2229,7 +2230,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     // selecting, where a tap on the row means the tick.
                     _CallRecordBubble(
                       call: call,
-                      onCall: selecting
+                      onCall: selecting ||
+                              !ref.read(platformCapabilitiesProvider).calls
                           ? null
                           : () => unawaited(
                                 ref.read(callControllerProvider).dial(

@@ -84,6 +84,17 @@ String fileMimeType(
 /// app that has declared it can handle *anything*, finds none, and reports that
 /// the file cannot be opened. Handing it nothing instead lets it resolve the
 /// extension itself, which is both more likely to work and never worse.
+/// Whether a file of this name goes as a photo rather than as a file: the
+/// formats the image encoder reads and every phone shows. Not SVG, TIFF or
+/// HEIC — those go as files.
+bool isPictureFileName(String fileName) => const {
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/bmp',
+    }.contains(fileMimeType(fileName));
+
 bool isUnknownMime(String? mime) =>
     mime == null ||
     mime.trim().isEmpty ||

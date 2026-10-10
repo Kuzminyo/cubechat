@@ -1,7 +1,12 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -11,6 +16,37 @@ import '../../chat/presentation/widgets/image_editor.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../data/app_lock_controller.dart';
 
+/// One picture for an avatar — the profile's or a room's — or null if the
+/// person backed out.
+///
+/// The phone's gallery where there is one; on a computer, which has no phone
+/// gallery, the system's own picture dialog.
+Future<Uint8List?> pickAvatarPicture(BuildContext context) async {
+  if (!PlatformCapabilities.current.gallery) {
+    final picked = await FilePicker.platform.pickFiles(type: FileType.image);
+    final path = picked?.files.single.path;
+    return path == null ? null : File(path).readAsBytes();
+  }
+  final result = await showGlassSheet<MediaPickerResult>(
+    context: context,
+    useRootNavigator: true,
+    builder: (_) =>
+        const MediaPickerSheet(allowFiles: false, allowCaption: false),
+  );
+  if (result is! MediaPickerAssets || result.assets.isEmpty) return null;
+  // Asked for at the size the controller keeps, not below it. This used to
+  // pull 1024 while the store had been raised to full HD, so the extra
+  // resolution was thrown away before it ever arrived — the cover looked no
+  // sharper for it.
+  return result.assets.first.thumbnailDataWithSize(
+    const ThumbnailSize(
+      AvatarController.storedSize,
+      AvatarController.storedSize,
+    ),
+    quality: 95,
+  );
+}
+
 Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   // Choosing a picture hands the screen to the system for a while, and the
   // lock cannot tell that from the user walking away — so it asked for the
@@ -18,29 +54,10 @@ Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   // avatar. This says the trip is ours.
   ref.read(appLockControllerProvider.notifier).expectSystemUi();
   final t = AppLocalizations.of(context);
-  final result = await showGlassSheet<MediaPickerResult>(
-    context: context,
-    useRootNavigator: true,
-    builder: (_) => const MediaPickerSheet(allowCaption: false),
-  );
-  if (result is! MediaPickerAssets || result.assets.isEmpty) return;
-
-  // Asked for at the size the controller keeps, not below it. This used to
-  // pull 1024 while the store had been raised to full HD, so the extra
-  // resolution was thrown away before it ever arrived — the cover looked no
-  // sharper for it.
-  final preview = await result.assets.first.thumbnailDataWithSize(
-    const ThumbnailSize(
-      AvatarController.storedSize,
-      AvatarController.storedSize,
-    ),
-    quality: 95,
-  );
-  if (preview == null) {
-    if (context.mounted) showGlassToast(context, t.avatarFailed);
-    return;
-  }
-  if (!context.mounted) return;
+  final preview = await pickAvatarPicture(context);
+  // Null is backing out as well as a picture that would not load; the second
+  // is rare enough that saying nothing beats scolding the first.
+  if (preview == null || !context.mounted) return;
 
   // Choose the part of the picture that becomes the avatar, on the picture
   // itself. What is stored is a square — the circle in a list, the cover across

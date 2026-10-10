@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/theme/colors.dart';
@@ -21,7 +20,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../chat/presentation/widgets/image_editor.dart';
 import '../../moderation/domain/report.dart';
 import '../../moderation/presentation/report_sheet.dart';
-import '../../chat/presentation/widgets/media_picker_sheet.dart';
+import '../../profile/presentation/avatar_screen.dart' show pickAvatarPicture;
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../data/channel_avatars_controller.dart';
@@ -371,32 +370,10 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
 
   Future<void> _pickChannelAvatar() async {
     final t = AppLocalizations.of(context);
-    final result = await showGlassSheet<MediaPickerResult>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) =>
-          const MediaPickerSheet(allowFiles: false, allowCaption: false),
-    );
-    if (result is! MediaPickerAssets || result.assets.isEmpty) return;
-
-    // The same size the personal avatar asks for, and the reason the room's
-    // picture stayed soft after the encoder learned to carry a bigger one:
-    // this is where the resolution was being thrown away. A thousand and
-    // twenty-four pixels, then a crop out of the middle of that, is what every
-    // later step had to work from — no ladder further down can put back what
-    // was never handed to it.
-    final preview = await result.assets.first.thumbnailDataWithSize(
-      const ThumbnailSize(
-        AvatarController.storedSize,
-        AvatarController.storedSize,
-      ),
-      quality: 95,
-    );
-    if (preview == null) {
-      if (mounted) showGlassToast(context, t.avatarFailed);
-      return;
-    }
-    if (!mounted) return;
+    // At the size the personal avatar asks for — see [pickAvatarPicture];
+    // a thousand pixels cropped down is what kept the room's picture soft.
+    final preview = await pickAvatarPicture(context);
+    if (preview == null || !mounted) return;
 
     // Same crop-it-yourself step the personal avatar gets: a centre crop of a
     // portrait photo is a decision nobody asked the app to make.

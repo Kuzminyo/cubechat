@@ -9,6 +9,7 @@ import 'call_microphone_permission.dart';
 
 import '../../../core/transport/call_signal.dart';
 import '../../../core/transport/control_delivery.dart';
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/notifications/push_registration.dart';
@@ -654,6 +655,15 @@ class CallController extends ChangeNotifier {
       return;
     }
     if (signal.kind == CallSignalKind.invite) {
+      // A computer cannot take a call. Silent rather than busy: signed in
+      // with a phone's account it gets the same invite the phone does, and a
+      // busy from here would end a call the phone is still ringing for. A
+      // computer on its own account reads as "unavailable" to the caller
+      // after `ringingAck`, which is true.
+      if (!PlatformCapabilities.current.calls) {
+        _log('invite ${_hex(signal.callId)} left to a phone: no calls here');
+        return;
+      }
       if (!inviteIsFresh(sentAtMs: signal.sentAtMs!, now: DateTime.now())) {
         _log('invite dropped as stale: sent '
             '${DateTime.now().millisecondsSinceEpoch - signal.sentAtMs!} ms ago');
