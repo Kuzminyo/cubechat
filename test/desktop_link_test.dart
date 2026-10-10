@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cubechat/features/backup/data/desktop_link_service.dart';
@@ -21,7 +22,7 @@ void main() {
         password: password,
       );
       final text = p.encode();
-      expect(text, startsWith('https://cubechat.app/l1#cubechat:l1:'));
+      expect(text, startsWith('https://cubechat.tech/l1#cubechat:l1:'));
       final back = DesktopLinkPayload.tryDecode(text)!;
       expect(back.host, '192.168.1.20');
       expect(back.port, 50123);
@@ -30,7 +31,10 @@ void main() {
     });
 
     test('is not a phone-to-phone transfer code, nor garbage', () {
-      expect(DesktopLinkPayload.tryDecode('cubechat:t1:eyJob3N0IjoxfQ'), isNull);
+      expect(
+        DesktopLinkPayload.tryDecode('cubechat:t1:eyJob3N0IjoxfQ'),
+        isNull,
+      );
       expect(DesktopLinkPayload.tryDecode('cubechat:l1:!!!'), isNull);
       expect(DesktopLinkPayload.tryDecode('hello'), isNull);
       const short = DesktopLinkPayload(
@@ -43,28 +47,67 @@ void main() {
     });
   });
 
+  test('a transfer or sign-in link, new or old, is opened into the scanner',
+      () {
+    const code = DesktopLinkPayload(
+      host: '10.0.0.2',
+      port: 4000,
+      token: token,
+      password: password,
+    );
+    expect(isTransferLink(Uri.parse(code.encode())), isTrue);
+    expect(
+      isTransferLink(Uri.parse('https://cubechat.app/t1#cubechat:t1:abc')),
+      isTrue,
+      reason: 'codes printed before the move to cubechat.tech',
+    );
+    expect(
+      isTransferLink(Uri.parse('https://cubechat.tech/c1#cubechat:c1:abc')),
+      isFalse,
+      reason: 'a contact card stays a contact card',
+    );
+  });
+
   group('the transfer', () {
     late List<({Uint8List bytes, String password})> restored;
     late DesktopLinkService computer;
     late DesktopLinkService phone;
-    final backup = Uint8List.fromList(List.generate(300000, (i) => i % 251));
+    late Directory temp;
+    // Many socket chunks long, so the copy is reassembled from a stream.
+    final backup = Uint8List.fromList(List.generate(3000000, (i) => i % 251));
+    var n = 0;
 
-    setUp(() {
+    setUp(() async {
       restored = [];
+      temp = await Directory.systemTemp.createTemp('cubechat_link_');
+      Future<File> tempFile(String role) async =>
+          File('${temp.path}/${role}_${n++}.bin');
       computer = DesktopLinkService(
-        createBackup: (_) async => throw StateError('the computer only takes'),
-        restoreBackup: (bytes, pw) async =>
-            restored.add((bytes: bytes, password: pw)),
+        createBackup: (_, __) async =>
+            throw StateError('the computer only takes'),
+        restoreBackup: (file, pw) async =>
+            restored.add((bytes: await file.readAsBytes(), password: pw)),
         localHost: () async => '127.0.0.1',
+        tempFile: tempFile,
       );
       phone = DesktopLinkService(
-        createBackup: (pw) async {
+        createBackup: (file, pw) async {
           expect(pw, isNotEmpty);
-          return backup;
+          await file.writeAsBytes(backup);
         },
-        restoreBackup: (_, __) async => throw StateError('the phone only gives'),
+        restoreBackup: (_, __) async =>
+            throw StateError('the phone only gives'),
         localHost: () async => '127.0.0.1',
+        tempFile: tempFile,
       );
+    });
+
+    tearDown(() async {
+      try {
+        await temp.delete(recursive: true);
+      } on FileSystemException {
+        // Windows may still hold a file for a moment.
+      }
     });
 
     test('the phone\'s copy arrives whole, under the code\'s password',
@@ -78,8 +121,7 @@ void main() {
       expect(restored.single.password, code.password);
     });
 
-    test('a wrong token restores nothing and leaves the code usable',
-        () async {
+    test('a wrong token restores nothing and leaves the code usable', () async {
       final session = await computer.startReceiving();
       final code = DesktopLinkPayload.tryDecode(session.qr)!;
       final forged = DesktopLinkPayload(
@@ -102,6 +144,49 @@ void main() {
       await session.done;
       await expectLater(phone.sendTo(code), throwsA(anything));
       expect(restored, hasLength(1));
+    });
+
+    test('an authenticated truncated stream finishes with an error', () async {
+      final session = await computer.startReceiving();
+      final failure =
+          expectLater(session.done, throwsA(isA<FormatException>()));
+      final code = DesktopLinkPayload.tryDecode(session.qr)!;
+      final socket = await Socket.connect(code.host, code.port);
+      socket.add(ascii.encode(code.token));
+      socket.add((ByteData(8)..setUint64(0, 1024)).buffer.asUint8List());
+      socket.add([1, 2, 3]);
+      await socket.flush();
+      await socket.close();
+      await failure.timeout(const Duration(seconds: 5));
+      socket.destroy();
+      expect(restored, isEmpty);
+    });
+
+    test('a backup larger than 48 MB streams to the computer', () async {
+      const size = 49 * 1024 * 1024;
+      final sender = DesktopLinkService(
+        tempFile: (role) async => File('${temp.path}/large-$role'),
+        createBackup: (file, _) async {
+          final out = await file.open(mode: FileMode.write);
+          await out.truncate(size);
+          await out.setPosition(size - 1);
+          await out.writeByte(71);
+          await out.close();
+        },
+        restoreBackup: (_, __) async {},
+      );
+      final receiver = DesktopLinkService(
+        localHost: () async => '127.0.0.1',
+        tempFile: (role) async => File('${temp.path}/large-$role'),
+        createBackup: (_, __) async {},
+        restoreBackup: (file, _) async {
+          expect(await file.length(), size);
+          expect(await file.openRead(size - 1).first, [71]);
+        },
+      );
+      final session = await receiver.startReceiving();
+      await sender.sendTo(DesktopLinkPayload.tryDecode(session.qr)!);
+      await session.done;
     });
 
     test('nobody listening is an error within seconds, not a hang', () async {

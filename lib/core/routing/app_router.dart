@@ -527,7 +527,9 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         path: '/qr/scan',
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
-          child: const QrScannerScreen(),
+          child: QrScannerScreen(
+            initialCode: state.uri.queryParameters['code'],
+          ),
           state: state,
         ),
       ),

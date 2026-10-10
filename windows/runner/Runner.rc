@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.cubechat" "\0"
-            VALUE "FileDescription", "cubechat" "\0"
+            VALUE "FileDescription", "CubeChat" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "cubechat" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.cubechat. All rights reserved." "\0"
             VALUE "OriginalFilename", "cubechat.exe" "\0"
-            VALUE "ProductName", "cubechat" "\0"
+            VALUE "ProductName", "CubeChat" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

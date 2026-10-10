@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_code_dart_scan/qr_code_dart_scan.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -18,28 +19,93 @@ import '../../peers/data/known_peers_controller.dart';
 import '../data/channel_qr_payload.dart';
 
 class QrScannerScreen extends ConsumerStatefulWidget {
-  const QrScannerScreen({super.key});
+  const QrScannerScreen({super.key, this.initialCode});
+
+  /// A code that arrived without the camera — a cubechat.tech link opened by
+  /// Google Lens or the system camera. Handled exactly as if it had been
+  /// scanned here, so a transfer or a computer link works from either.
+  final String? initialCode;
 
   @override
   ConsumerState<QrScannerScreen> createState() => _QrScannerScreenState();
 }
 
-class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
-  final _controller = QRCodeDartScanController();
+class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
+    with WidgetsBindingObserver {
+  QRCodeDartScanController? _controller;
+  bool _cameraVisible = false;
+  bool _restartOnResume = false;
+  bool _requestingCamera = false;
   bool _processing = false;
   String? _cameraError;
 
-  Future<void> _onCapture(Result result) async {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final code = widget.initialCode;
+    if (code != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => unawaited(_handle(code)));
+    } else {
+      unawaited(_startCamera());
+    }
+  }
+
+  Future<void> _startCamera() async {
+    if (_requestingCamera || !mounted) return;
+    _requestingCamera = true;
+    try {
+      // Ask before mounting the scanner: the system permission sheet itself
+      // makes the app inactive, which used to interrupt camera initialization.
+      final permission = await Permission.camera.request();
+      if (!mounted) return;
+      setState(() {
+        _cameraError = permission.isGranted ? null : 'permission';
+        _controller = permission.isGranted ? QRCodeDartScanController() : null;
+        _cameraVisible = permission.isGranted;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _cameraError = 'camera');
+    } finally {
+      _requestingCamera = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (_cameraVisible) {
+        _restartOnResume = true;
+        setState(() => _cameraVisible = false);
+      }
+    } else if (state == AppLifecycleState.resumed && _restartOnResume) {
+      _restartOnResume = false;
+      if (!_processing) unawaited(_startCamera());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // QRCodeDartScanView owns disposal of the controller passed to it.
+    super.dispose();
+  }
+
+  Future<void> _onCapture(Result result) => _handle(result.text);
+
+  Future<void> _handle(String text) async {
     if (_processing || !mounted) return;
     _processing = true;
     final t = AppLocalizations.of(context);
-    await _controller.stopScan();
-
     try {
+      if (_cameraVisible) await _controller?.stopScan();
+      if (!mounted) return;
       // A computer asking for a copy of this account. Checked before the
       // phone-to-phone code: the two go in opposite directions, and this one
       // sends rather than receives — nothing here is replaced.
-      final computer = DesktopLinkPayload.tryDecode(result.text);
+      final computer = DesktopLinkPayload.tryDecode(text);
       if (computer != null) {
         final confirmed = await confirmAction(
           context,
@@ -72,7 +138,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
         return;
       }
 
-      final transfer = PhoneTransferPayload.tryDecode(result.text);
+      final transfer = PhoneTransferPayload.tryDecode(text);
       if (transfer != null) {
         final confirmed = await confirmAction(
           context,
@@ -85,6 +151,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
           await _resume();
           return;
         }
+        if (!mounted) return;
         showGlassToast(
           context,
           t.phoneTransferPreparing,
@@ -123,7 +190,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
         return;
       }
 
-      final channelInvite = ChannelQrPayload.tryDecode(result.text);
+      final channelInvite = ChannelQrPayload.tryDecode(text);
       if (channelInvite != null) {
         final channel = await ref
             .read(channelControllerProvider.notifier)
@@ -139,9 +206,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
         return;
       }
 
-      final pubkey = await ref
-          .read(messagingServiceProvider)
-          .addContactFromCard(result.text);
+      final pubkey =
+          await ref.read(messagingServiceProvider).addContactFromCard(text);
       if (!mounted) return;
       final name =
           ref.read(knownPeersControllerProvider)[pubkey]?.displayName ?? '';
@@ -172,7 +238,11 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     _processing = false;
-    await _controller.startScan();
+    if (_cameraVisible) {
+      await _controller?.startScan();
+    } else {
+      await _startCamera();
+    }
   }
 
   @override
@@ -183,19 +253,21 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          QRCodeDartScanView(
-            controller: _controller,
-            typeScan: TypeScan.live,
-            formats: const [BarcodeFormat.qrCode],
-            resolutionPreset: QRCodeDartScanResolutionPreset.high,
-            croppingStrategy: CroppingStrategy.cropCenterSquare(
-              squareSizeFactor: 0.72,
+          if (_cameraVisible)
+            QRCodeDartScanView(
+              key: ObjectKey(_controller),
+              controller: _controller,
+              typeScan: TypeScan.live,
+              formats: const [BarcodeFormat.qrCode],
+              resolutionPreset: QRCodeDartScanResolutionPreset.high,
+              croppingStrategy: CroppingStrategy.cropCenterSquare(
+                squareSizeFactor: 0.72,
+              ),
+              onCameraError: (error) {
+                if (mounted) setState(() => _cameraError = error);
+              },
+              onCapture: (result) => unawaited(_onCapture(result)),
             ),
-            onCameraError: (error) {
-              if (mounted) setState(() => _cameraError = error);
-            },
-            onCapture: (result) => unawaited(_onCapture(result)),
-          ),
           const _ScanShade(),
           SafeArea(
             child: Padding(
@@ -221,11 +293,32 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
                       _RoundButton(
                         icon: Icons.flashlight_on_rounded,
                         tooltip: t.qrFlash,
-                        onTap: () => _controller.toggleFlash(),
+                        onTap: () {
+                          if (_cameraVisible) {
+                            unawaited(_controller?.toggleFlash());
+                          }
+                        },
                       ),
                     ],
                   ),
                   const Spacer(),
+                  if (_cameraError != null)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TextButton(
+                          onPressed: () => unawaited(_startCamera()),
+                          child: Text(t.bleRetry),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            _restartOnResume = true;
+                            unawaited(openAppSettings());
+                          },
+                          child: Text(t.mediaOpenSettings),
+                        ),
+                      ],
+                    ),
                   Text(
                     _cameraError == null ? t.qrScanHint : t.qrCameraError,
                     textAlign: TextAlign.center,

@@ -7,6 +7,7 @@ import 'features/airdrop/data/airdrop_controller.dart';
 import 'features/airdrop/data/share_inbox.dart';
 import 'features/airdrop/presentation/airdrop_banner.dart';
 import 'features/airdrop/presentation/airdrop_navigation.dart';
+import 'features/backup/data/desktop_link_service.dart' show isTransferLink;
 import 'features/share/presentation/share_into_chats.dart';
 import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
@@ -132,6 +133,17 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   }
 
   Future<void> _openCubechatLink(Uri uri) async {
+    // A phone-to-phone transfer or a computer's sign-in code, opened from
+    // Google Lens or the camera rather than the in-app scanner: handed to the
+    // scanner as if it had been scanned there.
+    if (isTransferLink(uri)) {
+      unawaited(
+        _router.push(
+          '/qr/scan?code=${Uri.encodeQueryComponent(uri.toString())}',
+        ),
+      );
+      return;
+    }
     final link = parseCubechatLink(uri);
     if (link == null) return;
     try {

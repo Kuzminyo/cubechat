@@ -2173,7 +2173,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get qrScanHint =>
-      'Point the camera at a Cubechat contact or channel QR code.';
+      'Scan a CubeChat contact, channel, account transfer or computer sign-in code.';
 
   @override
   String get qrFlash => 'Flashlight';

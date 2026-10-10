@@ -169,6 +169,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="cubechat.tech" android:path="/u.html" />
                 <data android:scheme="https" android:host="cubechat.tech" android:path="/c1" />
+                <!-- A phone-to-phone transfer (/t1#...) and a computer's
+                     sign-in code (/l1#...), so Google Lens opens the app
+                     with them rather than a browser tab. -->
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/t1" />
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/l1" />
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/t1/" />
+                <data android:scheme="https" android:host="cubechat.tech" android:path="/l1/" />
             </intent-filter>
             <!-- cubechat:// and old cubechat:c1: cards. The site's own
                  "open in app" uses an intent:// URL naming this package,

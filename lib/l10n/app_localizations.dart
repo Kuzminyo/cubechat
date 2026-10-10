@@ -3803,7 +3803,7 @@ abstract class AppLocalizations {
   /// No description provided for @qrScanHint.
   ///
   /// In en, this message translates to:
-  /// **'Point the camera at a Cubechat contact or channel QR code.'**
+  /// **'Scan a CubeChat contact, channel, account transfer or computer sign-in code.'**
   String get qrScanHint;
 
   /// No description provided for @qrFlash.

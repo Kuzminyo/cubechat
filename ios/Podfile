@@ -41,9 +41,11 @@ post_install do |installer|
     target.build_configurations.each do |config|
       existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
       definitions = existing.is_a?(String) ? Shellwords.split(existing) : Array(existing)
-      definitions = definitions.reject { |flag| flag.match?(/\APERMISSION_MICROPHONE(?:=|\z)/) }
+      # QR requests camera access before mounting its preview, so the system
+      # permission sheet cannot interrupt an initializing camera controller.
+      definitions = definitions.reject { |flag| flag.match?(/\APERMISSION_(?:MICROPHONE|CAMERA)(?:=|\z)/) }
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] =
-        (definitions + ['$(inherited)', 'PERMISSION_MICROPHONE=1']).uniq
+        (definitions + ['$(inherited)', 'PERMISSION_MICROPHONE=1', 'PERMISSION_CAMERA=1']).uniq
     end
   end
 end

@@ -2193,7 +2193,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get qrScanHint =>
-      'Наведіть камеру на QR-код контакту або каналу Cubechat.';
+      'Скануйте QR-код контакту, каналу, перенесення акаунта або підключення комп’ютера CubeChat.';
 
   @override
   String get qrFlash => 'Ліхтарик';

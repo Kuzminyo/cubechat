@@ -1077,7 +1077,7 @@
   "profileFileTransfersSubtitle": "Progress, queue and transfer history",
   "qrScanAction": "Scan QR code",
   "qrScanTitle": "Scan QR code",
-  "qrScanHint": "Point the camera at a Cubechat contact or channel QR code.",
+  "qrScanHint": "Scan a CubeChat contact, channel, account transfer or computer sign-in code.",
   "qrFlash": "Flashlight",
   "qrCameraError": "Camera is unavailable. Check camera permission and try again.",
   "qrInvalid": "This is not a valid Cubechat QR code.",
