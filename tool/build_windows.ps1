@@ -45,8 +45,16 @@ if ($matches[1] -ne $versionName) {
 Step "Building CubeChat for Windows $versionName+$versionCode  ($stamp)"
 
 # --- Build -------------------------------------------------------------------
-$bashRoot = (& bash -c "cygpath -u '$root'").Trim()
-& bash -ic "cd '$bashRoot' && flutter build windows --release"
+# Git Bash by its own path: a bare `bash` from PowerShell may be WSL's, or
+# nothing at all.
+$bash = @(
+    "$env:ProgramFiles\Git\bin\bash.exe",
+    "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
+    "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $bash) { throw 'Git Bash not found - flutter is on PATH only there.' }
+$bashRoot = '/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
+& $bash -ic "cd '$bashRoot' && flutter build windows --release"
 if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed ($LASTEXITCODE)." }
 
 $release = Join-Path $root 'build\windows\x64\runner\Release'
