@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/util/platform_capabilities.dart';
 
 /// The five destinations, in the order the router declares them.
 ///
@@ -57,17 +58,22 @@ enum NavDestination {
 /// router's order while the icons said something else, and the two would
 /// disagree about which screen is "next".
 class NavBarLayout {
-  const NavBarLayout(this.shown);
+  const NavBarLayout(this.shown, {this.available = NavDestination.values});
 
   /// Visible destinations, left to right. Never empty, always contains
   /// [NavDestination.chats].
   final List<NavDestination> shown;
 
+  /// What this platform has at all. A computer has no Nearby and no Map —
+  /// see `PlatformCapabilities` — and a tab it cannot show is not "hidden",
+  /// it is not offered.
+  final List<NavDestination> available;
+
   static const NavBarLayout initial = NavBarLayout(NavDestination.values);
 
   /// The ones the user has put away, in enum order so the list is stable.
   List<NavDestination> get hidden => [
-        for (final d in NavDestination.values)
+        for (final d in available)
           if (!shown.contains(d)) d,
       ];
 
@@ -84,7 +90,7 @@ class NavBarLayout {
     return index < 0 ? null : index;
   }
 
-  bool get isDefault => listEquals(shown, NavDestination.values);
+  bool get isDefault => listEquals(shown, available);
 
   @override
   bool operator ==(Object other) =>
@@ -102,10 +108,22 @@ class NavBarController extends Notifier<NavBarLayout> {
 
   Box<dynamic>? _box;
 
+  /// Every destination this platform can show, in enum order.
+  List<NavDestination> _available = NavDestination.values;
+
+  NavBarLayout get _initial => NavBarLayout(_available, available: _available);
+
   @override
   NavBarLayout build() {
+    final caps = ref.read(platformCapabilitiesProvider);
+    _available = List.unmodifiable([
+      for (final d in NavDestination.values)
+        if ((d != NavDestination.peers || caps.bluetooth) &&
+            (d != NavDestination.map || caps.maps))
+          d,
+    ]);
     unawaited(_load());
-    return NavBarLayout.initial;
+    return _initial;
   }
 
   Future<void> _load() async {
@@ -136,13 +154,13 @@ class NavBarController extends Notifier<NavBarLayout> {
   NavBarLayout? _sanitise(List<NavDestination> candidate) {
     final unique = <NavDestination>[];
     for (final d in candidate) {
-      if (!unique.contains(d)) unique.add(d);
+      if (_available.contains(d) && !unique.contains(d)) unique.add(d);
     }
     if (!unique.contains(NavDestination.chats)) {
       unique.insert(0, NavDestination.chats);
     }
     if (unique.length < minimumTabs) return null;
-    return NavBarLayout(List.unmodifiable(unique));
+    return NavBarLayout(List.unmodifiable(unique), available: _available);
   }
 
   Future<void> _save(NavBarLayout layout) async {
@@ -183,7 +201,7 @@ class NavBarController extends Notifier<NavBarLayout> {
     if (layout != null) await _save(layout);
   }
 
-  Future<void> reset() => _save(NavBarLayout.initial);
+  Future<void> reset() => _save(_initial);
 }
 
 final navBarControllerProvider =
