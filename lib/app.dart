@@ -117,6 +117,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// has drawn anything to put the picker over, so it waits for a frame — and
   /// for a few more, briefly, while the first screen is still being built.
   Future<void> _onShare(SharedBundle bundle) async {
+    // A tile tapped in the share sheet starts the app cold, and what it names
+    // only counts if it is among what this app offers — see
+    // [chatForDirectShare]. Settings and tiles are read first, or the one tap
+    // would always fall back to the picker.
+    if (bundle.targetChatId != null) await _publishDirectShare();
     for (var attempt = 0; attempt < 20; attempt++) {
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;

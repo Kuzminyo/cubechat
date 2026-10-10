@@ -34,10 +34,23 @@ void main() {
 
   test('a tile resolves to its chat, and to nothing once the chat is gone', () {
     final chats = [_chat('a', 'Аня'), _chat('#room', 'Room', channel: true)];
-    expect(chatForDirectShare(chats, 'a')?.peerName, 'Аня');
-    expect(chatForDirectShare(chats, 'gone'), isNull);
-    expect(chatForDirectShare(chats, '#room'), isNull);
-    expect(chatForDirectShare(chats, null), isNull);
+    const offered = {'a', 'gone', '#room'};
+    expect(chatForDirectShare(chats, 'a', offered: offered)?.peerName, 'Аня');
+    expect(chatForDirectShare(chats, 'gone', offered: offered), isNull);
+    expect(chatForDirectShare(chats, '#room', offered: offered), isNull);
+    expect(chatForDirectShare(chats, null, offered: offered), isNull);
+  });
+
+  test('a tile that was never offered is not obeyed', () {
+    // Any app can start our share screen with a shortcut id in the intent. The
+    // system sets it for a real tile; nothing stops another app setting it to
+    // a chat id it has learnt, and a one-tap send would then post into that
+    // chat unasked. Only an id this app published, and still offers, counts.
+    final chats = [_chat('a', 'Аня'), _chat('b', 'Борис')];
+    expect(chatForDirectShare(chats, 'a', offered: const {'a'})?.id, 'a');
+    expect(chatForDirectShare(chats, 'b', offered: const {'a'}), isNull);
+    expect(chatForDirectShare(chats, 'a', offered: const {}), isNull,
+        reason: 'switched off, or nothing published');
   });
 
   test('the platform target survives parsing, an empty one does not', () {

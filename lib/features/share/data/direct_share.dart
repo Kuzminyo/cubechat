@@ -38,10 +38,20 @@ List<DirectShareTarget> pickDirectShareTargets(List<Chat> chats) => [
           DirectShareTarget(id: chat.id, name: chat.peerName.trim()),
     ].take(directShareLimit).toList();
 
-/// The chat a tapped tile named, or null when it is gone or is not a person —
-/// the caller then shows the ordinary picker instead.
-Chat? chatForDirectShare(List<Chat> chats, String? id) {
-  if (id == null) return null;
+/// The chat a tapped tile named, or null when it is gone, is not a person, or
+/// was never offered — the caller then shows the ordinary picker instead.
+///
+/// [offered] is the ids this app has published and still offers. The id comes
+/// in an Intent extra the system sets for a real tile, but any app can start
+/// our share screen and set it to a chat id it has learnt; obeying that would
+/// post into the chat with no choice made. So it only counts if it is one of
+/// ours.
+Chat? chatForDirectShare(
+  List<Chat> chats,
+  String? id, {
+  required Set<String> offered,
+}) {
+  if (id == null || !offered.contains(id)) return null;
   for (final chat in chats) {
     if (chat.id == id && !chat.isChannel) return chat;
   }
@@ -53,6 +63,10 @@ abstract final class DirectShare {
   static const MethodChannel _channel = MethodChannel('cubechat/share');
 
   static List<DirectShareTarget>? _published;
+
+  /// The chat ids this app offers right now; empty when switched off.
+  static Set<String> get offeredIds =>
+      {for (final target in _published ?? const <DirectShareTarget>[]) target.id};
 
   /// Hands [targets] to the platform, unless it already has exactly these.
   static Future<void> publish(List<DirectShareTarget> targets) async {

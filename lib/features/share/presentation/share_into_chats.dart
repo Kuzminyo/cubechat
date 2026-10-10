@@ -43,7 +43,11 @@ Future<void> shareIntoChats(
   // A tile in the system share sheet already said where it goes: no picker.
   // A chat that has since gone falls through to the picker rather than
   // dropping the share.
-  final named = chatForDirectShare(ref.read(chatsProvider), bundle.targetChatId);
+  final named = chatForDirectShare(
+    ref.read(chatsProvider),
+    bundle.targetChatId,
+    offered: DirectShare.offeredIds,
+  );
   final targets = named != null
       ? [named]
       : await showChatPicker(

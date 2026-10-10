@@ -29,6 +29,19 @@ internal object DirectShareTargets {
     private const val MAX_TARGETS = 4
 
     fun publish(context: Context, targets: List<Pair<String, String>>) {
+        // A long-lived shortcut is cached by the system as a conversation
+        // after it is published, and removing it from the dynamic list does
+        // not remove that copy: the name could stay in the share sheet after
+        // the person switched this off, or after the chat was archived. Those
+        // the new list no longer names are taken back explicitly.
+        val offered = targets.map { it.first }.toSet()
+        val stale = ShortcutManagerCompat.getDynamicShortcuts(context)
+            .map { it.id }
+            .filter { it !in offered }
+        if (stale.isNotEmpty()) {
+            ShortcutManagerCompat.removeLongLivedShortcuts(context, stale)
+            ShortcutManagerCompat.disableShortcuts(context, stale, null)
+        }
         if (targets.isEmpty()) {
             ShortcutManagerCompat.removeAllDynamicShortcuts(context)
             return
