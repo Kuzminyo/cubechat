@@ -47,6 +47,27 @@ void main() {
     });
   });
 
+  test('a code naming a host outside the local network is refused', () {
+    // The code says where to send the account. A link on a web page or in a
+    // chat can carry any address, and "Send?" is one tap: without this a
+    // stranger's server could be handed the keys. Only the local network is
+    // ever the other end of a transfer — both devices on one Wi-Fi.
+    DesktopLinkPayload at(String host) => DesktopLinkPayload(
+          host: host,
+          port: 4000,
+          token: token,
+          password: password,
+        );
+    for (final ok in ['192.168.0.7', '10.1.2.3', '172.16.0.1', '172.31.9.9',
+        '169.254.10.20', '127.0.0.1']) {
+      expect(DesktopLinkPayload.tryDecode(at(ok).encode()), isNotNull, reason: ok);
+    }
+    for (final bad in ['8.8.8.8', '172.32.0.1', '172.15.0.1', '203.0.113.5',
+        'evil.example', '192.168.0.7.evil.example', '', '::1']) {
+      expect(DesktopLinkPayload.tryDecode(at(bad).encode()), isNull, reason: bad);
+    }
+  });
+
   test('a transfer or sign-in link, new or old, is opened into the scanner',
       () {
     const code = DesktopLinkPayload(

@@ -75,7 +75,7 @@ class PhoneTransferPayload {
       final password = value['password'];
       if (host is! String ||
           port is! int ||
-          host.isEmpty ||
+          !isLocalNetworkHost(host) ||
           port < 1 ||
           port > 65535 ||
           token is! String ||
@@ -301,6 +301,31 @@ class PhoneTransferService {
     final values = List<int>.generate(bytes, (_) => _random.nextInt(256));
     return base64Url.encode(values).replaceAll('=', '');
   }
+}
+
+/// Whether [host] is somewhere on this device's own network: a private range,
+/// link-local, or loopback.
+///
+/// A transfer code says where to connect, and a code can arrive on a web page
+/// or in a chat as well as on a screen across the table. Both devices of a
+/// transfer are on one Wi-Fi, so an address anywhere else is somebody else's
+/// server — and the next step is sending it, or taking from it, a whole
+/// account. Refused when the code is read, not when it is used.
+bool isLocalNetworkHost(String host) {
+  final parts = host.split('.');
+  if (parts.length != 4) return false;
+  final octets = <int>[];
+  for (final part in parts) {
+    final n = int.tryParse(part);
+    if (n == null || n < 0 || n > 255 || '$n' != part) return false;
+    octets.add(n);
+  }
+  final (a, b) = (octets[0], octets[1]);
+  return a == 10 ||
+      a == 127 ||
+      (a == 172 && b >= 16 && b <= 31) ||
+      (a == 192 && b == 168) ||
+      (a == 169 && b == 254);
 }
 
 /// Browser hand-off links can wrap the original code in an escaped fragment

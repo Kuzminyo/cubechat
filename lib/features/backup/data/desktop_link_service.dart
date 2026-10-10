@@ -72,6 +72,7 @@ class DesktopLinkPayload {
       final token = value['token'];
       final password = value['password'];
       if (host is! String ||
+          !isLocalNetworkHost(host) ||
           port is! int ||
           token is! String ||
           password is! String ||
