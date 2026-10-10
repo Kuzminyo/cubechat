@@ -10,9 +10,16 @@
 ;   flutter build windows --release
 ; (the script reads from build\windows\x64\runner\Release)
 
-#define AppName "Cubechat"
-#define AppVersion "0.1.0"
-#define AppPublisher "Cubechat"
+#define AppName "CubeChat"
+; Passed by tool\build_windows.ps1 from pubspec (/DAppVersion, /DAppBuild);
+; the defaults only mark a hand-run compile as such.
+#ifndef AppVersion
+  #define AppVersion "dev"
+#endif
+#ifndef AppBuild
+  #define AppBuild "0"
+#endif
+#define AppPublisher "CubeChat"
 #define AppExe "cubechat.exe"
 ; Repository default — installer assumes you ran ISCC from the repo root.
 #define SourceDir "..\..\build\windows\x64\runner\Release"
@@ -30,7 +37,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\..\build\windows\installer
-OutputBaseFilename=cubechat-setup
+OutputBaseFilename=CubeChat-{#AppVersion}-{#AppBuild}-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

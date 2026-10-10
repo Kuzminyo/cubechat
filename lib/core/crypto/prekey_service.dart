@@ -24,6 +24,13 @@ import 'prekey_store.dart';
 /// v1 keeps a single signed prekey (no rotation, no one-time prekeys yet).
 /// X3DH still achieves forward secrecy via the sender's ephemeral; one-time
 /// prekeys (KCI resistance) are a future enhancement.
+///
+/// **A computer signed in with a phone's account holds a copy of this key**
+/// (docs/superpowers/specs/2026-10-10-windows-desktop-design.md), and reads
+/// everything addressed to the phone only because the key never changes. Adding
+/// rotation or one-time prekeys means telling linked devices, or the computer
+/// silently stops decrypting — the first message after a rotation, or the one
+/// that used a one-time key the phone minted after the copy.
 class PrekeyService {
   PrekeyService(this._ref);
 

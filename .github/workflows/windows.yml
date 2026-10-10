@@ -1,0 +1,76 @@
+name: Windows build (portable ZIP and installer)
+
+# CubeChat for Windows — docs/superpowers/specs/2026-10-10-windows-desktop-design.md.
+# Built on every push to main and by hand, and published to a rolling
+# `windows-latest` prerelease rather than as a workflow artifact: artifacts
+# count against the account's storage quota, which is what broke the iOS job
+# once already.
+#
+# The tests are not run again here: android.yml's `verify` job runs the same
+# suite on the same commit. This job answers the one question that one does
+# not — does the Windows build compile and carry its stamp.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Third-party actions are pinned to a commit: this job can write releases on a
+# public repository, and a moved tag would run someone else's code with that.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build windows --release
+
+      - name: Verify the build stamp shipped
+        shell: pwsh
+        run: |
+          $dart = Get-Content lib\core\util\app_build.dart -Raw
+          if ($dart -notmatch "const\s+String\s+appBuildStamp\s*=\s*'([^']*)'") { throw 'no stamp' }
+          $stamp = $matches[1]
+          $release = 'build\windows\x64\runner\Release'
+          foreach ($f in 'cubechat.exe', 'libopus_x64.dll', 'data\app.so') {
+            if (-not (Test-Path "$release\$f")) { throw "missing $f" }
+          }
+          $text = [Text.Encoding]::GetEncoding('latin1').GetString([IO.File]::ReadAllBytes("$release\data\app.so"))
+          if (-not $text.Contains($stamp)) { throw "data\app.so does not carry '$stamp'" }
+          "stamp ok: $stamp"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath CubeChat-windows.zip
+          choco install innosetup --no-progress -y
+          $v = (Select-String pubspec.yaml -Pattern '^version:\s*([0-9.]+)\+([0-9]+)').Matches[0]
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$($v.Groups[1].Value)" "/DAppBuild=$($v.Groups[2].Value)" windows\installer\cubechat.iss
+          Copy-Item "build\windows\installer\CubeChat-$($v.Groups[1].Value)-$($v.Groups[2].Value)-setup.exe" CubeChat-setup.exe
+
+      - name: Publish to the windows-latest prerelease
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: windows-latest
+          name: CubeChat for Windows (latest main)
+          prerelease: true
+          make_latest: false
+          files: |
+            CubeChat-windows.zip
+            CubeChat-setup.exe
