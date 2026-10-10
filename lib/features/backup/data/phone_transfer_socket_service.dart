@@ -130,7 +130,7 @@ class PhoneTransferService {
       );
     }
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
-    final host = await _localIpv4();
+    final host = await localNetworkIpv4();
     if (host == null) {
       await server.close();
       throw StateError('Connect both phones to the same Wi-Fi network');
@@ -214,26 +214,6 @@ class PhoneTransferService {
     }
   }
 
-  Future<String?> _localIpv4() async {
-    final interfaces = await NetworkInterface.list(
-      type: InternetAddressType.IPv4,
-      includeLoopback: false,
-    );
-    String? fallback;
-    for (final interface in interfaces) {
-      for (final address in interface.addresses) {
-        final host = address.address;
-        fallback ??= host;
-        if (host.startsWith('10.') ||
-            host.startsWith('192.168.') ||
-            RegExp(r'^172\.(1[6-9]|2\d|3[01])\.').hasMatch(host)) {
-          return host;
-        }
-      }
-    }
-    return fallback;
-  }
-
   String _randomText(int bytes) {
     final values = List<int>.generate(bytes, (_) => _random.nextInt(256));
     return base64Url.encode(values).replaceAll('=', '');
@@ -242,3 +222,25 @@ class PhoneTransferService {
 
 final phoneTransferServiceProvider =
     Provider<PhoneTransferService>(PhoneTransferService.new);
+
+/// This device's address on the local network, preferring a private range —
+/// what a phone or a computer on the same Wi-Fi can connect to.
+Future<String?> localNetworkIpv4() async {
+  final interfaces = await NetworkInterface.list(
+    type: InternetAddressType.IPv4,
+    includeLoopback: false,
+  );
+  String? fallback;
+  for (final interface in interfaces) {
+    for (final address in interface.addresses) {
+      final host = address.address;
+      fallback ??= host;
+      if (host.startsWith('10.') ||
+          host.startsWith('192.168.') ||
+          RegExp(r'^172\.(1[6-9]|2\d|3[01])\.').hasMatch(host)) {
+        return host;
+      }
+    }
+  }
+  return fallback;
+}
