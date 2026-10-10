@@ -245,15 +245,18 @@ class DesktopLinkService {
         ..add(length.buffer.asUint8List())
         ..add(copy);
       await socket.flush();
-      final answer = await socket.first.timeout(_restoreWait);
-      if (answer.isEmpty || answer.first != _ok) {
+      // Closed with no answer at all: a wrong or used-up code.
+      final answer = await socket
+          .timeout(_restoreWait)
+          .firstWhere((chunk) => chunk.isNotEmpty, orElse: () => Uint8List(0));
+      if (answer.isEmpty) {
+        throw StateError('The computer did not accept this code');
+      }
+      if (answer.first != _ok) {
         throw StateError('The computer could not restore the copy');
       }
-    } on StateError {
-      rethrow;
-    } catch (e) {
-      // A closed connection with no answer: a wrong or used-up code.
-      throw StateError('The computer did not accept this code ($e)');
+    } on SocketException {
+      throw StateError('The computer did not accept this code');
     } finally {
       socket.destroy();
     }
