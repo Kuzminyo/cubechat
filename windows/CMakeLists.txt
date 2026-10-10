@@ -86,6 +86,15 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
+# libopus for voice notes, beside the exe so OpusLibrary opens it by name. The
+# same build opus_flutter_windows ships, taken out of that plugin: its
+# `pluginClass: none` became `#include <opus_flutter_windows/none.h>` in the
+# generated registrant and broke the Windows build. See windows/opus/.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/opus/libopus_x64.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/opus/opus_license.txt"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
 if(PLUGIN_BUNDLED_LIBRARIES)
   install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

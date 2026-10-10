@@ -8,7 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   flutter_secure_storage_windows
   geolocator_windows
-  opus_flutter_windows
+  local_notifier
   permission_handler_windows
   record_windows
   share_plus

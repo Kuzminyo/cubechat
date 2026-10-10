@@ -79,7 +79,10 @@ class OpusLibrary {
         return DynamicLibrary.process();
       }
     }
-    throw UnsupportedError('Opus voice notes ship on Android and iOS only');
+    // Installed beside cubechat.exe from windows/opus/ — the application's
+    // own directory is the first place Windows looks for a DLL by name.
+    if (Platform.isWindows) return DynamicLibrary.open('libopus_x64.dll');
+    throw UnsupportedError('Opus voice notes ship on Android, iOS and Windows');
   }
 
   final Pointer<Void> Function(int, int, int, Pointer<Int32>) _encoderCreate;

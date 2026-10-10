@@ -81,3 +81,7 @@ design-previews/**/*.webm filter=lfs diff=lfs merge=lfs -text
 *.props   text eol=crlf
 *.bat     text eol=crlf
 *.ps1     text eol=crlf
+
+# libopus for the Windows app (see windows/CMakeLists.txt). Binary, never
+# line-ending converted.
+windows/opus/*.dll binary

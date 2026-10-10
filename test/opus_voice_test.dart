@@ -7,30 +7,17 @@ import 'package:cubechat/core/audio/ogg_opus.dart';
 import 'package:cubechat/core/audio/opus_voice.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The real codec, not a stand-in: opus_flutter ships the same libopus for
-/// Windows, so the encoder and decoder that go to the phones are exercised
-/// here. Skipped where that build is not on disk.
+/// The real codec, not a stand-in: the libopus the Windows app ships is the
+/// same library the phones carry, so the encoder and decoder that go to them
+/// are exercised here. Skipped off Windows.
 void main() {
   OpusLibrary? lib;
 
   setUpAll(() {
-    final local = Platform.environment['LOCALAPPDATA'];
-    if (!Platform.isWindows || local == null) return;
-    final pub = Directory('$local/Pub/Cache/hosted/pub.dev');
-    if (!pub.existsSync()) return;
-    final plugin = pub
-        .listSync()
-        .whereType<Directory>()
-        .where((d) => d.path.contains('opus_flutter_windows-'))
-        .toList();
-    if (plugin.isEmpty) return;
-    final blob = File('${plugin.last.path}/assets/libopus_x64.dll.blob');
-    if (!blob.existsSync()) return;
-    final dll = File('${Directory.systemTemp.path}/cubechat_libopus_x64.dll');
-    if (!dll.existsSync() || dll.lengthSync() != blob.lengthSync()) {
-      blob.copySync(dll.path);
-    }
-    lib = OpusLibrary(DynamicLibrary.open(dll.path));
+    // The very DLL the Windows app ships, from windows/opus/.
+    final dll = File('windows/opus/libopus_x64.dll');
+    if (!Platform.isWindows || !dll.existsSync()) return;
+    lib = OpusLibrary(DynamicLibrary.open(dll.absolute.path));
   });
 
   Uint8List pcmBytes(Int16List samples) =>
