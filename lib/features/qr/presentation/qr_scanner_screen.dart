@@ -10,6 +10,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/confirm_dialog.dart';
+import '../../backup/data/desktop_link_service.dart';
 import '../../backup/data/phone_transfer_socket_service.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -35,6 +36,42 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     await _controller.stopScan();
 
     try {
+      // A computer asking for a copy of this account. Checked before the
+      // phone-to-phone code: the two go in opposite directions, and this one
+      // sends rather than receives — nothing here is replaced.
+      final computer = DesktopLinkPayload.tryDecode(result.text);
+      if (computer != null) {
+        final confirmed = await confirmAction(
+          context,
+          title: t.desktopLinkConfirmTitle,
+          message: t.desktopLinkConfirmMessage,
+          confirmLabel: t.desktopLinkConfirmAction,
+        );
+        if (!confirmed) {
+          await _resume();
+          return;
+        }
+        if (!mounted) return;
+        showGlassToast(context, t.desktopLinkSending, tone: ToastTone.neutral);
+        try {
+          await ref.read(desktopLinkServiceProvider).sendTo(computer);
+        } catch (error) {
+          if (!mounted) return;
+          showGlassToast(
+            context,
+            '$error'.replaceFirst(RegExp(r'^\w*(Error|Exception):\s*'), ''),
+            tone: ToastTone.danger,
+            duration: const Duration(seconds: 5),
+          );
+          await _resume();
+          return;
+        }
+        if (!mounted) return;
+        showGlassToast(context, t.desktopLinkSent, tone: ToastTone.success);
+        context.pop();
+        return;
+      }
+
       final transfer = PhoneTransferPayload.tryDecode(result.text);
       if (transfer != null) {
         final confirmed = await confirmAction(

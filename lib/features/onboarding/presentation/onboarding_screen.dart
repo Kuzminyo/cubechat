@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/notifications/push_registration.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/platform_capabilities.dart';
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../l10n/app_localizations.dart';
@@ -162,6 +163,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     ),
                 ],
               ),
+              // A computer can start as a copy of the phone's account instead
+              // of a new one — see DesktopLinkScreen. A phone cannot: it is
+              // the phone that hands the account over.
+              if (!ref.watch(platformCapabilitiesProvider).bluetooth)
+                Padding(
+                  padding: const EdgeInsets.only(top: 18),
+                  child: TextButton.icon(
+                    onPressed: () => context.push('/desktop-link'),
+                    icon: Icon(
+                      Icons.phonelink_rounded,
+                      color: AppColors.brandPrimary,
+                    ),
+                    label: Text(
+                      t.desktopLinkSignIn,
+                      style: TextStyle(color: AppColors.brandPrimary),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
                 child: Row(

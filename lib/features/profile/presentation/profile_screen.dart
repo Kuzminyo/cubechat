@@ -40,6 +40,8 @@ import '../data/app_lock_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
+import '../../backup/presentation/desktop_link_screen.dart'
+    show ConnectComputerRow;
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../../cube_id/data/cube_id_controller.dart';
 import '../../cube_id/presentation/stranger_reach_selector.dart';

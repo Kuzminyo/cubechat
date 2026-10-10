@@ -4436,6 +4436,90 @@ abstract class AppLocalizations {
   /// **'Transfer to a new phone'**
   String get phoneTransferTitle;
 
+  /// No description provided for @desktopLinkConnectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect a computer'**
+  String get desktopLinkConnectTitle;
+
+  /// No description provided for @desktopLinkConnectHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan the code CubeChat shows on the computer'**
+  String get desktopLinkConnectHint;
+
+  /// No description provided for @desktopLinkSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with my phone\'s account'**
+  String get desktopLinkSignIn;
+
+  /// No description provided for @desktopLinkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with your phone'**
+  String get desktopLinkTitle;
+
+  /// No description provided for @desktopLinkSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'On the phone: Profile → Data → Connect a computer, then scan this code. Both have to be on the same Wi-Fi.'**
+  String get desktopLinkSteps;
+
+  /// No description provided for @desktopLinkLimits.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone keeps working. Messages from the internet reach both; what you send from one does not show on the other yet.'**
+  String get desktopLinkLimits;
+
+  /// No description provided for @desktopLinkWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone…'**
+  String get desktopLinkWaiting;
+
+  /// No description provided for @desktopLinkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not receive the account. Try again.'**
+  String get desktopLinkFailed;
+
+  /// No description provided for @desktopLinkRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get desktopLinkRetry;
+
+  /// No description provided for @desktopLinkConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a copy of this account to the computer?'**
+  String get desktopLinkConfirmTitle;
+
+  /// No description provided for @desktopLinkConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The computer gets your keys, contacts and chats. This phone keeps working as it is.'**
+  String get desktopLinkConfirmMessage;
+
+  /// No description provided for @desktopLinkConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get desktopLinkConfirmAction;
+
+  /// No description provided for @desktopLinkSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending the account…'**
+  String get desktopLinkSending;
+
+  /// No description provided for @desktopLinkSent.
+  ///
+  /// In en, this message translates to:
+  /// **'The computer is connected'**
+  String get desktopLinkSent;
+
   /// No description provided for @phoneTransferIntro.
   ///
   /// In en, this message translates to:

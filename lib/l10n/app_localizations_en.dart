@@ -2550,6 +2550,53 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneTransferTitle => 'Transfer to a new phone';
 
   @override
+  String get desktopLinkConnectTitle => 'Connect a computer';
+
+  @override
+  String get desktopLinkConnectHint =>
+      'Scan the code CubeChat shows on the computer';
+
+  @override
+  String get desktopLinkSignIn => 'Sign in with my phone\'s account';
+
+  @override
+  String get desktopLinkTitle => 'Sign in with your phone';
+
+  @override
+  String get desktopLinkSteps =>
+      'On the phone: Profile → Data → Connect a computer, then scan this code. Both have to be on the same Wi-Fi.';
+
+  @override
+  String get desktopLinkLimits =>
+      'The phone keeps working. Messages from the internet reach both; what you send from one does not show on the other yet.';
+
+  @override
+  String get desktopLinkWaiting => 'Waiting for the phone…';
+
+  @override
+  String get desktopLinkFailed => 'Could not receive the account. Try again.';
+
+  @override
+  String get desktopLinkRetry => 'Try again';
+
+  @override
+  String get desktopLinkConfirmTitle =>
+      'Send a copy of this account to the computer?';
+
+  @override
+  String get desktopLinkConfirmMessage =>
+      'The computer gets your keys, contacts and chats. This phone keeps working as it is.';
+
+  @override
+  String get desktopLinkConfirmAction => 'Send';
+
+  @override
+  String get desktopLinkSending => 'Sending the account…';
+
+  @override
+  String get desktopLinkSent => 'The computer is connected';
+
+  @override
   String get phoneTransferIntro =>
       'Move your profile, keys, contacts, channels, settings and history directly between two phones.';
 

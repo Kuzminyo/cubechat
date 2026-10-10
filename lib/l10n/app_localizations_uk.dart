@@ -2578,6 +2578,54 @@ class AppLocalizationsUk extends AppLocalizations {
   String get phoneTransferTitle => 'Перенесення на новий телефон';
 
   @override
+  String get desktopLinkConnectTitle => 'Підключити комп\'ютер';
+
+  @override
+  String get desktopLinkConnectHint =>
+      'Скануйте код, який показує CubeChat на комп\'ютері';
+
+  @override
+  String get desktopLinkSignIn => 'Увійти акаунтом телефона';
+
+  @override
+  String get desktopLinkTitle => 'Вхід через телефон';
+
+  @override
+  String get desktopLinkSteps =>
+      'На телефоні: Профіль → Дані → «Підключити комп\'ютер», і скануйте цей код. Обидва пристрої мають бути в одній мережі Wi-Fi.';
+
+  @override
+  String get desktopLinkLimits =>
+      'Телефон продовжить працювати. Повідомлення з інтернету приходять на обидва; надіслане з одного поки не з\'являється на іншому.';
+
+  @override
+  String get desktopLinkWaiting => 'Чекаємо на телефон…';
+
+  @override
+  String get desktopLinkFailed =>
+      'Не вдалося отримати акаунт. Спробуйте ще раз.';
+
+  @override
+  String get desktopLinkRetry => 'Спробувати ще раз';
+
+  @override
+  String get desktopLinkConfirmTitle =>
+      'Надіслати копію акаунта на комп\'ютер?';
+
+  @override
+  String get desktopLinkConfirmMessage =>
+      'Комп\'ютер отримає ваші ключі, контакти та чати. Цей телефон працюватиме як і раніше.';
+
+  @override
+  String get desktopLinkConfirmAction => 'Надіслати';
+
+  @override
+  String get desktopLinkSending => 'Надсилаємо акаунт…';
+
+  @override
+  String get desktopLinkSent => 'Комп\'ютер підключено';
+
+  @override
   String get phoneTransferIntro =>
       'Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.';
 
