@@ -4436,6 +4436,24 @@ abstract class AppLocalizations {
   /// **'Transfer to a new phone'**
   String get phoneTransferTitle;
 
+  /// No description provided for @desktopPickChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose who you would like to write to'**
+  String get desktopPickChat;
+
+  /// No description provided for @desktopListCollapse.
+  ///
+  /// In en, this message translates to:
+  /// **'Show only faces'**
+  String get desktopListCollapse;
+
+  /// No description provided for @desktopListExpand.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the chat list'**
+  String get desktopListExpand;
+
   /// No description provided for @desktopLinkConnectTitle.
   ///
   /// In en, this message translates to:

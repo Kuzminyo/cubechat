@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/chats/data/chat_selection_controller.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
+import '../../features/desktop/desktop_split_view.dart' show DesktopChrome;
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
 import '../util/haptics.dart';
@@ -170,7 +171,10 @@ class AppShell extends ConsumerWidget {
             // so it is the only one that can move them as a strip rather than
             // animate over the top of them.
             Positioned.fill(child: shell),
-            Positioned(
+            // On a computer window the rail down the left switches sections
+            // instead — see DesktopRail.
+            if (!DesktopChrome.railShown(context))
+              Positioned(
               // Absolute inset from the screen edges — the only thing this
               // wrapper contributes is position. It paints nothing.
               left: 20,

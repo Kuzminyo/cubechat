@@ -2578,6 +2578,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get phoneTransferTitle => 'Перенесення на новий телефон';
 
   @override
+  String get desktopPickChat => 'Оберіть, кому хотіли б написати';
+
+  @override
+  String get desktopListCollapse => 'Залишити лише аватарки';
+
+  @override
+  String get desktopListExpand => 'Показати список чатів';
+
+  @override
   String get desktopLinkConnectTitle => 'Підключити комп\'ютер';
 
   @override

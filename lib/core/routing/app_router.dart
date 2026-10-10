@@ -206,8 +206,11 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
       StatefulShellRoute(
         // On a wide computer window the open chat sits to the right of all
         // of this; everywhere else this is the shell and nothing more.
-        builder: (context, state, navigationShell) =>
-            DesktopSplitView(list: AppShell(shell: navigationShell)),
+        builder: (context, state, navigationShell) => DesktopSplitView(
+          list: AppShell(shell: navigationShell),
+          currentBranch: navigationShell.currentIndex,
+          onBranch: navigationShell.goBranch,
+        ),
         // The strip follows the user's own tab order, not the router's.
         //
         // Both have to, or they contradict each other: the bar would show

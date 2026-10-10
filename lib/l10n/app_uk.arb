@@ -948,6 +948,9 @@
                                                }
                           },
     "phoneTransferTitle":  "Перенесення на новий телефон",
+    "desktopPickChat": "Оберіть, кому хотіли б написати",
+    "desktopListCollapse": "Залишити лише аватарки",
+    "desktopListExpand": "Показати список чатів",
     "desktopLinkConnectTitle": "Підключити комп'ютер",
     "desktopLinkConnectHint": "Скануйте код, який показує CubeChat на комп'ютері",
     "desktopLinkSignIn": "Увійти акаунтом телефона",

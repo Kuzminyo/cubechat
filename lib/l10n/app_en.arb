@@ -1252,6 +1252,9 @@
     }
   },
   "phoneTransferTitle": "Transfer to a new phone",
+  "desktopPickChat": "Choose who you would like to write to",
+  "desktopListCollapse": "Show only faces",
+  "desktopListExpand": "Show the chat list",
   "desktopLinkConnectTitle": "Connect a computer",
   "desktopLinkConnectHint": "Scan the code CubeChat shows on the computer",
   "desktopLinkSignIn": "Sign in with my phone's account",

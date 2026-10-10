@@ -2550,6 +2550,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneTransferTitle => 'Transfer to a new phone';
 
   @override
+  String get desktopPickChat => 'Choose who you would like to write to';
+
+  @override
+  String get desktopListCollapse => 'Show only faces';
+
+  @override
+  String get desktopListExpand => 'Show the chat list';
+
+  @override
   String get desktopLinkConnectTitle => 'Connect a computer';
 
   @override

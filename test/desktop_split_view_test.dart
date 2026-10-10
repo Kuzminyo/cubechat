@@ -1,34 +1,75 @@
 import 'package:cubechat/core/util/platform_capabilities.dart';
+import 'package:cubechat/features/chats/data/chat_folders_controller.dart';
+import 'package:cubechat/features/chats/data/user_chat_folders_controller.dart';
+import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
+import 'package:cubechat/features/desktop/desktop_rail.dart';
 import 'package:cubechat/features/desktop/desktop_split_view.dart';
+import 'package:cubechat/features/profile/data/nav_bar_controller.dart';
+import 'package:cubechat/l10n/app_localizations.dart';
+import 'package:cubechat/l10n/app_localizations_en.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// A computer's window wider than 900 px shows the chats on the left and the
-/// open chat on the right, the way Telegram Desktop does; narrower, it is the
-/// phone layout.
+class _NoFolders extends ChatFoldersController {
+  @override
+  List<ChatFolder> build() => const [];
+}
+
+class _Bar extends NavBarController {
+  @override
+  NavBarLayout build() => const NavBarLayout([
+        NavDestination.chats,
+        NavDestination.contacts,
+        NavDestination.profile,
+      ]);
+}
+
+class _NoUserFolders extends UserChatFoldersController {
+  @override
+  List<UserChatFolder> build() => const [];
+}
+
+/// A computer window laid out the way Telegram Desktop lays one out: the rail,
+/// the chat list, and the open chat; a column of faces when narrower; the
+/// phone's layout when narrower still, and always on a phone.
 void main() {
+  final t = AppLocalizationsEn();
+
   Future<ProviderContainer> pump(
     WidgetTester tester, {
     required double width,
     PlatformCapabilities caps = PlatformCapabilities.desktop,
+    int branch = 0,
   }) async {
     tester.view
       ..devicePixelRatio = 1
       ..physicalSize = Size(width, 800);
     addTearDown(tester.view.reset);
     final container = ProviderContainer(
-      overrides: [platformCapabilitiesProvider.overrideWithValue(caps)],
+      overrides: [
+        platformCapabilitiesProvider.overrideWithValue(caps),
+        chatFoldersControllerProvider.overrideWith(_NoFolders.new),
+        userChatFoldersControllerProvider.overrideWith(_NoUserFolders.new),
+        visibleChatsProvider.overrideWithValue(const []),
+        navBarControllerProvider.overrideWith(_Bar.new),
+      ],
     );
     addTearDown(container.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: DesktopSplitView(
+            currentBranch: branch,
             list: Builder(
-              builder: (context) =>
-                  Text('list ${MediaQuery.sizeOf(context).width.round()}'),
+              builder: (context) => Text(
+                'list ${MediaQuery.sizeOf(context).width.round()}'
+                '${DesktopChrome.railShown(context) ? ' rail' : ''}',
+              ),
             ),
             detailBuilder: (open, close) => TextButton(
               onPressed: close,
@@ -41,15 +82,18 @@ void main() {
     return container;
   }
 
-  testWidgets('wide: the list and the open chat side by side', (tester) async {
+  testWidgets('wide: rail, list and the open chat side by side',
+      (tester) async {
     final c = await pump(tester, width: 1200);
-    expect(find.text('list ${DesktopSplitView.listWidth.round()}'),
-        findsOneWidget,
-        reason: 'the list is laid out at its own width, not the window\'s');
     expect(
-      find.byKey(const ValueKey(DesktopSplitView.emptyHint)),
+      find.text('list ${DesktopSplitView.listWidth.round()} rail'),
       findsOneWidget,
+      reason: 'the list is laid out at its own width and knows the rail is '
+          'there, so it leaves out the bottom bar and folder row',
     );
+    expect(find.text(t.navChats), findsOneWidget, reason: 'the bar, upright');
+    expect(find.text(t.navContacts), findsOneWidget);
+    expect(find.text(t.desktopPickChat), findsOneWidget);
     c.read(desktopOpenChatProvider.notifier).state =
         const DesktopOpenChat(peerId: 'abc', label: 'Ann');
     await tester.pump();
@@ -60,7 +104,46 @@ void main() {
     expect(c.read(desktopOpenChatProvider), isNull, reason: 'back closes it');
   });
 
-  testWidgets('narrow: just the list, at full width', (tester) async {
+  testWidgets('the empty pane\'s hint sits in the middle of the pane',
+      (tester) async {
+    await pump(tester, width: 1200);
+    final pill =
+        tester.getCenter(find.byKey(const ValueKey(DesktopSplitView.emptyHint)));
+    const paneLeft = 76 + DesktopSplitView.listWidth + 1;
+    expect(pill.dx, closeTo(paneLeft + (1200 - paneLeft) / 2, 1));
+    expect(pill.dy, closeTo(400, 1));
+  });
+
+  testWidgets('the list folds down to faces and back', (tester) async {
+    final c = await pump(tester, width: 1200);
+    await tester.tap(find.byTooltip(t.desktopListCollapse));
+    await tester.pump();
+    expect(find.textContaining('list'), findsNothing);
+    expect(c.read(desktopListCollapsedProvider), isTrue);
+    await tester.tap(find.byTooltip(t.desktopListExpand));
+    await tester.pump();
+    expect(
+      find.text('list ${DesktopSplitView.listWidth.round()} rail'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('middling: faces instead of the list on Chats', (tester) async {
+    await pump(tester, width: 760);
+    expect(find.textContaining('list'), findsNothing);
+    expect(find.text(t.desktopPickChat), findsOneWidget);
+  });
+
+  testWidgets('middling on another section keeps its full column',
+      (tester) async {
+    await pump(tester, width: 760, branch: 1);
+    expect(
+      find.text('list ${DesktopSplitView.listWidth.round()} rail'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('narrow: just the phone layout, at full width', (tester) async {
     final c = await pump(tester, width: 600);
     c.read(desktopOpenChatProvider.notifier).state =
         const DesktopOpenChat(peerId: 'abc', label: 'Ann');
@@ -74,7 +157,7 @@ void main() {
     expect(find.text('list 1200'), findsOneWidget);
   });
 
-  testWidgets('narrowing past 900 with a chat open keeps it open',
+  testWidgets('narrowing to the phone layout and back keeps the chat open',
       (tester) async {
     final c = await pump(tester, width: 1200);
     c.read(desktopOpenChatProvider.notifier).state =
