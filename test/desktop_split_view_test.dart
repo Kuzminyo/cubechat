@@ -153,6 +153,63 @@ void main() {
     expect(find.text(t.desktopPickChat), findsOneWidget);
   });
 
+  group('the divider', () {
+    // Asked for on 2026-10-11 against a 900 px window showing faces: "сделать
+    // что бы перегородку можно было тянуть".
+    Finder handle() => find.byKey(const ValueKey(DesktopSplitView.dividerKey));
+
+    testWidgets('dragging it widens and narrows the list', (tester) async {
+      final c = await pump(tester, width: 1200);
+      await tester.drag(handle(), const Offset(80, 0));
+      await tester.pumpAndSettle();
+      expect(columnWidth(tester), DesktopSplitView.listWidth + 80);
+      expect(c.read(desktopListWidthProvider), DesktopSplitView.listWidth + 80);
+      expect(
+        find.text('list ${(DesktopSplitView.listWidth + 80).round()} rail'),
+        findsOneWidget,
+        reason: 'the list lays itself out at the width it is given',
+      );
+      await tester.drag(handle(), const Offset(-120, 0));
+      await tester.pumpAndSettle();
+      expect(columnWidth(tester), DesktopSplitView.listWidth - 40);
+    });
+
+    testWidgets('the chat keeps its room however far it is dragged',
+        (tester) async {
+      await pump(tester, width: 900);
+      await tester.drag(handle(), const Offset(600, 0));
+      await tester.pumpAndSettle();
+      expect(
+        900 - DesktopRail.width - 1 - columnWidth(tester),
+        DesktopSplitView.detailMin,
+      );
+    });
+
+    testWidgets('dragged narrow enough it folds to faces, and opens again',
+        (tester) async {
+      final c = await pump(tester, width: 1200);
+      await tester.drag(handle(), const Offset(-260, 0));
+      await tester.pumpAndSettle();
+      expect(columnWidth(tester), DesktopSplitView.compactWidth);
+      expect(c.read(desktopListCollapsedProvider), isTrue);
+      await tester.drag(handle(), const Offset(250, 0));
+      await tester.pumpAndSettle();
+      expect(c.read(desktopListCollapsedProvider), isFalse);
+      expect(columnWidth(tester), DesktopSplitView.compactWidth + 250);
+    });
+
+    testWidgets('a middling window\'s faces can be pulled open into the list',
+        (tester) async {
+      await pump(tester, width: 880);
+      await tester.pumpAndSettle();
+      expect(columnWidth(tester), DesktopSplitView.compactWidth);
+      await tester.drag(handle(), const Offset(260, 0));
+      await tester.pumpAndSettle();
+      expect(columnWidth(tester), DesktopSplitView.compactWidth + 260);
+      expect(find.text(t.desktopPickChat), findsOneWidget);
+    });
+  });
+
   testWidgets('middling on another section keeps its full column',
       (tester) async {
     await pump(tester, width: 760, branch: 1);

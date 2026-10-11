@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +27,15 @@ class DesktopOpenChat {
 
 final desktopOpenChatProvider =
     StateProvider<DesktopOpenChat?>((_) => null);
+
+/// How wide the person dragged the chat list. Kept within what the window
+/// allows when it is laid out, so a window made narrower later still fits.
+final desktopListWidthProvider =
+    StateProvider<double>((_) => DesktopSplitView.listWidth);
+
+/// True while the divider is being dragged: the column follows the pointer
+/// then rather than easing after it.
+final _dividerDraggingProvider = StateProvider<bool>((_) => false);
 
 /// How a window lays itself out. A phone is always [phone].
 enum DesktopMode {
@@ -118,8 +130,23 @@ class DesktopSplitView extends ConsumerWidget {
   static const double listWidth = 360;
   static const double compactWidth = 76;
 
+  /// The narrowest the list is drawn with names, and the widest it is let go.
+  static const double listMin = 240;
+  static const double listMax = 560;
+
+  /// What the open chat keeps however far the divider is dragged: below this
+  /// a bubble and the composer no longer fit side by side with anything.
+  static const double detailMin = 320;
+
+  /// Dragged narrower than this, the list folds to faces: halfway between
+  /// the faces and the narrowest list, so it snaps to whichever is nearer.
+  static const double foldAt = (compactWidth + listMin) / 2;
+
   /// Key of the right-hand pane while nothing is open.
   static const String emptyHint = 'cubechat-desktop-empty';
+
+  /// Key of the divider's grip.
+  static const String dividerKey = 'cubechat-desktop-divider';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -130,15 +157,25 @@ class DesktopSplitView extends ConsumerWidget {
 
     final open = ref.watch(desktopOpenChatProvider);
     void close() => ref.read(desktopOpenChatProvider.notifier).state = null;
-    // Faces instead of the chat list when the window is too narrow for names,
-    // or when the person folded the list down to them. Only on Chats: any
-    // other section keeps its full column.
-    final faces = currentBranch == 0 &&
-        (mode == DesktopMode.compact ||
-            ref.watch(desktopListCollapsedProvider));
-    final middle = faces ? compactWidth : listWidth;
-    final detailWidth =
-        media.size.width - DesktopRail.width - middle - 1;
+    final onChats = currentBranch == 0;
+    // The most the list may take and still leave the chat its room.
+    final room = math.min(
+      listMax,
+      media.size.width - DesktopRail.width - 1 - detailMin,
+    );
+    final fits = room >= listMin;
+    // Faces instead of the chat list when there is no room for names, when
+    // the person folded the list down to them, or — until they choose — in a
+    // middling window. Only on Chats: any other section keeps its column.
+    final chosen = ref.watch(desktopListCollapsedProvider);
+    final faces =
+        onChats && (!fits || (chosen ?? mode == DesktopMode.compact));
+    final listW = fits
+        ? ref.watch(desktopListWidthProvider).clamp(listMin, room).toDouble()
+        : listWidth;
+    final middle = faces ? compactWidth : listW;
+    final detailWidth = media.size.width - DesktopRail.width - middle - 1;
+    final dragging = ref.watch(_dividerDraggingProvider);
 
     return DesktopChrome(
       mode: mode,
@@ -147,41 +184,66 @@ class DesktopSplitView extends ConsumerWidget {
       // Flutter's yellow "missing Material" underline.
       child: Material(
         color: AppColors.bgDeep,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            DesktopRail(
-              currentBranch: currentBranch,
-              onBranch: onBranch ?? (_) {},
-              canCollapse: mode == DesktopMode.wide,
-            ),
-            _MiddleColumn(
-              width: middle,
-              faces: faces,
-              list: MediaQuery(
-                data: media.copyWith(size: Size(listWidth, media.size.height)),
-                child: list,
-              ),
-            ),
-            ColoredBox(
-              color: AppColors.glass(0.10),
-              child: const SizedBox(width: 1),
-            ),
-            Expanded(
-              child: MediaQuery(
-                data: media.copyWith(
-                  size: Size(detailWidth, media.size.height),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DesktopRail(
+                  currentBranch: currentBranch,
+                  onBranch: onBranch ?? (_) {},
+                  canCollapse: fits,
+                  collapsed: faces,
                 ),
-                child: open == null
-                    ? const _EmptyPane()
-                    : KeyedSubtree(
-                        // A different chat is a different screen, not the same
-                        // one told new facts halfway through its state.
-                        key: ValueKey(open.peerId),
-                        child: (detailBuilder ?? _chat)(open, close),
-                      ),
-              ),
+                _MiddleColumn(
+                  width: middle,
+                  listWidth: listW,
+                  faces: faces,
+                  animate: !dragging,
+                  list: MediaQuery(
+                    data: media.copyWith(size: Size(listW, media.size.height)),
+                    child: list,
+                  ),
+                ),
+                ColoredBox(
+                  color: dragging
+                      ? AppColors.brandPrimary.withValues(alpha: 0.6)
+                      : AppColors.glass(0.10),
+                  child: const SizedBox(width: 1),
+                ),
+                Expanded(
+                  child: MediaQuery(
+                    data: media.copyWith(
+                      size: Size(detailWidth, media.size.height),
+                    ),
+                    child: open == null
+                        ? const _EmptyPane()
+                        : KeyedSubtree(
+                            // A different chat is a different screen, not the
+                            // same one told new facts halfway through its
+                            // state.
+                            key: ValueKey(open.peerId),
+                            child: (detailBuilder ?? _chat)(open, close),
+                          ),
+                  ),
+                ),
+              ],
             ),
+            // The grip is wider than the one-pixel line it moves, laid over
+            // it rather than beside it, so the panes do not lose the width.
+            if (fits)
+              Positioned(
+                left: DesktopRail.width + middle - _DividerGrip.reach,
+                top: 0,
+                bottom: 0,
+                width: _DividerGrip.reach * 2 + 1,
+                child: _DividerGrip(
+                  key: const ValueKey(dividerKey),
+                  width: middle,
+                  onChats: onChats,
+                  room: room,
+                ),
+              ),
           ],
         ),
       ),
@@ -208,13 +270,22 @@ class DesktopSplitView extends ConsumerWidget {
 class _MiddleColumn extends StatelessWidget {
   const _MiddleColumn({
     required this.width,
+    required this.listWidth,
     required this.faces,
     required this.list,
+    this.animate = true,
   });
 
   final double width;
+
+  /// The width the list is laid out at — its own, even while the column is
+  /// narrower and showing faces.
+  final double listWidth;
   final bool faces;
   final Widget list;
+
+  /// Off while the divider is dragged: an eased width trails the pointer.
+  final bool animate;
 
   static const Duration duration = Duration(milliseconds: 240);
   static const Curve curve = Curves.easeOutCubic;
@@ -222,7 +293,7 @@ class _MiddleColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: duration,
+      duration: animate ? duration : Duration.zero,
       curve: curve,
       width: width,
       child: ClipRect(
@@ -232,8 +303,8 @@ class _MiddleColumn extends StatelessWidget {
             // does not re-flow through every width on the way.
             OverflowBox(
               alignment: Alignment.topLeft,
-              minWidth: DesktopSplitView.listWidth,
-              maxWidth: DesktopSplitView.listWidth,
+              minWidth: listWidth,
+              maxWidth: listWidth,
               child: IgnorePointer(ignoring: faces, child: list),
             ),
             Positioned.fill(
@@ -249,6 +320,74 @@ class _MiddleColumn extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The grip on the line between the list and the chat. Dragged, it sets the
+/// list's width; dragged past [DesktopSplitView.foldAt] on Chats, it folds the
+/// list to faces, and pulled back out of them it opens it again.
+class _DividerGrip extends ConsumerStatefulWidget {
+  const _DividerGrip({
+    super.key,
+    required this.width,
+    required this.onChats,
+    required this.room,
+  });
+
+  /// How far the grip reaches past the line on each side.
+  static const double reach = 4;
+
+  /// The column's width as it stands.
+  final double width;
+  final bool onChats;
+
+  /// The most the list may take in this window.
+  final double room;
+
+  @override
+  ConsumerState<_DividerGrip> createState() => _DividerGripState();
+}
+
+class _DividerGripState extends ConsumerState<_DividerGrip> {
+  double _startWidth = 0;
+  double _startX = 0;
+
+  void _start(DragStartDetails d) {
+    _startWidth = widget.width;
+    _startX = d.globalPosition.dx;
+    ref.read(_dividerDraggingProvider.notifier).state = true;
+  }
+
+  void _update(DragUpdateDetails d) {
+    final target = _startWidth + d.globalPosition.dx - _startX;
+    if (widget.onChats) {
+      final fold = target < DesktopSplitView.foldAt;
+      ref.read(desktopListCollapsedProvider.notifier).state = fold;
+      if (fold) return;
+    }
+    ref.read(desktopListWidthProvider.notifier).state = target
+        .clamp(DesktopSplitView.listMin, widget.room)
+        .toDouble();
+  }
+
+  void _end() => ref.read(_dividerDraggingProvider.notifier).state = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // From the press, not from where the slop ran out: the line stays
+        // under the pointer instead of lagging it by the slop.
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: _start,
+        onHorizontalDragUpdate: _update,
+        onHorizontalDragEnd: (_) => _end(),
+        onHorizontalDragCancel: _end,
+        child: const SizedBox.expand(),
       ),
     );
   }
@@ -293,7 +432,10 @@ class _ChatFaces extends ConsumerWidget {
     final chats = ref.watch(visibleChatsProvider);
     final open = ref.watch(desktopOpenChatProvider);
     return ColoredBox(
-      color: AppColors.bgDeep.withValues(alpha: 0.55),
+      // Nearly solid: at 0.55 the list under the faces read through them —
+      // its title and search field cut off at the column's edge, seen in a
+      // screenshot on 2026-10-11. The fade still crosses one into the other.
+      color: AppColors.bgDeep.withValues(alpha: 0.95),
       child: Column(
         children: [
           const SizedBox(height: 10),

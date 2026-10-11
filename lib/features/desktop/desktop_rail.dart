@@ -11,7 +11,11 @@ import '../profile/data/nav_bar_controller.dart';
 ///
 /// Asked for as "в чатах можно будет оставлять только кружки аватарок": the
 /// conversation gets the room, and the people are still one click away.
-final desktopListCollapsedProvider = StateProvider<bool>((_) => false);
+///
+/// Null until the person chooses, with the button below or by dragging the
+/// divider: then the window's width decides — faces in a middling window, the
+/// list in a wide one.
+final desktopListCollapsedProvider = StateProvider<bool?>((_) => null);
 
 /// The phone's tab bar, stood on its end down the left of a computer window:
 /// the same tabs, in the same order the person arranged them, with the unread
@@ -23,6 +27,7 @@ class DesktopRail extends ConsumerWidget {
     required this.currentBranch,
     required this.onBranch,
     this.canCollapse = true,
+    this.collapsed = false,
   });
 
   /// The shell branch on show, and how to switch it.
@@ -32,6 +37,9 @@ class DesktopRail extends ConsumerWidget {
   /// False where the window is too narrow for names anyway and the list is
   /// faces regardless.
   final bool canCollapse;
+
+  /// Whether the list is showing as faces now, however that was decided.
+  final bool collapsed;
 
   static const double width = 76;
 
@@ -44,7 +52,6 @@ class DesktopRail extends ConsumerWidget {
         (chats) => chats.where((c) => c.unreadCount > 0).length,
       ),
     );
-    final collapsed = ref.watch(desktopListCollapsedProvider);
     final onChats = currentBranch == NavDestination.chats.branch;
 
     return ColoredBox(

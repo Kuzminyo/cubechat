@@ -34,6 +34,8 @@ import 'features/moderation/presentation/terms_gate.dart';
 import 'features/moderation/data/report_client.dart';
 import 'features/moderation/data/ban_list_controller.dart';
 import 'core/util/platform_info.dart';
+import 'features/desktop/desktop_split_view.dart' show DesktopOpenChat, desktopOpenChatProvider;
+import 'features/desktop/touchpad_swipe.dart';
 import 'core/util/transition_probe.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
@@ -435,6 +437,32 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void _openAirDrop() {
     ref.read(nearbyPageRequestProvider.notifier).state = kAirDropPage;
     _router.go('/peers');
+  }
+
+  /// The chat a back swipe closed in a computer window's right-hand pane,
+  /// for a forward swipe to bring back.
+  DesktopOpenChat? _swipedAway;
+
+  /// Two fingers right on a touchpad: the page on top goes, or with none,
+  /// the chat open beside the list. See [TouchpadSwipe]. A phone has no
+  /// touchpad and never gets here.
+  void _swipeBack() {
+    if (_router.canPop()) {
+      _router.pop();
+      return;
+    }
+    final open = ref.read(desktopOpenChatProvider);
+    if (open != null) {
+      _swipedAway = open;
+      ref.read(desktopOpenChatProvider.notifier).state = null;
+    }
+  }
+
+  void _swipeForward() {
+    final again = _swipedAway;
+    if (again == null || _router.canPop()) return;
+    _swipedAway = null;
+    ref.read(desktopOpenChatProvider.notifier).state = again;
   }
 
   void _openChat(String chatId) {
@@ -853,7 +881,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
                 },
                 onPointerMove: (_) => UiActivity.instance.poke(),
                 onPointerSignal: (_) => UiActivity.instance.poke(),
-                child: _TapToDismissKeyboard(
+                child: TouchpadSwipe(
+                  onBack: _swipeBack,
+                  onForward: _swipeForward,
+                  child: _TapToDismissKeyboard(
                   child: VoiceMiniPlayer(
                     // The router lives below this builder, so the bar is handed
                     // the one push it needs rather than looking one up it
@@ -870,6 +901,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
                       ),
                     ),
                   ),
+                ),
                 ),
               ),
             ),
