@@ -2646,6 +2646,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get desktopLinkSent => 'Комп\'ютер підключено';
 
   @override
+  String get desktopLinkUnreachable =>
+      'Не вдалося достукатися до комп\'ютера. Обидва мають бути в одній мережі Wi-Fi, а на комп\'ютері CubeChat має бути дозволений у брандмауері.';
+
+  @override
+  String get desktopLinkFirewallHint =>
+      'Windows може не пустити телефон до цього комп\'ютера. Дозвольте CubeChat у брандмауері — лише для вашої локальної мережі.';
+
+  @override
+  String get desktopLinkFirewallAllow => 'Дозволити в брандмауері';
+
+  @override
+  String get desktopLinkFirewallDeclined =>
+      'Windows не дав дозволу. Без нього телефон може не достукатися.';
+
+  @override
   String get phoneTransferIntro =>
       'Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.';
 

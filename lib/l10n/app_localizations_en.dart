@@ -2617,6 +2617,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get desktopLinkSent => 'The computer is connected';
 
   @override
+  String get desktopLinkUnreachable =>
+      'Could not reach the computer. Both need to be on the same Wi-Fi, and on the computer CubeChat must be allowed through the firewall.';
+
+  @override
+  String get desktopLinkFirewallHint =>
+      'Windows may keep the phone out of this computer. Allow CubeChat through the firewall — for your local network only.';
+
+  @override
+  String get desktopLinkFirewallAllow => 'Allow through the firewall';
+
+  @override
+  String get desktopLinkFirewallDeclined =>
+      'Windows did not allow it. Without that the phone may not get through.';
+
+  @override
   String get phoneTransferIntro =>
       'Move your profile, keys, contacts, channels, settings and history directly between two phones.';
 

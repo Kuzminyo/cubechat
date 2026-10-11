@@ -4556,6 +4556,30 @@ abstract class AppLocalizations {
   /// **'The computer is connected'**
   String get desktopLinkSent;
 
+  /// No description provided for @desktopLinkUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the computer. Both need to be on the same Wi-Fi, and on the computer CubeChat must be allowed through the firewall.'**
+  String get desktopLinkUnreachable;
+
+  /// No description provided for @desktopLinkFirewallHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Windows may keep the phone out of this computer. Allow CubeChat through the firewall — for your local network only.'**
+  String get desktopLinkFirewallHint;
+
+  /// No description provided for @desktopLinkFirewallAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow through the firewall'**
+  String get desktopLinkFirewallAllow;
+
+  /// No description provided for @desktopLinkFirewallDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Windows did not allow it. Without that the phone may not get through.'**
+  String get desktopLinkFirewallDeclined;
+
   /// No description provided for @phoneTransferIntro.
   ///
   /// In en, this message translates to:

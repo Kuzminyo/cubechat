@@ -346,26 +346,73 @@ String transferCodeText(String raw) {
 final phoneTransferServiceProvider =
     Provider<PhoneTransferService>(PhoneTransferService.new);
 
-/// This device's address on the local network, preferring a private range —
-/// what a phone or a computer on the same Wi-Fi can connect to.
+/// This device's best address on the local network — what a phone or a
+/// computer on the same Wi-Fi can connect to. See [orderLocalAddresses].
 Future<String?> localNetworkIpv4() async {
+  final addresses = await localNetworkAddresses();
+  return addresses.isEmpty ? null : addresses.first;
+}
+
+/// Every private address this device has, the likeliest to be reachable from
+/// another device on the same Wi-Fi first.
+Future<List<String>> localNetworkAddresses() async {
   final interfaces = await NetworkInterface.list(
     type: InternetAddressType.IPv4,
     includeLoopback: false,
   );
-  String? fallback;
-  for (final interface in interfaces) {
-    for (final address in interface.addresses) {
-      final host = address.address;
-      fallback ??= host;
-      if (host.startsWith('10.') ||
-          host.startsWith('192.168.') ||
-          RegExp(r'^172\.(1[6-9]|2\d|3[01])\.').hasMatch(host)) {
-        return host;
-      }
-    }
+  return orderLocalAddresses([
+    for (final interface in interfaces)
+      for (final address in interface.addresses)
+        (name: interface.name, address: address.address),
+  ]);
+}
+
+/// Private addresses only, the real network first and virtual adapters last.
+///
+/// The system lists adapters in no useful order. A Windows computer with
+/// VirtualBox, Hyper-V and WSL had four private addresses on 2026-10-11 and
+/// Wi-Fi was the second: taking the first private one put VirtualBox's
+/// host-only 192.168.56.1 in the sign-in code, and no phone could ever reach
+/// it. Nothing is dropped — an adapter may be named in a way this does not
+/// recognise — it is only ranked, and the code carries several.
+List<String> orderLocalAddresses(
+  Iterable<({String name, String address})> adapters,
+) {
+  int rank(({String name, String address}) a) {
+    final name = a.name.toLowerCase();
+    if (a.address.startsWith('169.254.')) return 3; // no DHCP answered
+    if (a.address.startsWith('192.168.56.')) return 2; // VirtualBox host-only
+    const virtual = [
+      'vethernet', 'wsl', 'hyper-v', 'virtualbox', 'vbox', 'vmware', 'vmnet',
+      'docker', 'veth', 'br-', 'bridge', 'tun', 'tap', 'utun', 'zerotier',
+      'tailscale', 'wireguard', 'npcap', 'loopback',
+      // Mobile data on a phone: a carrier's 10.x is private, and useless here.
+      'rmnet', 'ccmni', 'pdp_ip', 'clat',
+    ];
+    if (virtual.any(name.contains)) return 2;
+    const wireless = [
+      'wi-fi', 'wifi', 'wlan', 'wireless', 'swlan', 'ap0',
+      'беспровод', 'бездротов', // Windows in Russian and Ukrainian
+    ];
+    if (wireless.any(name.contains)) return 0;
+    return 1;
   }
-  return fallback;
+
+  final private = [
+    for (final a in adapters)
+      if (isLocalNetworkHost(a.address) && !a.address.startsWith('127.')) a,
+  ];
+  // A stable sort: within a rank the system's own order stands.
+  final indexed = [for (var i = 0; i < private.length; i++) (i, private[i])]
+    ..sort((x, y) {
+      final byRank = rank(x.$2).compareTo(rank(y.$2));
+      return byRank != 0 ? byRank : x.$1.compareTo(y.$1);
+    });
+  final seen = <String>{};
+  return [
+    for (final (_, a) in indexed)
+      if (seen.add(a.address)) a.address,
+  ];
 }
 
 /// A private temporary file for one transfer's archive.

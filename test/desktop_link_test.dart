@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cubechat/features/backup/data/desktop_link_service.dart';
+import 'package:cubechat/features/backup/data/phone_transfer_socket_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// "Sign in with my phone's account" on a computer: the computer serves and
@@ -44,6 +45,72 @@ void main() {
         password: password,
       );
       expect(DesktopLinkPayload.tryDecode(short.encode()), isNull);
+    });
+  });
+
+  group('which address the code names', () {
+    // This computer, 2026-10-11: Wi-Fi 192.168.0.134 beside VirtualBox
+    // 192.168.56.1, Hyper-V 172.21.32.1 and WSL 172.27.64.1. The old code took
+    // the first private address the system listed — 192.168.56.1 — and the QR
+    // pointed the phone at a card it could never reach.
+    const adapters = [
+      (name: 'Ethernet 2', address: '192.168.56.1'),
+      (name: 'Беспроводная сеть', address: '192.168.0.134'),
+      (name: 'vEthernet (Default Switch)', address: '172.21.32.1'),
+      (name: 'vEthernet (WSL (Hyper-V firewall))', address: '172.27.64.1'),
+    ];
+
+    test('the real network comes first, virtual adapters last', () {
+      final ordered = orderLocalAddresses(adapters);
+      expect(ordered.first, '192.168.0.134');
+      expect(ordered.toSet(), {
+        '192.168.0.134',
+        '192.168.56.1',
+        '172.21.32.1',
+        '172.27.64.1',
+      }, reason: 'none dropped: an unlabelled adapter may be the real one');
+      expect(ordered.last, anyOf('172.21.32.1', '172.27.64.1'));
+    });
+
+    test('only private addresses are ever offered', () {
+      expect(
+        orderLocalAddresses(const [
+          (name: 'wlan0', address: '8.8.8.8'),
+          (name: 'wlan1', address: '192.168.1.5'),
+        ]),
+        ['192.168.1.5'],
+      );
+    });
+
+    test('a code carries every candidate, and an old code just the one', () {
+      const p = DesktopLinkPayload(
+        host: '192.168.0.134',
+        port: 50123,
+        token: token,
+        password: password,
+        hosts: ['192.168.0.134', '192.168.56.1'],
+      );
+      final back = DesktopLinkPayload.tryDecode(p.encode())!;
+      expect(back.candidates, ['192.168.0.134', '192.168.56.1']);
+      const old = DesktopLinkPayload(
+        host: '10.0.0.4',
+        port: 1,
+        token: token,
+        password: password,
+      );
+      expect(DesktopLinkPayload.tryDecode(old.encode())!.candidates,
+          ['10.0.0.4']);
+    });
+
+    test('a candidate off the local network spoils the whole code', () {
+      const p = DesktopLinkPayload(
+        host: '192.168.0.134',
+        port: 50123,
+        token: token,
+        password: password,
+        hosts: ['192.168.0.134', '8.8.8.8'],
+      );
+      expect(DesktopLinkPayload.tryDecode(p.encode()), isNull);
     });
   });
 
@@ -108,7 +175,7 @@ void main() {
             throw StateError('the computer only takes'),
         restoreBackup: (file, pw) async =>
             restored.add((bytes: await file.readAsBytes(), password: pw)),
-        localHost: () async => '127.0.0.1',
+        localHosts: () async => ['127.0.0.1'],
         tempFile: tempFile,
       );
       phone = DesktopLinkService(
@@ -118,7 +185,7 @@ void main() {
         },
         restoreBackup: (_, __) async =>
             throw StateError('the phone only gives'),
-        localHost: () async => '127.0.0.1',
+        localHosts: () async => ['127.0.0.1'],
         tempFile: tempFile,
       );
     });
@@ -129,6 +196,24 @@ void main() {
       } on FileSystemException {
         // Windows may still hold a file for a moment.
       }
+    });
+
+    test('a dead first address does not stop the copy reaching a live one',
+        () async {
+      final session = await computer.startReceiving();
+      final code = DesktopLinkPayload.tryDecode(session.qr)!;
+      // First an address nothing answers on (unroutable, so the connect would
+      // sit there until its timeout), then the one that works.
+      final aimed = DesktopLinkPayload(
+        host: '10.255.255.1',
+        port: code.port,
+        token: code.token,
+        password: code.password,
+        hosts: const ['10.255.255.1', '127.0.0.1'],
+      );
+      await phone.sendTo(aimed).timeout(const Duration(seconds: 8));
+      await session.done;
+      expect(restored.single.bytes, backup);
     });
 
     test('the phone\'s copy arrives whole, under the code\'s password',
@@ -197,7 +282,7 @@ void main() {
         restoreBackup: (_, __) async {},
       );
       final receiver = DesktopLinkService(
-        localHost: () async => '127.0.0.1',
+        localHosts: () async => ['127.0.0.1'],
         tempFile: (role) async => File('${temp.path}/large-$role'),
         createBackup: (_, __) async {},
         restoreBackup: (file, _) async {

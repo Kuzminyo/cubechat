@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../onboarding/data/onboarding_controller.dart';
 import '../../qr/presentation/qr_display.dart';
 import '../data/desktop_link_service.dart';
+import '../data/windows_firewall.dart';
 
 /// The computer's half of "sign in with my phone's account": a one-time code
 /// for the phone to scan, and the wait for its copy to arrive. See
@@ -27,10 +29,48 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
   DesktopLinkSession? _session;
   bool _failed = false;
 
+  /// Null until checked, and on anything but Windows. See [WindowsFirewall].
+  bool? _firewallOpen;
+  bool _askingFirewall = false;
+  bool _firewallDeclined = false;
+  static const _firewall = WindowsFirewall();
+
   @override
   void initState() {
     super.initState();
     unawaited(_start());
+    if (Platform.isWindows) unawaited(_checkFirewall());
+  }
+
+  Future<void> _checkFirewall() async {
+    try {
+      final open = await _firewall.allowsInbound();
+      if (mounted) setState(() => _firewallOpen = open);
+    } catch (e) {
+      // No PowerShell, or a policy that forbids it: say nothing rather than
+      // offer a button that cannot work.
+      DebugLog.instance.log('LINK', 'firewall check failed: ${e.runtimeType}');
+    }
+  }
+
+  Future<void> _allowFirewall() async {
+    setState(() {
+      _askingFirewall = true;
+      _firewallDeclined = false;
+    });
+    var open = false;
+    try {
+      open = await _firewall.allow();
+    } catch (e) {
+      DebugLog.instance.log('LINK', 'firewall allow failed: ${e.runtimeType}');
+    }
+    DebugLog.instance.log('LINK', 'firewall rule ${open ? 'added' : 'declined'}');
+    if (!mounted) return;
+    setState(() {
+      _askingFirewall = false;
+      _firewallOpen = open;
+      _firewallDeclined = !open;
+    });
   }
 
   Future<void> _start() async {
@@ -133,6 +173,14 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
                       ),
                     ],
                   ),
+                  if (_firewallOpen == false) ...[
+                    const SizedBox(height: 18),
+                    _FirewallCard(
+                      asking: _askingFirewall,
+                      declined: _firewallDeclined,
+                      onAllow: () => unawaited(_allowFirewall()),
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 24),
                 Text(
@@ -147,6 +195,63 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FirewallCard extends StatelessWidget {
+  const _FirewallCard({
+    required this.asking,
+    required this.declined,
+    required this.onAllow,
+  });
+
+  final bool asking;
+  final bool declined;
+  final VoidCallback onAllow;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.shield_outlined, color: AppColors.warning, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    declined
+                        ? t.desktopLinkFirewallDeclined
+                        : t.desktopLinkFirewallHint,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: asking ? null : onAllow,
+              icon: asking
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.admin_panel_settings_outlined, size: 18),
+              label: Text(t.desktopLinkFirewallAllow),
+            ),
+          ],
         ),
       ),
     );

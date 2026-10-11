@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,11 +124,18 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           await ref.read(desktopLinkServiceProvider).sendTo(computer);
         } catch (error) {
           if (!mounted) return;
+          // Nothing answered on any address the code names: almost always
+          // another Wi-Fi, or the computer's firewall. Said in words rather
+          // than as "SocketException: Connection timed out (OS Error…)".
+          final unreachable = error is SocketException;
           showGlassToast(
             context,
-            '$error'.replaceFirst(RegExp(r'^\w*(Error|Exception):\s*'), ''),
+            unreachable
+                ? t.desktopLinkUnreachable
+                : '$error'
+                    .replaceFirst(RegExp(r'^\w*(Error|Exception):\s*'), ''),
             tone: ToastTone.danger,
-            duration: const Duration(seconds: 5),
+            duration: Duration(seconds: unreachable ? 8 : 5),
           );
           await _resume();
           return;

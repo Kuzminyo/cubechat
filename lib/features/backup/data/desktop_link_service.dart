@@ -22,9 +22,14 @@ class DesktopLinkPayload {
     required this.port,
     required this.token,
     required this.password,
+    this.hosts = const [],
   });
 
   static const prefix = 'cubechat:l1:';
+
+  /// How many addresses a code may name — enough for Wi-Fi beside a few
+  /// virtual adapters, few enough to keep the QR easy to scan.
+  static const maxHosts = 4;
 
   /// An https link for scanners that know nothing of cubechat, with the token
   /// in the fragment, which a browser never sends anywhere — as `t1` does.
@@ -36,10 +41,21 @@ class DesktopLinkPayload {
   /// 32 random bytes.
   static const minSecret = 20;
 
+  /// The best address — the only one builds before 1142 read.
   final String host;
   final int port;
   final String token;
   final String password;
+
+  /// Every address the computer can be reached on, best first. A computer
+  /// with VirtualBox, Hyper-V or WSL has several private addresses and only
+  /// one of them is on the phone's Wi-Fi; which one cannot be told from the
+  /// computer's side for certain, so the phone tries them all.
+  final List<String> hosts;
+
+  /// Where the phone should try to connect: [hosts], or [host] in a code from
+  /// an older build.
+  List<String> get candidates => hosts.isEmpty ? [host] : hosts;
 
   String encode() =>
       linkPrefix +
@@ -49,6 +65,7 @@ class DesktopLinkPayload {
             utf8.encode(
               jsonEncode({
                 'host': host,
+                if (hosts.isNotEmpty) 'hosts': hosts,
                 'port': port,
                 'token': token,
                 'password': password,
@@ -82,11 +99,23 @@ class DesktopLinkPayload {
           password.length < minSecret) {
         return null;
       }
+      // Each address is checked as [host] is: one off the local network
+      // makes the whole code a stranger's.
+      final rawHosts = value['hosts'];
+      final hosts = <String>[];
+      if (rawHosts != null) {
+        if (rawHosts is! List || rawHosts.length > maxHosts) return null;
+        for (final h in rawHosts) {
+          if (h is! String || !isLocalNetworkHost(h)) return null;
+          hosts.add(h);
+        }
+      }
       return DesktopLinkPayload(
         host: host,
         port: port,
         token: token,
         password: password,
+        hosts: hosts,
       );
     } catch (_) {
       return null;
@@ -139,16 +168,16 @@ class DesktopLinkService {
     required Future<void> Function(File destination, String password)
         createBackup,
     required Future<void> Function(File source, String password) restoreBackup,
-    Future<String?> Function()? localHost,
+    Future<List<String>> Function()? localHosts,
     Future<File> Function(String role)? tempFile,
   })  : _createBackup = createBackup,
         _restoreBackup = restoreBackup,
-        _localHost = localHost ?? localNetworkIpv4,
+        _localHosts = localHosts ?? localNetworkAddresses,
         _tempFile = tempFile ?? transferTempFile;
 
   final Future<void> Function(File destination, String password) _createBackup;
   final Future<void> Function(File source, String password) _restoreBackup;
-  final Future<String?> Function() _localHost;
+  final Future<List<String>> Function() _localHosts;
   final Future<File> Function(String role) _tempFile;
 
   static const int _ok = 0x01;
@@ -162,13 +191,16 @@ class DesktopLinkService {
 
   /// The computer's side: serve once, and show [DesktopLinkSession.qr].
   Future<DesktopLinkSession> startReceiving() async {
-    final host = await _localHost();
-    if (host == null) {
+    final hosts = (await _localHosts())
+        .take(DesktopLinkPayload.maxHosts)
+        .toList();
+    if (hosts.isEmpty) {
       throw StateError('Connect the computer to a network first');
     }
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final payload = DesktopLinkPayload(
-      host: host,
+      host: hosts.first,
+      hosts: hosts.length > 1 ? hosts : const [],
       port: server.port,
       token: _randomText(24),
       password: _randomText(32),
@@ -277,11 +309,7 @@ class DesktopLinkService {
       if (size <= 0 || size > PhoneTransferService.maxTransferBytes) {
         throw const FormatException('transfer is too large or empty');
       }
-      final socket = await Socket.connect(
-        payload.host,
-        payload.port,
-        timeout: const Duration(seconds: 12),
-      );
+      final socket = await _connectFirst(payload.candidates, payload.port);
       try {
         final length = ByteData(8)..setUint64(0, size);
         socket
@@ -309,6 +337,69 @@ class DesktopLinkService {
       try {
         if (await archive.exists()) await archive.delete();
       } catch (_) {}
+    }
+  }
+
+  /// Dials every address at once and keeps the first that answers.
+  ///
+  /// One after another would cost the full timeout for each address that is
+  /// not on this Wi-Fi — an unroutable one simply never answers — before the
+  /// right one is even tried.
+  static Future<Socket> _connectFirst(List<String> hosts, int port) async {
+    const timeout = Duration(seconds: 12);
+    final tasks = <ConnectionTask<Socket>>[];
+    final winner = Completer<Socket>();
+    Object? lastError;
+    var pending = hosts.length;
+    for (final host in hosts) {
+      final ConnectionTask<Socket> task;
+      try {
+        task = await Socket.startConnect(host, port);
+      } catch (e) {
+        lastError = e;
+        pending--;
+        continue;
+      }
+      tasks.add(task);
+      unawaited(
+        task.socket.then(
+          (socket) {
+            if (winner.isCompleted) {
+              socket.destroy();
+            } else {
+              tasks.remove(task);
+              winner.complete(socket);
+            }
+          },
+          onError: (Object e) {
+            lastError = e;
+            if (--pending == 0 && !winner.isCompleted) {
+              winner.completeError(e);
+            }
+          },
+        ),
+      );
+    }
+    if (pending == 0 && !winner.isCompleted) {
+      winner.completeError(lastError ?? StateError('no address to connect'));
+    }
+    final timer = Timer(timeout, () {
+      if (!winner.isCompleted) {
+        winner.completeError(
+          lastError ??
+              const SocketException('The computer did not answer in time'),
+        );
+      }
+    });
+    try {
+      return await winner.future;
+    } finally {
+      timer.cancel();
+      // The losers: a connect still in flight is abandoned, and one that
+      // lands later is destroyed by its own callback above.
+      for (final task in tasks) {
+        task.cancel();
+      }
     }
   }
 
