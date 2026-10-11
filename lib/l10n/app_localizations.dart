@@ -4556,6 +4556,36 @@ abstract class AppLocalizations {
   /// **'The computer is connected'**
   String get desktopLinkSent;
 
+  /// No description provided for @desktopLinkImportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Move the account from your phone'**
+  String get desktopLinkImportTitle;
+
+  /// No description provided for @desktopLinkImportHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the phone a code, and this computer becomes a copy of its account'**
+  String get desktopLinkImportHint;
+
+  /// No description provided for @desktopLinkImportConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace the account on this computer?'**
+  String get desktopLinkImportConfirmTitle;
+
+  /// No description provided for @desktopLinkImportConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This computer\'s keys, contacts and chats will be replaced by the phone\'s account. If you still need this one, make a backup first.'**
+  String get desktopLinkImportConfirmMessage;
+
+  /// No description provided for @desktopLinkImportConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get desktopLinkImportConfirmAction;
+
   /// No description provided for @desktopLinkUnreachable.
   ///
   /// In en, this message translates to:

@@ -18,7 +18,9 @@ class DataSectionScreen extends ConsumerWidget {
             _inset(const PhoneTransferCard(framed: false), vertical: 0),
             // A phone hands its account to a computer, never the other way.
             if (PlatformInfo.isMobile)
-              _inset(const ConnectComputerRow(), vertical: 0),
+              _inset(const ConnectComputerRow(), vertical: 0)
+            else if (!PlatformInfo.isWeb)
+              _inset(const ImportFromPhoneRow(), vertical: 0),
             // An update installed from here keeps lock-screen calls on. See
             // [SelfUpdate].
             if (PlatformInfo.isAndroid) _inset(const _InstallUpdateRow()),

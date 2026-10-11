@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../onboarding/data/onboarding_controller.dart';
@@ -266,8 +267,63 @@ class ConnectComputerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return InkWell(
+    return _LinkRow(
+      icon: Icons.computer_rounded,
+      title: t.desktopLinkConnectTitle,
+      hint: t.desktopLinkConnectHint,
       onTap: () => context.push('/qr/scan'),
+    );
+  }
+}
+
+/// The computer's way in once it already has an account: the same code as in
+/// onboarding, from Data. Onboarding was the only door, so a computer that
+/// had started with an account of its own could never take the phone's.
+///
+/// Asked first — the restore replaces this computer's keys, contacts and
+/// chats, and an account made here exists nowhere else.
+class ImportFromPhoneRow extends StatelessWidget {
+  const ImportFromPhoneRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return _LinkRow(
+      icon: Icons.phonelink_rounded,
+      title: t.desktopLinkImportTitle,
+      hint: t.desktopLinkImportHint,
+      onTap: () async {
+        final confirmed = await confirmAction(
+          context,
+          title: t.desktopLinkImportConfirmTitle,
+          message: t.desktopLinkImportConfirmMessage,
+          confirmLabel: t.desktopLinkImportConfirmAction,
+        );
+        if (confirmed && context.mounted) {
+          await context.push('/desktop-link');
+        }
+      },
+    );
+  }
+}
+
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({
+    required this.icon,
+    required this.title,
+    required this.hint,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -284,7 +340,7 @@ class ConnectComputerRow extends StatelessWidget {
                 ),
               ),
               child: Icon(
-                Icons.computer_rounded,
+                icon,
                 color: AppColors.brandPrimary,
                 size: 19,
               ),
@@ -295,7 +351,7 @@ class ConnectComputerRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    t.desktopLinkConnectTitle,
+                    title,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 14,
@@ -304,7 +360,7 @@ class ConnectComputerRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    t.desktopLinkConnectHint,
+                    hint,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

@@ -2646,6 +2646,24 @@ class AppLocalizationsUk extends AppLocalizations {
   String get desktopLinkSent => 'Комп\'ютер підключено';
 
   @override
+  String get desktopLinkImportTitle => 'Перенести акаунт з телефона';
+
+  @override
+  String get desktopLinkImportHint =>
+      'Покажіть телефону код — і цей комп\'ютер стане копією його акаунта';
+
+  @override
+  String get desktopLinkImportConfirmTitle =>
+      'Замінити акаунт на цьому комп\'ютері?';
+
+  @override
+  String get desktopLinkImportConfirmMessage =>
+      'Ключі, контакти й чати цього комп\'ютера буде замінено акаунтом телефона. Якщо цей акаунт ще потрібен, спершу зробіть резервну копію.';
+
+  @override
+  String get desktopLinkImportConfirmAction => 'Продовжити';
+
+  @override
   String get desktopLinkUnreachable =>
       'Не вдалося достукатися до комп\'ютера. Обидва мають бути в одній мережі Wi-Fi, а на комп\'ютері CubeChat має бути дозволений у брандмауері.';
 

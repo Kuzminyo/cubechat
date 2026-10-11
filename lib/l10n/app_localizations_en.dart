@@ -2617,6 +2617,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get desktopLinkSent => 'The computer is connected';
 
   @override
+  String get desktopLinkImportTitle => 'Move the account from your phone';
+
+  @override
+  String get desktopLinkImportHint =>
+      'Show the phone a code, and this computer becomes a copy of its account';
+
+  @override
+  String get desktopLinkImportConfirmTitle =>
+      'Replace the account on this computer?';
+
+  @override
+  String get desktopLinkImportConfirmMessage =>
+      'This computer\'s keys, contacts and chats will be replaced by the phone\'s account. If you still need this one, make a backup first.';
+
+  @override
+  String get desktopLinkImportConfirmAction => 'Continue';
+
+  @override
   String get desktopLinkUnreachable =>
       'Could not reach the computer. Both need to be on the same Wi-Fi, and on the computer CubeChat must be allowed through the firewall.';
 
