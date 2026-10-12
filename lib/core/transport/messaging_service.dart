@@ -3651,6 +3651,40 @@ class MessagingService {
     );
   }
 
+  /// Tell this account's other devices about a call — a
+  /// [CallSignalKind.device] notice, addressed to our own key.
+  ///
+  /// Relay only, and only to our own Nostr pubkey: the other devices are
+  /// wherever the internet is, never a Bluetooth neighbour, and nobody else
+  /// can open a frame sealed to this key. No wake: a device that is closed has
+  /// no call to stop ringing. Our own copy coming back is dropped by the
+  /// dedup cache like every control frame's (see [_sealedControlFrame]).
+  Future<ControlDelivery> sendCallSignalToOwnDevices(CallSignal signal) async {
+    final transport = _nostr;
+    if (transport == null || _disposed) return ControlDelivery.notSent;
+    if (!await _ensureRelayAwakeForSend()) return ControlDelivery.notSent;
+    final identity = await _ref.read(identityProvider.future);
+    final frame = await _sealedControlFrame(
+      peerPub: Uint8List.fromList(identity.publicKey),
+      type: InnerPayloadType.callSignal,
+      innerBody: signal.encode(),
+    );
+    try {
+      final receipt = await transport.sendFrame(
+        recipientNpubHex: transport.npubHex,
+        frameBytes: frame,
+      );
+      return combineControlDelivery(
+        meshLinks: 0,
+        direct: false,
+        relay: RelayPublishOutcome.fromReceipt(receipt),
+      );
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'notice to own devices failed: $e');
+      return ControlDelivery.notSent;
+    }
+  }
+
   /// Shortest gap between two "still typing" frames.
   ///
   /// The composer calls [announceTyping] on every keystroke, so without this a
@@ -7362,6 +7396,7 @@ class MessagingService {
           // store still loading — or a known contact would be dropped.
           final messages = _ref.read(messagesControllerProvider.notifier);
           await messages.loaded;
+          final own = await _ref.read(identityProvider.future);
           final verdict = strangerVerdict(
             reach: reach,
             viaInternet: true,
@@ -7370,6 +7405,7 @@ class MessagingService {
             accepted: requests.accepted.contains(sender),
             alreadyPending: requests.pending.contains(sender),
             historyKnown: !messages.loadFailed,
+            fromSelf: _bytesEqual(senderPub, Uint8List.fromList(own.publicKey)),
           );
           if (verdict == StrangerVerdict.drop) {
             DebugLog.instance

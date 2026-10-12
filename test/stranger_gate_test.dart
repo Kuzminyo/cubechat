@@ -76,4 +76,25 @@ void main() {
     expect(StrangerReach.fromWire(null), StrangerReach.all);
     expect(StrangerReach.fromWire('maybe'), StrangerReach.all);
   });
+
+  test('our own other device is never a stranger', () {
+    // A computer signed in with the phone's account tells the phone about its
+    // calls by writing to their shared key — which is in nobody's contacts.
+    // Under "nobody" that was dropped; under "by request" it made the person
+    // a message request from themselves (2026-10-12).
+    for (final reach in StrangerReach.values) {
+      expect(
+        strangerVerdict(
+          reach: reach,
+          viaInternet: true,
+          wroteToThem: false,
+          accepted: false,
+          alreadyPending: false,
+          fromSelf: true,
+        ),
+        StrangerVerdict.deliver,
+        reason: '$reach',
+      );
+    }
+  });
 }

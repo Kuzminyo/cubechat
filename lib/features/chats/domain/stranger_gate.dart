@@ -22,7 +22,12 @@ StrangerVerdict strangerVerdict({
   required bool accepted,
   required bool alreadyPending,
   bool historyKnown = true,
+  bool fromSelf = false,
 }) {
+  // Our own key, from another device signed in with this account: the
+  // computer telling the phone it has the call. Nobody's contact, and never a
+  // stranger.
+  if (fromSelf) return StrangerVerdict.deliver;
   if (!viaInternet || wroteToThem || accepted) return StrangerVerdict.deliver;
   if (alreadyPending) return StrangerVerdict.request;
   return switch (reach) {
