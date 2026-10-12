@@ -47,6 +47,27 @@ abstract final class CallTimings {
   /// as long as an invite can still pass [inviteIsFresh]: its age limit plus
   /// the clock skew a sender is allowed to have.
   static const Duration endedMemory = Duration(seconds: 90);
+
+  /// How often a device in a call says so again to this account's other
+  /// devices. One call at a time per account (2026-10-12): a phone and a
+  /// computer signed in with its account have to agree on which has it.
+  static const Duration ownDeviceHeartbeat = Duration(seconds: 20);
+
+  /// How long another device counts as being in a call after it last said
+  /// so. Three missed repeats: a device that crashed or lost the internet
+  /// mid-call must not keep the whole account from calling for good.
+  static const Duration ownDeviceSilence = Duration(seconds: 60);
+}
+
+/// Whether a notice from another device of this account, stamped [sentAtMs],
+/// still says something about now. A relay hands its stored events over again
+/// on every reconnect; an hour-old "busy" read as news would keep this
+/// account from calling for a minute.
+bool ownDeviceNoticeIsFresh({required int sentAtMs, required DateTime now}) {
+  final age = now.millisecondsSinceEpoch - sentAtMs;
+  if (age < 0) return -age <= CallTimings.clockSkew.inMilliseconds;
+  return age <=
+      (CallTimings.ownDeviceSilence + CallTimings.clockSkew).inMilliseconds;
 }
 
 /// Whether an invite stamped [sentAtMs] should ring a phone at [now].

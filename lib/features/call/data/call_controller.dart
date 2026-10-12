@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'call_microphone_permission.dart';
 
+import '../../../core/crypto/identity_service.dart';
 import '../../../core/transport/call_signal.dart';
 import '../../../core/transport/control_delivery.dart';
 import '../../../core/util/platform_capabilities.dart';
@@ -50,8 +51,12 @@ class CallController extends ChangeNotifier {
     this.peerAvatar,
     bool Function(String peer)? acceptsCallFrom,
     bool Function()? foreground,
+    String Function()? ownId,
+    Future<ControlDelivery> Function(CallSignal signal)? notifyOwnDevices,
   })  : _foreground = foreground ?? _alwaysForeground,
-        acceptsCallFrom = acceptsCallFrom ?? _acceptsEverybody {
+        acceptsCallFrom = acceptsCallFrom ?? _acceptsEverybody,
+        ownId = ownId ?? _nobody,
+        notifyOwnDevices = notifyOwnDevices ?? _nowhere {
     _machine =
         CallStateMachine(send: _send, onOutcome: _outcome, now: DateTime.now)
           ..addListener(_changed);
@@ -78,6 +83,30 @@ class CallController extends ChangeNotifier {
   /// does on a phone.
   final bool Function(String peer) acceptsCallFrom;
   static bool _acceptsEverybody(String _) => true;
+
+  /// This account's own id, in the form a signal's chat id takes — what a
+  /// notice from another device of this account arrives from. Empty: nobody
+  /// is ourselves, and no notice is believed.
+  final String Function() ownId;
+  static String _nobody() => '';
+
+  /// Puts a [CallSignalKind.device] notice on the way to this account's other
+  /// devices. One call at a time per account (2026-10-12).
+  final Future<ControlDelivery> Function(CallSignal signal) notifyOwnDevices;
+  static Future<ControlDelivery> _nowhere(CallSignal _) =>
+      Future.value(ControlDelivery.notSent);
+
+  /// The call another device of this account has, while it keeps saying so —
+  /// see [CallTimings.ownDeviceSilence].
+  Uint8List? _elsewhereCall;
+  Timer? _elsewhereSilence;
+
+  /// The call this device told the others it has, and the repeat of it.
+  Uint8List? _announced;
+  Timer? _heartbeat;
+
+  /// Whether another device of this account is in a call right now.
+  bool get callElsewhere => _elsewhereCall != null;
 
   /// Read at the moment a connection is built, not captured at construction:
   /// the switch can change between two calls without restarting anything.
@@ -171,7 +200,108 @@ class CallController extends ChangeNotifier {
     _updateRinging();
     _updateOngoing();
     _updateNearEar();
+    _updateOwnDevices();
     if (!_disposed) notifyListeners();
+  }
+
+  /// Keep this account's other devices told whether this one has a call.
+  ///
+  /// "Has" from the moment it is placed or answered until it is over — not
+  /// while it only rings here, which every device of the account does at once.
+  /// Driven off the phase, like the ringing, so no way a call can end is
+  /// missed.
+  void _updateOwnDevices() {
+    final id = _machine.callId;
+    final mine = !_disposed &&
+        id != null &&
+        _machine.isLive &&
+        phase != CallPhase.incoming;
+    final announced = _announced;
+    if (mine) {
+      if (announced != null && listEquals(announced, id)) return;
+      _announced = Uint8List.fromList(id);
+      _notifyOwn(id, CallDeviceState.busy);
+      _heartbeat?.cancel();
+      _heartbeat = Timer.periodic(
+        CallTimings.ownDeviceHeartbeat,
+        (_) => _notifyOwn(_announced!, CallDeviceState.busy),
+      );
+      return;
+    }
+    if (announced == null) return;
+    _announced = null;
+    _heartbeat?.cancel();
+    _heartbeat = null;
+    _notifyOwn(announced, CallDeviceState.free);
+  }
+
+  void _notifyOwn(Uint8List callId, CallDeviceState state) {
+    final signal = CallSignal.device(
+      callId: callId,
+      state: state,
+      sentAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    unawaited(
+      notifyOwnDevices(signal).then(
+        (delivery) => _log('told own devices ${state.name} ${_hex(callId)}: '
+            '$delivery'),
+        onError: (Object e) =>
+            _log('telling own devices ${state.name} failed: $e'),
+      ),
+    );
+  }
+
+  /// A notice from another device of this account. See [CallSignalKind.device].
+  void _fromOwnDevice(CallSignal signal) {
+    if (!ownDeviceNoticeIsFresh(
+      sentAtMs: signal.sentAtMs!,
+      now: DateTime.now(),
+    )) {
+      _log('own device ${signal.deviceState!.name} ${_hex(signal.callId)} '
+          'dropped as stale');
+      return;
+    }
+    final id = signal.callId;
+    switch (signal.deviceState!) {
+      case CallDeviceState.busy:
+        _elsewhereCall = Uint8List.fromList(id);
+        _elsewhereSilence?.cancel();
+        _elsewhereSilence = Timer(CallTimings.ownDeviceSilence, () {
+          _log('own device went quiet about ${_hex(id)}: counted as over');
+          _elsewhereCall = null;
+          _elsewhereSilence = null;
+        });
+        // Ringing here — for this call or any other: the device in the call
+        // answers the caller, busy if need be.
+        if (phase == CallPhase.incoming) {
+          _log('another device of this account has a call: stop ringing');
+          _machine.endElsewhere();
+          return;
+        }
+        // Both devices dialled at once. The same comparison as two people
+        // dialling each other, so both devices reach the same answer alone.
+        final mine = _machine.callId;
+        if ((phase == CallPhase.dialing || phase == CallPhase.ringing) &&
+            mine != null &&
+            !listEquals(mine, id) &&
+            !winsGlare(mine: mine, theirs: id)) {
+          _log('another device of this account dialled at the same moment: '
+              'giving way');
+          _machine.yieldToOwnDevice();
+        }
+      case CallDeviceState.declined:
+        if (phase == CallPhase.incoming &&
+            listEquals(_machine.callId, id)) {
+          _log('declined on another device of this account: stop ringing');
+          _machine.endElsewhere();
+        }
+      case CallDeviceState.free:
+        if (listEquals(_elsewhereCall, id)) {
+          _elsewhereCall = null;
+          _elsewhereSilence?.cancel();
+          _elsewhereSilence = null;
+        }
+    }
   }
 
   bool _nearEarWatched = false;
@@ -523,6 +653,15 @@ class CallController extends ChangeNotifier {
       _log('dial ${_short(peer)} ignored: a call is already on');
       return;
     }
+    // One call at a time per account: another device of it has one.
+    if (callElsewhere) {
+      _log('dial ${_short(peer)} refused: another device of this account '
+          'is in a call');
+      peerId = peer;
+      error = 'elsewhere';
+      _changed();
+      return;
+    }
     if (!allowed(peer)) {
       _log('dial ${_short(peer)} refused: not a known, unblocked contact');
       return;
@@ -652,6 +791,22 @@ class CallController extends ChangeNotifier {
     final reason = signal.reason;
     _log('received ${signal.kind.name} ${_hex(signal.callId)} from '
         '${_short(event.chatId)}${reason == null ? '' : ' (reason ${reason.name})'}');
+    // Our own key: another device of this account. Before [allowed], which
+    // asks the contact list — and nobody is their own contact.
+    final me = ownId();
+    final fromSelf = me.isNotEmpty && event.chatId == me;
+    if (signal.kind == CallSignalKind.device) {
+      if (fromSelf) {
+        _fromOwnDevice(signal);
+      } else {
+        _log('ignored: a device notice from somebody else');
+      }
+      return;
+    }
+    if (fromSelf) {
+      _log('ignored: ${signal.kind.name} from our own key');
+      return;
+    }
     if (!allowed(event.chatId)) {
       _log(
           'ignored: ${_short(event.chatId)} is not a known, unblocked contact');
@@ -665,6 +820,12 @@ class CallController extends ChangeNotifier {
       // after `ringingAck`, which is true.
       if (!PlatformCapabilities.current.calls) {
         _log('invite ${_hex(signal.callId)} left to a phone: no calls here');
+        return;
+      }
+      // Another device of this account is in a call. It answers this caller
+      // busy itself; ringing here as well would be a second call.
+      if (callElsewhere) {
+        _log('invite ${_hex(signal.callId)} left to the device in a call');
         return;
       }
       if (!inviteIsFresh(sentAtMs: signal.sentAtMs!, now: DateTime.now())) {
@@ -881,8 +1042,13 @@ class CallController extends ChangeNotifier {
     })();
   }
 
-  void decline({CallEndSource source = CallEndSource.button}) =>
-      _machine.decline(source: source);
+  void decline({CallEndSource source = CallEndSource.button}) {
+    final id = _machine.callId;
+    final ringing = phase == CallPhase.incoming;
+    _machine.decline(source: source);
+    // The other devices are still ringing for it.
+    if (ringing && id != null) _notifyOwn(id, CallDeviceState.declined);
+  }
 
   void hangUp({CallEndSource source = CallEndSource.button}) {
     if (phase == CallPhase.idle || phase == CallPhase.ended) {
@@ -1040,6 +1206,8 @@ class CallController extends ChangeNotifier {
     ++_generation;
     _updateRinging();
     _updateNearEar();
+    _updateOwnDevices();
+    _elsewhereSilence?.cancel();
     unawaited(_signals.cancel());
     unawaited(_surfaceActions.cancel());
     _machine.dispose();
@@ -1054,6 +1222,16 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     signals: messaging.callSignals,
     send: (peer, signal) =>
         messaging.sendCallSignal(canonicalId: peer, signal: signal),
+    // Our X25519 key in hex — the form a signal's chat id takes, which is
+    // what a notice from another device of this account arrives as. Empty
+    // until the identity has loaded, and then no notice is believed.
+    ownId: () {
+      final key = ref.read(identityProvider).valueOrNull?.publicKey;
+      return key == null
+          ? ''
+          : key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    },
+    notifyOwnDevices: messaging.sendCallSignalToOwnDevices,
     obtainTurn: () => ref.read(turnCredentialsProvider).obtain(),
     microphone: () async =>
         PlatformInfo.isMobile && await requestCallMicrophonePermission(),

@@ -141,8 +141,16 @@ void main() {
   /// for relay `OK`s is modelled.
   late Map<CallSignalKind, Future<ControlDelivery> Function()> deliveries;
 
+  /// What went to this account's own other devices.
+  var own = <CallSignal>[];
+
   CallController build() => CallController(
         signals: signals.stream,
+        ownId: () => 'me',
+        notifyOwnDevices: (signal) {
+          own.add(signal);
+          return Future.value(confirmed);
+        },
         send: (peer, signal) {
           sent.add(signal);
           final deliver = deliveries[signal.kind];
@@ -169,6 +177,7 @@ void main() {
     signals = StreamController<ReceivedCallSignal>(sync: true);
     media = FakeMedia();
     sent = [];
+    own = [];
     events = [];
     outcomes = [];
     deliveries = {};
@@ -1038,6 +1047,190 @@ void main() {
       await call.toggleMute();
       expect(call.micMuted, isFalse);
       expect(media.muted, isEmpty);
+    });
+  });
+
+  // "Два или более звонков не могут уходить с одного ака" (2026-10-12): the
+  // phone and a computer signed in with its account tell each other about
+  // their calls, addressed to the key they share.
+  group('one call at a time per account', () {
+    final elsewhereId = Uint8List(callIdLen); // all zeros: the lowest id
+
+    CallSignal notice(
+      Uint8List callId,
+      CallDeviceState state, {
+      Duration age = Duration.zero,
+    }) =>
+        CallSignal.device(
+          callId: callId,
+          state: state,
+          sentAtMs: DateTime.now().subtract(age).millisecondsSinceEpoch,
+        );
+
+    void fromMe(CallSignal signal) =>
+        signals.add((chatId: 'me', signal: signal));
+
+    /// Runs [body] with the controller built inside the fake zone — see the
+    /// deadline tests above for why.
+    void inZone(void Function(FakeAsync async) body) {
+      fakeAsync((async) {
+        call.dispose();
+        unawaited(signals.close());
+        signals = StreamController<ReceivedCallSignal>(sync: true);
+        call = build();
+        body(async);
+        call.dispose();
+        disposedByTest = true;
+        async.flushMicrotasks();
+      });
+    }
+
+    test('answered on the other device, this one stops without a word', () {
+      inZone((async) {
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        expect(call.phase, CallPhase.incoming);
+        sent.clear();
+        fromMe(notice(id(1), CallDeviceState.busy));
+        async.flushMicrotasks();
+        expect(call.active, isFalse);
+        expect(sent, isEmpty, reason: 'the caller has the other answer');
+        expect(outcomes.single.cause, CallEndCause.elsewhere);
+      });
+    });
+
+    test('declined on the other device, this one stops too', () {
+      inZone((async) {
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        sent.clear();
+        fromMe(notice(id(1), CallDeviceState.declined));
+        async.flushMicrotasks();
+        expect(call.active, isFalse);
+        expect(sent, isEmpty);
+      });
+    });
+
+    test('no dialling while the other device has a call', () {
+      inZone((async) {
+        fromMe(notice(elsewhereId, CallDeviceState.busy));
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(call.error, 'elsewhere');
+        expect(call.active, isFalse);
+        expect(sent, isEmpty);
+      });
+    });
+
+    test('a new caller does not ring here while the other device talks', () {
+      inZone((async) {
+        fromMe(notice(elsewhereId, CallDeviceState.busy));
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        expect(call.phase, CallPhase.idle);
+        expect(sent, isEmpty,
+            reason: 'the device in the call answers busy for both');
+      });
+    });
+
+    test('a device that went silent stops counting after a minute', () {
+      inZone((async) {
+        fromMe(notice(elsewhereId, CallDeviceState.busy));
+        async.elapse(CallTimings.ownDeviceSilence + const Duration(seconds: 1));
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+      });
+    });
+
+    test('free from the other device lets this one call at once', () {
+      inZone((async) {
+        fromMe(notice(elsewhereId, CallDeviceState.busy));
+        fromMe(notice(elsewhereId, CallDeviceState.free));
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+      });
+    });
+
+    test('a call here is announced, repeated while on, and freed at the end',
+        () {
+      inZone((async) {
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(own.single.deviceState, CallDeviceState.busy);
+        expect(own.single.callId, equals(dialledId()));
+        // Ringing there, so the call outlives the eight-second ack deadline.
+        receive(CallSignal.ringing(dialledId()));
+        async.elapse(CallTimings.ownDeviceHeartbeat);
+        expect(own, hasLength(2));
+        expect(own.last.deviceState, CallDeviceState.busy);
+        call.hangUp();
+        async.flushMicrotasks();
+        expect(own.last.deviceState, CallDeviceState.free);
+        final count = own.length;
+        async.elapse(CallTimings.ownDeviceHeartbeat * 2);
+        expect(own, hasLength(count), reason: 'no repeats once it is over');
+      });
+    });
+
+    test('answering here tells the other devices', () {
+      inZone((async) {
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        expect(own, isEmpty, reason: 'ringing is not having the call');
+        unawaited(call.answer());
+        async.flushMicrotasks();
+        expect(own.single.deviceState, CallDeviceState.busy);
+        expect(own.single.callId, equals(id(1)));
+      });
+    });
+
+    test('declining here tells the other devices', () {
+      inZone((async) {
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        call.decline();
+        async.flushMicrotasks();
+        expect(own.single.deviceState, CallDeviceState.declined);
+      });
+    });
+
+    test('both devices dialling at once: the higher id gives way', () {
+      inZone((async) {
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        sent.clear();
+        fromMe(notice(elsewhereId, CallDeviceState.busy));
+        async.flushMicrotasks();
+        expect(call.active, isFalse);
+        expect(sent.single.kind, CallSignalKind.hangup);
+        expect(outcomes.single.cause, CallEndCause.glareLost);
+      });
+    });
+
+    test('a device notice from anybody but ourselves is ignored', () {
+      inZone((async) {
+        receive(notice(elsewhereId, CallDeviceState.busy));
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+      });
+    });
+
+    test('an old notice a relay handed over again is not news', () {
+      inZone((async) {
+        fromMe(
+          notice(
+            elsewhereId,
+            CallDeviceState.busy,
+            age: const Duration(minutes: 5),
+          ),
+        );
+        unawaited(call.dial('peer'));
+        async.flushMicrotasks();
+        expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+      });
     });
   });
 }
