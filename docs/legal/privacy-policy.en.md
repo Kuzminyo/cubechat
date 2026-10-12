@@ -237,7 +237,10 @@ message, to the chat you chose, for the time you choose.
 - **Map tiles** are fetched from OpenStreetMap, CARTO, Esri ArcGIS,
   OpenTopoMap or Google Maps, depending on the layer you pick. Those servers
   see your IP address and which map squares you asked for — which reveals
-  roughly where you are looking, though not necessarily where you are.
+  roughly where you are looking, though not necessarily where you are. On a
+  computer the map always comes from the first four, since Google's map has no
+  Windows version. A computer only shows the map: it never reads or sends its
+  own location, even when the phone it was signed in from shares one.
 - **Reverse geocoding** (turning coordinates into a street name) is performed
   by the operating system's own geocoder — Apple's or Google's — which
   receives the coordinates being named.

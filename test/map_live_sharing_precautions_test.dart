@@ -2,6 +2,7 @@ import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/shared_location.dart';
 import 'package:cubechat/core/util/app_lifecycle.dart';
 import 'package:cubechat/core/util/location_service.dart';
+import 'package:cubechat/core/util/platform_capabilities.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/map/data/map_friends_controller.dart';
 import 'package:cubechat/features/map/data/map_presence_controller.dart';
@@ -88,6 +89,7 @@ void main() {
     bool sharing = true,
     Set<String> friends = const {'alice', 'bob'},
     Map<String, KnownPeer>? peers,
+    PlatformCapabilities caps = PlatformCapabilities.phone,
   }) {
     messaging = _Messaging();
     // On screen, as when somebody is looking at the map. Android will not
@@ -102,6 +104,7 @@ void main() {
         () => _Peers(peers ?? {for (final id in friends) id: _peer(id)}),
       ),
       messagingServiceProvider.overrideWithValue(messaging),
+      platformCapabilitiesProvider.overrideWithValue(caps),
     ]);
     addTearDown(container.dispose);
     // A position already in hand, so no beacon has to ask a GPS this test
@@ -169,6 +172,33 @@ void main() {
       {'alice', 'bob'},
     );
     expect(messaging.sent.where((s) => !s.$2.retraction), isEmpty);
+  });
+
+  group('a computer signed in with the phone\'s account', () {
+    // The switch, the friends and the identity all arrive with the phone's
+    // copy, so a computer would beacon its own position as that person — and
+    // their pin would jump between the phone and the desk. Found on
+    // 2026-10-12 while putting the map on the computer.
+    ProviderContainer onComputer() =>
+        build(caps: PlatformCapabilities.desktop);
+
+    test('sends no position though the switch came on with the copy',
+        () async {
+      final c = onComputer();
+      c.read(mapPresenceControllerProvider);
+      await _settle();
+      expect(messaging.sent, isEmpty);
+    });
+
+    test('never takes the phone\'s pin back', () async {
+      final c = onComputer();
+      c.read(mapPresenceControllerProvider);
+      await _settle();
+      await c.read(privacySettingsProvider.notifier).setShareMapLocation(false);
+      await c.read(mapPresenceControllerProvider.notifier).withdraw();
+      await _settle();
+      expect(messaging.sent, isEmpty);
+    });
   });
 
   test('sharing that was never allowed sends nothing', () async {

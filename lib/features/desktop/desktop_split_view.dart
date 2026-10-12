@@ -13,6 +13,7 @@ import '../chat/presentation/chat_screen.dart';
 import '../chats/models/chat.dart';
 import '../chats/presentation/chats_list_screen.dart';
 import '../peers/presentation/widgets/peer_avatar.dart';
+import '../profile/data/nav_bar_controller.dart' show NavDestination;
 import 'desktop_rail.dart';
 
 /// The conversation open in the right-hand pane of a computer window.
@@ -171,10 +172,15 @@ class DesktopSplitView extends ConsumerWidget {
     final chosen = ref.watch(desktopListCollapsedProvider);
     final faces =
         onChats && (!fits || (chosen ?? mode == DesktopMode.compact));
-    final listW = fits
-        ? ref.watch(desktopListWidthProvider).clamp(listMin, room).toDouble()
-        : listWidth;
-    final middle = faces ? compactWidth : listW;
+    // The Map is a page to look across, not a list to pick from: it takes
+    // everything beside the rail, and there is no chat pane to open into.
+    final fullBleed = currentBranch == NavDestination.map.branch;
+    final listW = fullBleed
+        ? media.size.width - DesktopRail.width
+        : fits
+            ? ref.watch(desktopListWidthProvider).clamp(listMin, room).toDouble()
+            : listWidth;
+    final middle = faces && !fullBleed ? compactWidth : listW;
     final detailWidth = media.size.width - DesktopRail.width - middle - 1;
     final dragging = ref.watch(_dividerDraggingProvider);
 
@@ -206,33 +212,35 @@ class DesktopSplitView extends ConsumerWidget {
                     child: list,
                   ),
                 ),
-                ColoredBox(
-                  color: dragging
-                      ? AppColors.brandPrimary.withValues(alpha: 0.6)
-                      : AppColors.glass(0.10),
-                  child: const SizedBox(width: 1),
-                ),
-                Expanded(
-                  child: MediaQuery(
-                    data: media.copyWith(
-                      size: Size(detailWidth, media.size.height),
-                    ),
-                    child: open == null
-                        ? const _EmptyPane()
-                        : KeyedSubtree(
-                            // A different chat is a different screen, not the
-                            // same one told new facts halfway through its
-                            // state.
-                            key: ValueKey(open.peerId),
-                            child: (detailBuilder ?? _chat)(open, close),
-                          ),
+                if (!fullBleed) ...[
+                  ColoredBox(
+                    color: dragging
+                        ? AppColors.brandPrimary.withValues(alpha: 0.6)
+                        : AppColors.glass(0.10),
+                    child: const SizedBox(width: 1),
                   ),
-                ),
+                  Expanded(
+                    child: MediaQuery(
+                      data: media.copyWith(
+                        size: Size(detailWidth, media.size.height),
+                      ),
+                      child: open == null
+                          ? const _EmptyPane()
+                          : KeyedSubtree(
+                              // A different chat is a different screen, not
+                              // the same one told new facts halfway through
+                              // its state.
+                              key: ValueKey(open.peerId),
+                              child: (detailBuilder ?? _chat)(open, close),
+                            ),
+                    ),
+                  ),
+                ],
               ],
             ),
             // The grip is wider than the one-pixel line it moves, laid over
             // it rather than beside it, so the panes do not lose the width.
-            if (fits)
+            if (fits && !fullBleed)
               Positioned(
                 left: DesktopRail.width + middle - _DividerGrip.reach,
                 top: 0,

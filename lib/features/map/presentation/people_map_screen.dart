@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show Factory;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
@@ -43,6 +44,7 @@ import '../../../core/util/debug_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/platform_info.dart';
+import '../../../core/util/platform_capabilities.dart';
 
 // Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
 // the production screen ignores it and mounts native Google Maps instead.
@@ -90,6 +92,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   final _distance = const Distance();
 
   gm.GoogleMapController? _googleMap;
+
+  /// The computer's map — see [_buildTileMap]. A camera move asked for before
+  /// it has laid out waits in [_pendingTileCamera].
+  final _tileMap = MapController();
+  bool _tileMapReady = false;
+  (LatLng, double)? _pendingTileCamera;
+
+  /// Whether this build draws the map from tiles rather than Google's SDK.
+  bool get _drawsTiles => !ref.read(platformCapabilitiesProvider).googleMaps;
+
+  /// Whether this device may put itself on the map at all.
+  bool get _canShareLocation =>
+      ref.read(platformCapabilitiesProvider).shareLocation;
   LocationFix? _me;
   LocationFailure? _failure;
   Timer? _refresh;
@@ -285,7 +300,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   }
 
   Future<void> _locate({bool recenter = false}) async {
-    if (!ref.read(privacySettingsProvider).shareMapLocation) {
+    if (!_canShareLocation ||
+        !ref.read(privacySettingsProvider).shareMapLocation) {
       if (mounted) {
         setState(() {
           _me = null;
@@ -348,6 +364,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
   Future<void> _moveCamera(LatLng target, double zoom) async {
     _cameraCentre = target;
+    if (_drawsTiles) {
+      if (_tileMapReady) {
+        _tileMap.move(target, zoom);
+      } else {
+        _pendingTileCamera = (target, zoom);
+      }
+      return;
+    }
     final update = gm.CameraUpdate.newCameraPosition(
       gm.CameraPosition(target: _gm(target), zoom: zoom),
     );
@@ -385,6 +409,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     _refresh?.cancel();
     _addressDebounce?.cancel();
     _googleMap?.dispose();
+    _tileMap.dispose();
     super.dispose();
   }
 
@@ -558,7 +583,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               right: 24,
               child: _StatusPill(text: _failureText(t, _failure!)),
             ),
-          Positioned(
+          if (_canShareLocation)
+            Positioned(
             left: 16,
             // Clear of the column of round buttons on the right.
             right: 84,
@@ -598,13 +624,15 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   tooltip: t.mapFriendsTitle,
                   onTap: () => showMapFriendsSheet(context),
                 ),
-                const SizedBox(height: 12),
-                _MapActionButton(
-                  icon: Icons.my_location_rounded,
-                  tooltip: t.mapCenterMe,
-                  onTap: _locating ? null : _centerOnMe,
-                  loading: _locating,
-                ),
+                if (_canShareLocation) ...[
+                  const SizedBox(height: 12),
+                  _MapActionButton(
+                    icon: Icons.my_location_rounded,
+                    tooltip: t.mapCenterMe,
+                    onTap: _locating ? null : _centerOnMe,
+                    loading: _locating,
+                  ),
+                ],
               ],
             ),
           ),
@@ -671,6 +699,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     if (!nativeMap) {
       return _buildFallbackMap(nodes, me, nickname, ownPhoto);
     }
+    if (_drawsTiles) return _buildTileMap(nodes, layer);
 
     final target =
         me ?? (nodes.isNotEmpty ? nodes.first.point : _fallbackCenter);
@@ -787,6 +816,140 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           });
         }
       },
+    );
+  }
+
+  /// The map on a computer, where Google's SDK has no build: the same
+  /// layers drawn from tiles by flutter_map — the renderer this screen used
+  /// before Google, whose tile sources, zoom limits and credits are still in
+  /// [MapLayerTiles]. To look only: a computer never puts itself on the map
+  /// (see [PlatformCapabilities.shareLocation]), so there is no "me" here.
+  Widget _buildTileMap(List<_Node> nodes, MapLayer layer) {
+    final target = nodes.isNotEmpty ? nodes.first.point : _cameraCentre;
+    final clusters = clusterByDistance<_Node>(
+      nodes,
+      pointOf: (node) => node.point,
+      thresholdMetres:
+          metresPerPixel(_cameraCentre.latitude, _clusterZoom) * 58,
+    );
+    return FlutterMap(
+      key: ValueKey('tile-map-${layer.id}'),
+      mapController: _tileMap,
+      options: MapOptions(
+        initialCenter: _tileMapReady ? _cameraCentre : target,
+        initialZoom: _markerZoom,
+        minZoom: 3,
+        maxZoom: 20,
+        // North stays up: a mouse has no comfortable way to turn it back.
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+        ),
+        onMapReady: () {
+          _tileMapReady = true;
+          final pending = _pendingTileCamera;
+          _pendingTileCamera = null;
+          if (pending != null) _tileMap.move(pending.$1, pending.$2);
+        },
+        onTap: (_, __) => setState(() {
+          _selectedId = null;
+          _mineSelected = false;
+        }),
+        onPositionChanged: (camera, _) {
+          _cameraCentre = camera.center;
+          _markerZoom = camera.zoom;
+          final rounded = camera.zoom.roundToDouble();
+          // Clusters regroup per whole zoom level, as on the phone — not on
+          // every frame of a drag.
+          if (rounded != _clusterZoom) {
+            setState(() => _clusterZoom = rounded);
+          }
+        },
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: layer.urlTemplate,
+          subdomains: layer.subdomains,
+          retinaMode:
+              layer.supportsRetina && RetinaMode.isHighDensity(context),
+          maxNativeZoom: layer.maxNativeZoom,
+          // OpenStreetMap's tile policy asks every client to name itself.
+          userAgentPackageName: 'app.cubechat',
+        ),
+        PolylineLayer(
+          polylines: [
+            for (final (_, _, from, to) in _webPairs(nodes, null))
+              Polyline(
+                points: [from, to],
+                strokeWidth: 1.4,
+                color: AppColors.brandSecondary.withValues(alpha: 0.48),
+              ),
+          ],
+        ),
+        MarkerLayer(
+          markers: [
+            for (final group in clusters)
+              if (group.length == 1)
+                Marker(
+                  point: group.first.point,
+                  width: _markerBox,
+                  height: _markerBox,
+                  child: _MapAvatar(
+                    seed: group.first.id,
+                    name: group.first.name,
+                    photo: group.first.photo,
+                    selected: group.first.id == _selectedId,
+                    scale: _markerScale,
+                    onTap: () {
+                      setState(() {
+                        _selectedId = group.first.id;
+                        _mineSelected = false;
+                      });
+                      _focusOn(group.first.point, zoom: _markerTapZoom);
+                    },
+                  ),
+                )
+              else
+                Marker(
+                  point: _clusterCenter(group),
+                  width: _markerBox,
+                  height: _markerBox,
+                  child: GestureDetector(
+                    onTap: () => _openCluster(group),
+                    child: Center(
+                      child: Container(
+                        width: 46 * _markerScale + 6,
+                        height: 46 * _markerScale + 6,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.brandPrimary,
+                          border: Border.all(
+                            color: AppColors.pane(0.9),
+                            width: 3,
+                          ),
+                        ),
+                        child: Text(
+                          '${group.length}',
+                          style: TextStyle(
+                            color: AppColors.bgDeep,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16 * _markerScale,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+        SimpleAttributionWidget(
+          backgroundColor: AppColors.bgDeep.withValues(alpha: 0.7),
+          source: Text(
+            layer.attributions.map((a) => a.$1).join(' · '),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1279,7 +1442,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   }
 
   void _scheduleAddressLookup(LatLng point) {
-    if (!_usesNativeMap) return;
+    // The street name comes from the phone's own geocoder, Apple's or
+    // Google's; a computer has neither.
+    if (!_usesNativeMap || _drawsTiles) return;
     final cell = '${point.latitude.toStringAsFixed(3)}:'
         '${point.longitude.toStringAsFixed(3)}';
     if (cell == _addressCell) return;
@@ -1342,12 +1507,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     return built;
   }
 
-  List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
-    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+  /// The web between people: each point to its two nearest, within 50 km,
+  /// each pair once. Drawn by whichever map is on screen.
+  List<(int, int, LatLng, LatLng)> _webPairs(List<_Node> nodes, LatLng? me) {
     final points = [if (me != null) me, ...nodes.map((n) => n.point)];
     if (points.length < 2) return const [];
     final used = <String>{};
-    final result = <gm.Polyline>[];
+    final pairs = <(int, int, LatLng, LatLng)>[];
     for (var i = 0; i < points.length; i++) {
       final nearest = <({int i, double metres})>[
         for (var j = 0; j < points.length; j++)
@@ -1362,7 +1528,17 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         final a = math.min(i, other.i);
         final b = math.max(i, other.i);
         if (!used.add('$a:$b')) continue;
-        final path = [_gm(points[a]), _gm(points[b])];
+        pairs.add((a, b, points[a], points[b]));
+      }
+    }
+    return pairs;
+  }
+
+  List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final result = <gm.Polyline>[];
+    for (final (a, b, from, to) in _webPairs(nodes, me)) {
+        final path = [_gm(from), _gm(to)];
         result
           ..add(
             gm.Polyline(
@@ -1387,7 +1563,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               zIndex: 1,
             ),
           );
-      }
     }
     return result;
   }

@@ -266,6 +266,23 @@ void main() {
     expect(find.text('splits'), findsOneWidget);
   });
 
+  testWidgets('the Map takes the whole window beside the rail',
+      (tester) async {
+    await pump(tester, width: 1200, branch: NavDestination.map.branch);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('list ${1200 - DesktopRail.width.round()} rail'),
+      findsOneWidget,
+      reason: 'a map squeezed into the list\'s 360 px beside an empty chat '
+          'pane is no map',
+    );
+    expect(find.text(t.desktopPickChat), findsNothing);
+    expect(
+      find.byKey(const ValueKey(DesktopSplitView.dividerKey)),
+      findsNothing,
+    );
+  });
+
   testWidgets('narrow: just the phone layout, at full width', (tester) async {
     final c = await pump(tester, width: 600);
     c.read(desktopOpenChatProvider.notifier).state =

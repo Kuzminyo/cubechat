@@ -18,6 +18,7 @@ import '../../peers/models/known_peer.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import 'map_friends_controller.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/platform_capabilities.dart';
 
 /// A position, and the moment it was taken.
 ///
@@ -226,6 +227,9 @@ class MapPresenceController extends Notifier<int> {
   /// protocol surface, and an older build sees a position that expired before
   /// it arrived and lets the pin lapse as it always did.
   Future<void> withdraw() async {
+    // Only the device that put the pin there takes it back: a computer
+    // switching the copy of the setting off must not hide the phone.
+    if (!ref.read(platformCapabilitiesProvider).shareLocation) return;
     _lastSentLat = null;
     _lastSentLon = null;
     _lastSentAt = null;
@@ -292,6 +296,10 @@ class MapPresenceController extends Notifier<int> {
   }
 
   bool get _shouldShare =>
+      // A computer has the phone's switch and friends, and must still never
+      // say where it is as that person. See
+      // [PlatformCapabilities.shareLocation].
+      ref.read(platformCapabilitiesProvider).shareLocation &&
       ref.read(privacySettingsProvider).shareMapLocation &&
       _audience().isNotEmpty;
 

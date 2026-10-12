@@ -18,7 +18,10 @@ void main() {
     for (final p in [TargetPlatform.android, TargetPlatform.iOS]) {
       final c = PlatformCapabilities.forPlatform(p);
       expect(
-        [c.bluetooth, c.maps, c.camera, c.calls, c.translation, c.gallery],
+        [
+          c.bluetooth, c.maps, c.googleMaps, c.shareLocation, c.camera,
+          c.calls, c.translation, c.gallery,
+        ],
         everyElement(isTrue),
         reason: '$p',
       );
@@ -30,10 +33,14 @@ void main() {
     ]) {
       final c = PlatformCapabilities.forPlatform(p);
       expect(
-        [c.bluetooth, c.maps, c.camera, c.calls, c.translation, c.gallery],
+        [
+          c.bluetooth, c.googleMaps, c.shareLocation, c.camera, c.calls,
+          c.translation, c.gallery,
+        ],
         everyElement(isFalse),
         reason: '$p',
       );
+      expect(c.maps, isTrue, reason: '$p draws the map from tiles, to look');
     }
     expect(
       PlatformCapabilities.forPlatform(TargetPlatform.android, web: true)
@@ -74,13 +81,21 @@ void main() {
       return c;
     }
 
-    test('has no Nearby and no Map, and does not offer them back', () {
+    test('has no Nearby, and does not offer it back', () {
       final c = desktop();
       final layout = c.read(navBarControllerProvider);
       expect(layout.shown, isNot(contains(NavDestination.peers)));
-      expect(layout.shown, isNot(contains(NavDestination.map)));
       expect(layout.shown.first, NavDestination.chats);
-      expect(layout.hidden, isEmpty);
+      expect(layout.hidden, isNot(contains(NavDestination.peers)));
+    });
+
+    test('has the Map, asked for on 2026-10-12', () {
+      final c = desktop();
+      final layout = c.read(navBarControllerProvider);
+      expect(
+        [...layout.shown, ...layout.hidden],
+        contains(NavDestination.map),
+      );
     });
 
     test('putting Nearby back does nothing', () async {
