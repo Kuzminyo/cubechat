@@ -4610,6 +4610,120 @@ abstract class AppLocalizations {
   /// **'The computer is putting the account in place…'**
   String get desktopLinkComputerRestoring;
 
+  /// No description provided for @devicesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get devicesTitle;
+
+  /// No description provided for @devicesRowHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Where your account is open, and signing out there'**
+  String get devicesRowHint;
+
+  /// No description provided for @devicesThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get devicesThisDevice;
+
+  /// No description provided for @devicesSeenNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Online just now'**
+  String get devicesSeenNow;
+
+  /// No description provided for @devicesSeenMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Online {n} min ago'**
+  String devicesSeenMinutes(int n);
+
+  /// No description provided for @devicesSeenHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Online {n} h ago'**
+  String devicesSeenHours(int n);
+
+  /// No description provided for @devicesSeenDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Online {n} d ago'**
+  String devicesSeenDays(int n);
+
+  /// No description provided for @devicesLeaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Signing out — waiting for it to come online'**
+  String get devicesLeaving;
+
+  /// No description provided for @devicesSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get devicesSignOut;
+
+  /// No description provided for @devicesSignOutAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out on all other devices'**
+  String get devicesSignOutAll;
+
+  /// No description provided for @devicesSignOutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out on \"{name}\"?'**
+  String devicesSignOutTitle(String name);
+
+  /// No description provided for @devicesSignOutMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'CubeChat\'s keys, chats and settings will be erased on that device as soon as it comes online. The account stays here and on your other devices.'**
+  String get devicesSignOutMessage;
+
+  /// No description provided for @devicesSignOutPhoneMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'That is a phone: CubeChat will be erased on it entirely. The account stays here and on your other devices.'**
+  String get devicesSignOutPhoneMessage;
+
+  /// No description provided for @devicesSignOutAllMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Every other device will sign out as soon as it comes online. The account will stay only here.'**
+  String get devicesSignOutAllMessage;
+
+  /// No description provided for @devicesRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get devicesRename;
+
+  /// No description provided for @devicesRenameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Name of this device'**
+  String get devicesRenameTitle;
+
+  /// No description provided for @devicesSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get devicesSave;
+
+  /// No description provided for @devicesEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No other devices yet. A device appears here once it opens CubeChat 1.0.0+1147 or newer.'**
+  String get devicesEmpty;
+
+  /// No description provided for @devicesCaveat.
+  ///
+  /// In en, this message translates to:
+  /// **'A sign-out takes effect when that device goes online. One kept offline keeps its keys; full protection would mean new keys for the account.'**
+  String get devicesCaveat;
+
   /// No description provided for @desktopLinkImportTitle.
   ///
   /// In en, this message translates to:

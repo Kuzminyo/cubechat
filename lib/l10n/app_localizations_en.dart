@@ -2654,6 +2654,77 @@ class AppLocalizationsEn extends AppLocalizations {
       'The computer is putting the account in place…';
 
   @override
+  String get devicesTitle => 'Devices';
+
+  @override
+  String get devicesRowHint =>
+      'Where your account is open, and signing out there';
+
+  @override
+  String get devicesThisDevice => 'This device';
+
+  @override
+  String get devicesSeenNow => 'Online just now';
+
+  @override
+  String devicesSeenMinutes(int n) {
+    return 'Online $n min ago';
+  }
+
+  @override
+  String devicesSeenHours(int n) {
+    return 'Online $n h ago';
+  }
+
+  @override
+  String devicesSeenDays(int n) {
+    return 'Online $n d ago';
+  }
+
+  @override
+  String get devicesLeaving => 'Signing out — waiting for it to come online';
+
+  @override
+  String get devicesSignOut => 'Sign out';
+
+  @override
+  String get devicesSignOutAll => 'Sign out on all other devices';
+
+  @override
+  String devicesSignOutTitle(String name) {
+    return 'Sign out on \"$name\"?';
+  }
+
+  @override
+  String get devicesSignOutMessage =>
+      'CubeChat\'s keys, chats and settings will be erased on that device as soon as it comes online. The account stays here and on your other devices.';
+
+  @override
+  String get devicesSignOutPhoneMessage =>
+      'That is a phone: CubeChat will be erased on it entirely. The account stays here and on your other devices.';
+
+  @override
+  String get devicesSignOutAllMessage =>
+      'Every other device will sign out as soon as it comes online. The account will stay only here.';
+
+  @override
+  String get devicesRename => 'Rename';
+
+  @override
+  String get devicesRenameTitle => 'Name of this device';
+
+  @override
+  String get devicesSave => 'Save';
+
+  @override
+  String get devicesEmpty =>
+      'No other devices yet. A device appears here once it opens CubeChat 1.0.0+1147 or newer.';
+
+  @override
+  String get devicesCaveat =>
+      'A sign-out takes effect when that device goes online. One kept offline keeps its keys; full protection would mean new keys for the account.';
+
+  @override
   String get desktopLinkImportTitle => 'Move the account from your phone';
 
   @override

@@ -1849,6 +1849,17 @@ class _PushRow extends StatelessWidget {
   }
 }
 
+class _DevicesRow extends StatelessWidget {
+  const _DevicesRow();
+
+  @override
+  Widget build(BuildContext context) => _PushRow(
+        icon: Icons.devices_rounded,
+        label: AppLocalizations.of(context).devicesTitle,
+        route: '/devices',
+      );
+}
+
 class _StorageRow extends StatelessWidget {
   const _StorageRow();
 

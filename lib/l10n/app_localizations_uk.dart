@@ -2681,6 +2681,76 @@ class AppLocalizationsUk extends AppLocalizations {
   String get desktopLinkComputerRestoring => 'Комп\'ютер відновлює акаунт…';
 
   @override
+  String get devicesTitle => 'Пристрої';
+
+  @override
+  String get devicesRowHint => 'Де відкрито ваш акаунт, і вихід там';
+
+  @override
+  String get devicesThisDevice => 'Цей пристрій';
+
+  @override
+  String get devicesSeenNow => 'У мережі щойно';
+
+  @override
+  String devicesSeenMinutes(int n) {
+    return 'У мережі $n хв тому';
+  }
+
+  @override
+  String devicesSeenHours(int n) {
+    return 'У мережі $n год тому';
+  }
+
+  @override
+  String devicesSeenDays(int n) {
+    return 'У мережі $n дн. тому';
+  }
+
+  @override
+  String get devicesLeaving => 'Виходить — чекаємо, поки з\'явиться в мережі';
+
+  @override
+  String get devicesSignOut => 'Вийти';
+
+  @override
+  String get devicesSignOutAll => 'Вийти на всіх інших пристроях';
+
+  @override
+  String devicesSignOutTitle(String name) {
+    return 'Вийти на «$name»?';
+  }
+
+  @override
+  String get devicesSignOutMessage =>
+      'Ключі, чати й налаштування CubeChat на тому пристрої буде стерто, щойно він з\'явиться в мережі. Акаунт лишиться тут і на інших ваших пристроях.';
+
+  @override
+  String get devicesSignOutPhoneMessage =>
+      'Це телефон: CubeChat на ньому буде стерто повністю. Акаунт лишиться тут і на інших ваших пристроях.';
+
+  @override
+  String get devicesSignOutAllMessage =>
+      'Усі інші пристрої вийдуть з акаунта, щойно з\'являться в мережі. Акаунт лишиться тільки тут.';
+
+  @override
+  String get devicesRename => 'Перейменувати';
+
+  @override
+  String get devicesRenameTitle => 'Назва цього пристрою';
+
+  @override
+  String get devicesSave => 'Зберегти';
+
+  @override
+  String get devicesEmpty =>
+      'Інших пристроїв поки не видно. Пристрій з\'являється тут, коли відкриє CubeChat 1.0.0+1147 або новіший.';
+
+  @override
+  String get devicesCaveat =>
+      'Вихід спрацює, коли той пристрій вийде в мережу. Пристрій, який тримають без інтернету, збереже ключі; повний захист — нові ключі акаунта.';
+
+  @override
   String get desktopLinkImportTitle => 'Перенести акаунт з телефона';
 
   @override
