@@ -4556,6 +4556,48 @@ abstract class AppLocalizations {
   /// **'The computer is connected'**
   String get desktopLinkSent;
 
+  /// No description provided for @desktopLinkPhoneFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone found this computer and is making a copy of the account. With photos this can take a few minutes.'**
+  String get desktopLinkPhoneFound;
+
+  /// No description provided for @desktopLinkReceiving.
+  ///
+  /// In en, this message translates to:
+  /// **'Receiving the account: {percent}%'**
+  String desktopLinkReceiving(int percent);
+
+  /// No description provided for @desktopLinkRestoring.
+  ///
+  /// In en, this message translates to:
+  /// **'Putting the account in place on this computer…'**
+  String get desktopLinkRestoring;
+
+  /// No description provided for @desktopLinkFinding.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for the computer…'**
+  String get desktopLinkFinding;
+
+  /// No description provided for @desktopLinkPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Making a copy of the account. With photos this can take a few minutes.'**
+  String get desktopLinkPreparing;
+
+  /// No description provided for @desktopLinkSendingPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending: {percent}%'**
+  String desktopLinkSendingPercent(int percent);
+
+  /// No description provided for @desktopLinkComputerRestoring.
+  ///
+  /// In en, this message translates to:
+  /// **'The computer is putting the account in place…'**
+  String get desktopLinkComputerRestoring;
+
   /// No description provided for @desktopLinkImportTitle.
   ///
   /// In en, this message translates to:

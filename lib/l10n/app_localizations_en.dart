@@ -2617,6 +2617,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get desktopLinkSent => 'The computer is connected';
 
   @override
+  String get desktopLinkPhoneFound =>
+      'The phone found this computer and is making a copy of the account. With photos this can take a few minutes.';
+
+  @override
+  String desktopLinkReceiving(int percent) {
+    return 'Receiving the account: $percent%';
+  }
+
+  @override
+  String get desktopLinkRestoring =>
+      'Putting the account in place on this computer…';
+
+  @override
+  String get desktopLinkFinding => 'Looking for the computer…';
+
+  @override
+  String get desktopLinkPreparing =>
+      'Making a copy of the account. With photos this can take a few minutes.';
+
+  @override
+  String desktopLinkSendingPercent(int percent) {
+    return 'Sending: $percent%';
+  }
+
+  @override
+  String get desktopLinkComputerRestoring =>
+      'The computer is putting the account in place…';
+
+  @override
   String get desktopLinkImportTitle => 'Move the account from your phone';
 
   @override

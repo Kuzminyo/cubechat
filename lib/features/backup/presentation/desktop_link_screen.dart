@@ -156,23 +156,9 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.brandPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        t.desktopLinkWaiting,
-                        style: TextStyle(color: AppColors.textOnGlassDim),
-                      ),
-                    ],
+                  ValueListenableBuilder<LinkProgress>(
+                    valueListenable: session.progress,
+                    builder: (context, p, _) => _StageLine(progress: p),
                   ),
                   if (_firewallOpen == false) ...[
                     const SizedBox(height: 18),
@@ -198,6 +184,72 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// What the computer is doing now: waiting, the phone found it, the copy
+/// arriving, the copy being put in place. See [LinkStage].
+class _StageLine extends StatelessWidget {
+  const _StageLine({required this.progress});
+
+  final LinkProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final text = switch (progress.stage) {
+      LinkStage.waiting => t.desktopLinkWaiting,
+      LinkStage.connecting || LinkStage.preparing => t.desktopLinkPhoneFound,
+      LinkStage.transferring =>
+        t.desktopLinkReceiving((progress.fraction * 100).floor()),
+      LinkStage.restoring => t.desktopLinkRestoring,
+    };
+    final moving = progress.stage != LinkStage.waiting;
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.brandPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: moving
+                      ? AppColors.textOnGlass
+                      : AppColors.textOnGlassDim,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (progress.stage == LinkStage.transferring) ...[
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: progress.fraction,
+              minHeight: 5,
+              color: AppColors.brandPrimary,
+              backgroundColor: AppColors.glass(0.12),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

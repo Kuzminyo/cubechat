@@ -4,8 +4,10 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/util/debug_log.dart';
 import 'backup_service.dart';
 import 'phone_transfer_socket_service.dart';
 
@@ -131,15 +133,59 @@ bool isTransferLink(Uri uri) {
       text.contains(PhoneTransferPayload.prefix);
 }
 
+/// Where a sign-in is, as either side shows it.
+///
+/// Reported on 2026-10-12: the computer said "waiting for the phone" while the
+/// phone said "sending", and that is all either said for minutes — through
+/// the phone making a copy that holds every photo, the copy crossing the
+/// Wi-Fi, and the computer restoring it. It looked hung at every step.
+enum LinkStage {
+  /// The code is on screen and nobody has dialled in.
+  waiting,
+
+  /// Phone: looking for the computer. Computer: a phone has found it.
+  connecting,
+
+  /// Phone: making the encrypted copy. The long step with a gallery.
+  preparing,
+
+  /// The copy crossing the network; [LinkProgress.fraction] says how much.
+  transferring,
+
+  /// The computer putting the copy in place.
+  restoring,
+}
+
+@immutable
+class LinkProgress {
+  const LinkProgress(this.stage, [this.fraction = 0]);
+
+  final LinkStage stage;
+
+  /// 0..1 of the copy sent or received, while [stage] is
+  /// [LinkStage.transferring].
+  final double fraction;
+}
+
 /// One code on the computer's screen, waiting for one phone.
 class DesktopLinkSession {
-  DesktopLinkSession._(this.qr, this._server, this._done, this._sockets);
+  DesktopLinkSession._(
+    this.qr,
+    this._server,
+    this._done,
+    this._sockets,
+    this._progress,
+  );
 
   /// What to draw as the QR code.
   final String qr;
   final ServerSocket _server;
   final Completer<void> _done;
   final Set<Socket> _sockets;
+  final ValueNotifier<LinkProgress> _progress;
+
+  /// Which step the sign-in is on, for the screen to say.
+  ValueListenable<LinkProgress> get progress => _progress;
 
   /// Completes once a phone's copy has been restored here, or with the error
   /// that stopped it.
@@ -210,12 +256,21 @@ class DesktopLinkService {
     final headLength = tokenBytes.length + 8;
     var consumed = false;
     final sockets = <Socket>{};
+    final progress = ValueNotifier(const LinkProgress(LinkStage.waiting));
     server.listen((socket) async {
       if (consumed) {
         socket.destroy();
         return;
       }
       sockets.add(socket);
+      // The phone dials once to find this computer before it spends minutes
+      // on the copy, and that first call carries nothing. It is still the
+      // first sign that the phone and the network both work.
+      if (progress.value.stage == LinkStage.waiting) {
+        progress.value = const LinkProgress(LinkStage.connecting);
+        DebugLog.instance.log('LINK', 'a phone reached this computer');
+      }
+      var shownPercent = -1;
       // The copy goes to a file as it arrives — a phone with a gallery is
       // gigabytes, and none of it is held in memory here.
       final head = BytesBuilder(copy: false);
@@ -251,6 +306,8 @@ class DesktopLinkService {
             // phone must not land on top of the first one's copy.
             consumed = true;
             ownsTransfer = true;
+            DebugLog.instance.log('LINK', 'receiving a copy of $length bytes');
+            progress.value = const LinkProgress(LinkStage.transferring);
             archive = await _tempFile('link');
             sink = await archive.open(mode: FileMode.write);
             rest = Uint8List.sublistView(bytes, headLength);
@@ -259,6 +316,14 @@ class DesktopLinkService {
           if (take > 0) {
             await sink!.writeFrom(rest, 0, take);
             written += take;
+          }
+          // Whole percents: a notifier per socket chunk would rebuild the
+          // screen thousands of times for a gallery.
+          final percent = written * 100 ~/ length;
+          if (percent != shownPercent) {
+            shownPercent = percent;
+            progress.value =
+                LinkProgress(LinkStage.transferring, written / length);
           }
           if (written >= length) break;
         }
@@ -270,12 +335,15 @@ class DesktopLinkService {
         await sink!.close();
         sink = null;
         if (done.isCompleted) return;
+        progress.value = const LinkProgress(LinkStage.restoring);
         try {
           await _restoreBackup(archive!, payload.password);
+          DebugLog.instance.log('LINK', 'the copy is restored');
           socket.add([_ok]);
           await socket.flush();
           if (!done.isCompleted) done.complete();
         } catch (e) {
+          DebugLog.instance.log('LINK', 'restoring failed: ${e.runtimeType}');
           socket.add([_failed]);
           await socket.flush();
           if (!done.isCompleted) done.completeError(e);
@@ -284,7 +352,10 @@ class DesktopLinkService {
         await server.close();
       } catch (error) {
         socket.destroy();
-        if (ownsTransfer && !done.isCompleted) done.completeError(error);
+        if (ownsTransfer) {
+          DebugLog.instance.log('LINK', 'receiving failed: ${error.runtimeType}');
+          if (!done.isCompleted) done.completeError(error);
+        }
       } finally {
         await sink?.close();
         sockets.remove(socket);
@@ -296,27 +367,77 @@ class DesktopLinkService {
         } catch (_) {}
       }
     });
-    return DesktopLinkSession._(payload.encode(), server, done, sockets);
+    return DesktopLinkSession._(
+      payload.encode(),
+      server,
+      done,
+      sockets,
+      progress,
+    );
   }
 
   /// The phone's side: send a copy of this account to the computer behind
   /// [payload], and return once the computer says it is restored.
-  Future<void> sendTo(DesktopLinkPayload payload) async {
+  ///
+  /// The computer is found first and the copy made after. The other way
+  /// round, a phone with a gallery spent minutes on a copy before learning
+  /// the computer was on another network or behind its firewall — showing
+  /// "sending" the whole time.
+  Future<void> sendTo(
+    DesktopLinkPayload payload, {
+    void Function(LinkProgress progress)? onProgress,
+  }) async {
+    void report(LinkProgress p) => onProgress?.call(p);
+
+    report(const LinkProgress(LinkStage.connecting));
+    final probe = await _connectFirst(payload.candidates, payload.port);
+    final host = probe.remoteAddress.address;
+    probe.destroy();
+    DebugLog.instance.log('LINK', 'found the computer at $host');
+
     final archive = await _tempFile('link-send');
     try {
+      report(const LinkProgress(LinkStage.preparing));
+      final started = DateTime.now();
       await _createBackup(archive, payload.password);
       final size = await archive.length();
+      DebugLog.instance.log(
+        'LINK',
+        'copy of $size bytes made in '
+            '${DateTime.now().difference(started).inSeconds} s',
+      );
       if (size <= 0 || size > PhoneTransferService.maxTransferBytes) {
         throw const FormatException('transfer is too large or empty');
       }
-      final socket = await _connectFirst(payload.candidates, payload.port);
+      final socket = await Socket.connect(
+        host,
+        payload.port,
+        timeout: const Duration(seconds: 12),
+      );
       try {
         final length = ByteData(8)..setUint64(0, size);
         socket
           ..add(ascii.encode(payload.token))
           ..add(length.buffer.asUint8List());
-        await socket.addStream(archive.openRead());
+        report(const LinkProgress(LinkStage.transferring));
+        var sent = 0;
+        var shownPercent = 0;
+        // Counted as it is read: addStream reads no faster than the socket
+        // drains, so this follows the network closely enough to show.
+        await socket.addStream(
+          archive.openRead().map((chunk) {
+            sent += chunk.length;
+            final percent = sent * 100 ~/ size;
+            if (percent != shownPercent) {
+              shownPercent = percent;
+              report(LinkProgress(LinkStage.transferring, sent / size));
+            }
+            return chunk;
+          }),
+        );
         await socket.flush();
+        DebugLog.instance.log('LINK', 'copy sent, waiting for the computer');
+        report(const LinkProgress(LinkStage.restoring));
         // Closed with no answer at all: a wrong or used-up code.
         final answer = await socket.timeout(_restoreWait).firstWhere(
               (chunk) => chunk.isNotEmpty,

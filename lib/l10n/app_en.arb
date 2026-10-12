@@ -1272,6 +1272,27 @@
   "desktopLinkConfirmAction": "Send",
   "desktopLinkSending": "Sending the account…",
   "desktopLinkSent": "The computer is connected",
+  "desktopLinkPhoneFound": "The phone found this computer and is making a copy of the account. With photos this can take a few minutes.",
+  "desktopLinkReceiving": "Receiving the account: {percent}%",
+  "@desktopLinkReceiving": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "desktopLinkRestoring": "Putting the account in place on this computer…",
+  "desktopLinkFinding": "Looking for the computer…",
+  "desktopLinkPreparing": "Making a copy of the account. With photos this can take a few minutes.",
+  "desktopLinkSendingPercent": "Sending: {percent}%",
+  "@desktopLinkSendingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "desktopLinkComputerRestoring": "The computer is putting the account in place…",
   "desktopLinkImportTitle": "Move the account from your phone",
   "desktopLinkImportHint": "Show the phone a code, and this computer becomes a copy of its account",
   "desktopLinkImportConfirmTitle": "Replace the account on this computer?",

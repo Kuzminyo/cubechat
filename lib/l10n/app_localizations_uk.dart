@@ -2646,6 +2646,33 @@ class AppLocalizationsUk extends AppLocalizations {
   String get desktopLinkSent => 'Комп\'ютер підключено';
 
   @override
+  String get desktopLinkPhoneFound =>
+      'Телефон знайшов комп\'ютер і готує копію акаунта. З фото це може тривати кілька хвилин.';
+
+  @override
+  String desktopLinkReceiving(int percent) {
+    return 'Отримуємо акаунт: $percent%';
+  }
+
+  @override
+  String get desktopLinkRestoring => 'Відновлюємо акаунт на комп\'ютері…';
+
+  @override
+  String get desktopLinkFinding => 'Шукаємо комп\'ютер…';
+
+  @override
+  String get desktopLinkPreparing =>
+      'Готуємо копію акаунта. З фото це може тривати кілька хвилин.';
+
+  @override
+  String desktopLinkSendingPercent(int percent) {
+    return 'Надсилаємо: $percent%';
+  }
+
+  @override
+  String get desktopLinkComputerRestoring => 'Комп\'ютер відновлює акаунт…';
+
+  @override
   String get desktopLinkImportTitle => 'Перенести акаунт з телефона';
 
   @override

@@ -216,6 +216,74 @@ void main() {
       expect(restored.single.bytes, backup);
     });
 
+    // Reported 2026-10-12: the computer said "waiting for the phone" while
+    // the phone said "sending" — for minutes, and neither said what it was
+    // doing. Both now say which step they are on.
+    test('each side reports the step it is on, in order', () async {
+      final session = await computer.startReceiving();
+      final seen = <LinkStage>[];
+      session.progress.addListener(() {
+        final stage = session.progress.value.stage;
+        if (seen.isEmpty || seen.last != stage) seen.add(stage);
+      });
+      final phoneSteps = <LinkStage>[];
+      var lastSent = 0.0;
+      await phone.sendTo(
+        DesktopLinkPayload.tryDecode(session.qr)!,
+        onProgress: (p) {
+          if (phoneSteps.isEmpty || phoneSteps.last != p.stage) {
+            phoneSteps.add(p.stage);
+          }
+          if (p.stage == LinkStage.transferring) {
+            expect(p.fraction, greaterThanOrEqualTo(lastSent));
+            lastSent = p.fraction;
+          }
+        },
+      );
+      await session.done;
+      expect(phoneSteps, [
+        LinkStage.connecting,
+        LinkStage.preparing,
+        LinkStage.transferring,
+        LinkStage.restoring,
+      ]);
+      expect(lastSent, 1.0);
+      expect(seen, [
+        LinkStage.connecting, // the phone found it
+        LinkStage.transferring,
+        LinkStage.restoring,
+      ]);
+    });
+
+    test('an unreachable computer fails before the copy is made', () async {
+      final free = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = free.port;
+      await free.close();
+      var made = false;
+      final eager = DesktopLinkService(
+        createBackup: (file, _) async => made = true,
+        restoreBackup: (_, __) async {},
+        tempFile: (role) async => File('${temp.path}/eager-$role'),
+      );
+      await expectLater(
+        eager.sendTo(
+          DesktopLinkPayload(
+            host: '127.0.0.1',
+            port: port,
+            token: token,
+            password: password,
+          ),
+        ),
+        throwsA(isA<SocketException>()),
+      );
+      expect(
+        made,
+        isFalse,
+        reason: 'a phone with a gallery spends minutes on the copy; finding '
+            'out the computer is out of reach comes first',
+      );
+    });
+
     test('the phone\'s copy arrives whole, under the code\'s password',
         () async {
       final session = await computer.startReceiving();

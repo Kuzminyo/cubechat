@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -119,10 +120,30 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           return;
         }
         if (!mounted) return;
-        showGlassToast(context, t.desktopLinkSending, tone: ToastTone.neutral);
+        // Every step shown as it happens. One "sending" toast used to stand
+        // for minutes of copying, the transfer and the computer's restore,
+        // and read as hung (2026-10-12).
+        final progress =
+            ValueNotifier(const LinkProgress(LinkStage.connecting));
+        final navigator = Navigator.of(context, rootNavigator: true);
+        unawaited(
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (_) => PopScope(
+              canPop: false,
+              child: _LinkProgressDialog(progress: progress),
+            ),
+          ),
+        );
         try {
-          await ref.read(desktopLinkServiceProvider).sendTo(computer);
+          await ref
+              .read(desktopLinkServiceProvider)
+              .sendTo(computer, onProgress: (p) => progress.value = p);
         } catch (error) {
+          navigator.pop();
+          progress.dispose();
           if (!mounted) return;
           // Nothing answered on any address the code names: almost always
           // another Wi-Fi, or the computer's firewall. Said in words rather
@@ -140,6 +161,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
           await _resume();
           return;
         }
+        navigator.pop();
+        progress.dispose();
         if (!mounted) return;
         showGlassToast(context, t.desktopLinkSent, tone: ToastTone.success);
         context.pop();
@@ -405,4 +428,61 @@ class _RoundButton extends StatelessWidget {
           backgroundColor: Colors.black.withValues(alpha: 0.48),
         ),
       );
+}
+
+/// The phone's account on its way to a computer, step by step. Cannot be
+/// dismissed: leaving would not stop the transfer, only hide it.
+class _LinkProgressDialog extends StatelessWidget {
+  const _LinkProgressDialog({required this.progress});
+
+  final ValueListenable<LinkProgress> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      title: Text(
+        t.desktopLinkTitle,
+        style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
+      ),
+      content: ValueListenableBuilder<LinkProgress>(
+        valueListenable: progress,
+        builder: (context, p, _) {
+          final text = switch (p.stage) {
+            LinkStage.waiting || LinkStage.connecting => t.desktopLinkFinding,
+            LinkStage.preparing => t.desktopLinkPreparing,
+            LinkStage.transferring =>
+              t.desktopLinkSendingPercent((p.fraction * 100).floor()),
+            LinkStage.restoring => t.desktopLinkComputerRestoring,
+          };
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  // A bar that fills only while there is something to count.
+                  value: p.stage == LinkStage.transferring ? p.fraction : null,
+                  minHeight: 5,
+                  color: AppColors.brandPrimary,
+                  backgroundColor: AppColors.glass(0.12),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
