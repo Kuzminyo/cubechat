@@ -77,12 +77,13 @@ class DesktopChrome extends InheritedWidget {
 }
 
 /// Whether a chat opens in the right-hand pane here rather than as a page.
+///
+/// Asked of the split view itself, through [DesktopChrome], never of the
+/// width here: the list is handed a MediaQuery of its own 360 px so it lays
+/// out as a column, and read from inside it that looked like a phone — every
+/// chat tapped in the list filled the window (reported 2026-10-12).
 bool desktopSplits(BuildContext context, WidgetRef ref) =>
-    desktopModeFor(
-      MediaQuery.sizeOf(context).width,
-      ref.read(platformCapabilitiesProvider),
-    ) !=
-    DesktopMode.phone;
+    DesktopChrome.of(context) != DesktopMode.phone;
 
 /// Open [chat]: in the right-hand pane on a computer window, as a page
 /// anywhere else.

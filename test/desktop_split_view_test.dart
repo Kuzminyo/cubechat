@@ -219,6 +219,53 @@ void main() {
     );
   });
 
+  testWidgets('a chat tapped in the list opens in the pane, not over it',
+      (tester) async {
+    // Reported 2026-10-12 with a screenshot: a tap on a chat filled the
+    // window. The list is handed a MediaQuery of its own 360 px, and
+    // [desktopSplits] read that width as a phone's.
+    tester.view
+      ..devicePixelRatio = 1
+      ..physicalSize = const Size(1200, 800);
+    addTearDown(tester.view.reset);
+    final c = ProviderContainer(
+      overrides: [
+        platformCapabilitiesProvider
+            .overrideWithValue(PlatformCapabilities.desktop),
+        chatFoldersControllerProvider.overrideWith(_NoFolders.new),
+        userChatFoldersControllerProvider.overrideWith(_NoUserFolders.new),
+        visibleChatsProvider.overrideWithValue(const []),
+        navBarControllerProvider.overrideWith(_Bar.new),
+      ],
+    );
+    addTearDown(c.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: DesktopSplitView(
+            list: Consumer(
+              builder: (context, ref, _) => Center(
+                child: TextButton(
+                  onPressed: () => ref
+                      .read(desktopOpenChatProvider.notifier)
+                      .state = null,
+                  child: Text(
+                    desktopSplits(context, ref) ? 'splits' : 'pushes',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('splits'), findsOneWidget);
+  });
+
   testWidgets('narrow: just the phone layout, at full width', (tester) async {
     final c = await pump(tester, width: 600);
     c.read(desktopOpenChatProvider.notifier).state =
