@@ -229,6 +229,9 @@ class CallStateMachine extends ChangeNotifier {
       case CallSignalKind.invite:
         // A repeat delivery of the invite we are already running.
         return;
+      case CallSignalKind.device:
+        // Our own devices talking to each other; the controller handles it.
+        return;
     }
   }
 

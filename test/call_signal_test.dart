@@ -145,4 +145,44 @@ void main() {
       expect(CallSignal.decode(whole).reason, CallEndReason.hungUp);
     });
   });
+
+  // One call at a time per account (2026-10-12): the devices of one account
+  // tell each other about their calls, addressed to their own key.
+  group('a notice to our own devices', () {
+    test('round-trips each state', () {
+      for (final state in CallDeviceState.values) {
+        final back = CallSignal.decode(
+          CallSignal.device(callId: id(5), state: state).encode(),
+        );
+        expect(back.kind, CallSignalKind.device);
+        expect(back.callId, equals(id(5)));
+        expect(back.deviceState, state);
+      }
+      expect(CallSignalKind.device.tag, 0x07);
+      expect(
+        [for (final s in CallDeviceState.values) s.tag],
+        [0x00, 0x01, 0x02],
+      );
+    });
+
+    test('without a state, or with one nobody knows, is refused', () {
+      final whole =
+          CallSignal.device(callId: id(5), state: CallDeviceState.busy)
+              .encode();
+      final empty = Uint8List.fromList(whole.sublist(0, whole.length - 1));
+      empty[empty.length - 1] = 0; // body length 0
+      expect(() => CallSignal.decode(empty), throwsA(isA<FormatException>()));
+      whole[whole.length - 1] = 0x09;
+      expect(() => CallSignal.decode(whole), throwsA(isA<FormatException>()));
+    });
+
+    test('a kind after it is still refused, as builds before it refuse it',
+        () {
+      final whole =
+          CallSignal.device(callId: id(5), state: CallDeviceState.busy)
+              .encode();
+      whole[1] = 0x08;
+      expect(() => CallSignal.decode(whole), throwsA(isA<FormatException>()));
+    });
+  });
 }

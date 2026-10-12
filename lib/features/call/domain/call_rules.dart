@@ -83,7 +83,10 @@ bool callWakesPeer(CallSignalKind kind) => switch (kind) {
         true,
       CallSignalKind.ringing ||
       CallSignalKind.accept ||
-      CallSignalKind.busy =>
+      CallSignalKind.busy ||
+      // To our own other devices: one that is closed has no call to be told
+      // about, and waking it would be a push for nothing.
+      CallSignalKind.device =>
         false,
     };
 

@@ -25,6 +25,9 @@ void main() {
       expect(callWakesPeer(CallSignalKind.ringing), isFalse);
       expect(callWakesPeer(CallSignalKind.accept), isFalse);
       expect(callWakesPeer(CallSignalKind.busy), isFalse);
+      expect(callWakesPeer(CallSignalKind.device), isFalse,
+          reason: 'a notice to our own other devices wakes nobody — a closed '
+              'phone has no call to be told about');
     });
 
     test('everything that takes the voip path also wakes the phone', () {

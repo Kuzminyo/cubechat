@@ -495,6 +495,9 @@ class CallController extends ChangeNotifier {
       CallSignalKind.decline ||
       CallSignalKind.busy =>
         false,
+      // Goes to our own devices, never to the person in the call; whether it
+      // arrived has no bearing on the call here.
+      CallSignalKind.device => false,
     };
   }
 
@@ -772,6 +775,7 @@ class CallController extends ChangeNotifier {
           ),
         );
       case CallSignalKind.invite:
+      case CallSignalKind.device:
         return;
     }
   }

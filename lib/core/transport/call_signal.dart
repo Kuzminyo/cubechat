@@ -17,7 +17,14 @@ enum CallSignalKind {
   accept(0x03),
   decline(0x04),
   busy(0x05),
-  hangup(0x06);
+  hangup(0x06),
+
+  /// To this account's own other devices, never to the person called: "I am
+  /// in call X", "my call X is over", "I declined X". One call at a time per
+  /// account (2026-10-12) — a computer signed in with the phone's account gets
+  /// the same invite the phone does, and the two have to agree on who has it.
+  /// A build before it throws on the unknown kind and the frame is dropped.
+  device(0x07);
 
   const CallSignalKind(this.tag);
   final int tag;
@@ -31,6 +38,32 @@ enum CallSignalKind {
 }
 
 /// Why a call stopped, in one byte.
+/// What a [CallSignalKind.device] notice says about its call.
+enum CallDeviceState {
+  /// The call is over on the device that sent it.
+  free(0x00),
+
+  /// The device that sent it is dialling, connecting or talking.
+  busy(0x01),
+
+  /// The device that sent it declined the call; the decline has gone to the
+  /// caller already.
+  declined(0x02);
+
+  const CallDeviceState(this.tag);
+  final int tag;
+
+  /// Unlike [CallEndReason.fromByte], an unknown state is refused: guessing
+  /// "busy" would silence a ringing call, guessing "free" would let two calls
+  /// run.
+  static CallDeviceState fromByte(int b) {
+    for (final v in CallDeviceState.values) {
+      if (v.tag == b) return v;
+    }
+    throw FormatException('unknown device state 0x${b.toRadixString(16)}');
+  }
+}
+
 enum CallEndReason {
   hungUp(0x00),
   noAnswer(0x01),
@@ -75,7 +108,18 @@ class CallSignal {
     this.sdp,
     this.sentAtMs,
     this.reason,
+    this.deviceState,
   });
+
+  factory CallSignal.device({
+    required Uint8List callId,
+    required CallDeviceState state,
+  }) =>
+      CallSignal._(
+        kind: CallSignalKind.device,
+        callId: callId,
+        deviceState: state,
+      );
 
   factory CallSignal.invite({
     required Uint8List callId,
@@ -138,6 +182,7 @@ class CallSignal {
   final String? sdp;
   final int? sentAtMs;
   final CallEndReason? reason;
+  final CallDeviceState? deviceState;
 
   static const int _headerLen = 4 + callIdLen;
 
@@ -180,6 +225,8 @@ class CallSignal {
       case CallSignalKind.ringing:
       case CallSignalKind.busy:
         return Uint8List(0);
+      case CallSignalKind.device:
+        return Uint8List.fromList([deviceState!.tag]);
     }
   }
 
@@ -238,6 +285,14 @@ class CallSignal {
         return CallSignal.ringing(callId);
       case CallSignalKind.busy:
         return CallSignal.busy(callId);
+      case CallSignalKind.device:
+        if (body.isEmpty) {
+          throw const FormatException('a device notice must carry a state');
+        }
+        return CallSignal.device(
+          callId: callId,
+          state: CallDeviceState.fromByte(body[0]),
+        );
     }
   }
 }
