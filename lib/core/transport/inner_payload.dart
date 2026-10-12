@@ -315,7 +315,18 @@ enum InnerPayloadType {
   /// 0xEA verified free against this enum on 2026-09-23. "I felt your phone
   /// against mine": the bump gesture on the AirDrop page. Direct links only.
   /// An old build drops it silently, and the gesture simply does not fire.
-  nearbyBump(0xEA);
+  nearbyBump(0xEA),
+
+  /// Between the devices of one account, addressed to their shared key:
+  /// "here I am", "sign that device out", "I am leaving". See
+  /// `own_device_notice.dart` and docs/superpowers/specs/
+  /// 2026-10-12-own-devices-design.md.
+  ///
+  /// 0xEB verified free against this enum on 2026-10-12 (0xEB-0xEF and
+  /// 0xFD-0xFF were). A type, not a text URI: machinery between our own
+  /// devices has no place in a chat, and an old build dropping it silently is
+  /// exactly right — it just does not show up in the list.
+  ownDevice(0xEB);
 
   const InnerPayloadType(this.tag);
   final int tag;

@@ -78,6 +78,7 @@ import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'call_signal.dart';
 import 'nearby_offer.dart';
+import 'own_device_notice.dart';
 import 'control_delivery.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
@@ -3659,15 +3660,30 @@ class MessagingService {
   /// can open a frame sealed to this key. No wake: a device that is closed has
   /// no call to stop ringing. Our own copy coming back is dropped by the
   /// dedup cache like every control frame's (see [_sealedControlFrame]).
-  Future<ControlDelivery> sendCallSignalToOwnDevices(CallSignal signal) async {
+  Future<ControlDelivery> sendCallSignalToOwnDevices(CallSignal signal) =>
+      _sendToOwnDevices(InnerPayloadType.callSignal, signal.encode());
+
+  /// Tell this account's other devices about this one — see
+  /// [OwnDeviceNotice]. The same road as [sendCallSignalToOwnDevices].
+  Future<ControlDelivery> sendOwnDeviceNotice(OwnDeviceNotice notice) =>
+      _sendToOwnDevices(InnerPayloadType.ownDevice, notice.encode());
+
+  /// Notices from this account's other devices, from our own key only.
+  Stream<OwnDeviceNotice> get ownDeviceNotices => _ownDeviceNotices.stream;
+  final _ownDeviceNotices = StreamController<OwnDeviceNotice>.broadcast();
+
+  Future<ControlDelivery> _sendToOwnDevices(
+    InnerPayloadType type,
+    Uint8List body,
+  ) async {
     final transport = _nostr;
     if (transport == null || _disposed) return ControlDelivery.notSent;
     if (!await _ensureRelayAwakeForSend()) return ControlDelivery.notSent;
     final identity = await _ref.read(identityProvider.future);
     final frame = await _sealedControlFrame(
       peerPub: Uint8List.fromList(identity.publicKey),
-      type: InnerPayloadType.callSignal,
-      innerBody: signal.encode(),
+      type: type,
+      innerBody: body,
     );
     try {
       final receipt = await transport.sendFrame(
@@ -6628,6 +6644,7 @@ class MessagingService {
         case InnerPayloadType.nearbyOffer:
         case InnerPayloadType.nearbyAnswer:
         case InnerPayloadType.nearbyBump:
+        case InnerPayloadType.ownDevice:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -7775,6 +7792,22 @@ class MessagingService {
               'AIRDROP',
               'drop ${unpacked.type.name} from $peerId: $e',
             );
+          }
+
+        case InnerPayloadType.ownDevice:
+          // Another device of this account — believed from our own key only.
+          // Anybody else could seal a frame to us; nobody else can sign as us.
+          final own = await _ref.read(identityProvider.future);
+          if (senderPub == null ||
+              !_bytesEqual(senderPub, Uint8List.fromList(own.publicKey))) {
+            DebugLog.instance
+                .log('DEVICES', 'drop own-device notice not from our own key');
+            break;
+          }
+          try {
+            _ownDeviceNotices.add(OwnDeviceNotice.decode(unpacked.body));
+          } on FormatException catch (e) {
+            DebugLog.instance.log('DEVICES', 'drop own-device notice: $e');
           }
       }
     } catch (e, st) {
@@ -10310,6 +10343,11 @@ class MessagingService {
         InnerPayloadType.fileChunk ||
         InnerPayloadType.mediaManifest =>
           true,
+        // A device switched off for days must still get its sign-out. Safe
+        // past the window: a sign-out names a device id, and a device signed
+        // out comes back with a new one; an old hello only moves "last seen"
+        // to the latest moment it carries, never back.
+        InnerPayloadType.ownDevice => true,
         _ => false,
       };
 
@@ -12564,6 +12602,7 @@ class MessagingService {
     }
     _clients.clear();
     await _callSignals.close();
+    await _ownDeviceNotices.close();
     await _nearbyInbound.close();
   }
 }
