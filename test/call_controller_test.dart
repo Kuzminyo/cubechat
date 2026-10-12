@@ -25,11 +25,16 @@ class FakeMedia implements CallMedia {
   /// can hold a call in `connecting`.
   bool connectOnAccept = true;
   Map<String, dynamic>? config;
+
+  /// Thrown by [offer], as the platform's microphone would.
+  Object? offerError;
   @override
   Stream<CallMediaEvent> get events => controller.stream;
   @override
   Future<String> offer(Map<String, dynamic> configuration) async {
     config = configuration;
+    final error = offerError;
+    if (error != null) throw error;
     return 'offer';
   }
 
@@ -240,6 +245,16 @@ void main() {
     expect(sent, isEmpty);
     expect(call.active, isFalse);
   });
+  test('a microphone the system will not open ends as microphone', () async {
+    // Windows asks nothing, but its "let desktop apps use the microphone"
+    // switch can be off, and then capture fails inside the call. That reads
+    // as "allow the microphone", not as a call that failed for no reason.
+    media.offerError = const CallMicrophoneUnavailable('denied');
+    await call.dial('peer');
+    expect(call.error, 'microphone');
+    expect(sent, isEmpty);
+  });
+
   test('denied microphone does not send an invite', () async {
     permission = () async => false;
     await call.dial('peer');
@@ -490,15 +505,24 @@ void main() {
       expect(sent, isEmpty, reason: 'no ringing, and no busy either');
     });
 
-    test('a computer neither rings nor answers busy for an invite', () async {
+    test('a computer without calls neither rings nor answers busy', () async {
       // Signed in with a phone's account, the computer gets the phone's
       // invite too; a busy from it would end the call the phone is ringing
-      // for.
-      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      // for. Windows has calls since 2026-10-12; a Mac or Linux box does not.
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
       receive(inviteFor(id(9)));
       expect(call.active, isFalse);
       expect(sent, isEmpty);
+    });
+
+    test('a Windows computer rings, like the phone beside it', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      receive(inviteFor(id(9)));
+      expect(call.phase, CallPhase.incoming);
+      expect(sent.single.kind, CallSignalKind.ringing);
+      call.decline();
     });
 
     test('an invite delivered again after its call ended does not ring again',

@@ -28,6 +28,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Allow microphone access in system settings to make calls.';
 
   @override
+  String get callMicrophoneWindows =>
+      'Windows did not give CubeChat the microphone. Turn on Settings → Privacy & security → Microphone → \"Let desktop apps access your microphone\".';
+
+  @override
+  String get callElsewhere =>
+      'A call is already on on another device of this account.';
+
+  @override
   String get callRelayUnavailable =>
       'Call server unavailable. Please try again later.';
 

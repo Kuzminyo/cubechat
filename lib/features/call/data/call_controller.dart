@@ -701,6 +701,9 @@ class CallController extends ChangeNotifier {
     } on TurnUnavailable catch (e) {
       _log('relay access refused: ${e.reason}');
       if (_current(generation)) _fail('turn');
+    } on CallMicrophoneUnavailable catch (e) {
+      _log('microphone would not open: ${e.reason}');
+      if (_current(generation)) _fail('microphone');
     } catch (e) {
       _log('could not prepare the call after ${watch.elapsedMilliseconds} ms: '
           '$e');
@@ -977,6 +980,9 @@ class CallController extends ChangeNotifier {
     } on TurnUnavailable catch (e) {
       _log('relay access refused: ${e.reason}');
       if (_current(generation)) _fail('turn');
+    } on CallMicrophoneUnavailable catch (e) {
+      _log('microphone would not open: ${e.reason}');
+      if (_current(generation)) _fail('microphone');
     } catch (e) {
       _log('could not answer after ${watch.elapsedMilliseconds} ms: $e');
       if (_current(generation)) _fail('media');
@@ -1233,8 +1239,10 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     },
     notifyOwnDevices: messaging.sendCallSignalToOwnDevices,
     obtainTurn: () => ref.read(turnCredentialsProvider).obtain(),
+    // A computer asks nobody: Windows has a system switch, not a prompt, and
+    // a microphone it refuses fails capture — CallMicrophoneUnavailable.
     microphone: () async =>
-        PlatformInfo.isMobile && await requestCallMicrophonePermission(),
+        !PlatformInfo.isMobile || await requestCallMicrophonePermission(),
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),

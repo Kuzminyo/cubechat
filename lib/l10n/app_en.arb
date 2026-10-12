@@ -5,6 +5,8 @@
 "callRinging": "Ringing…",
 "callConnecting": "Connecting…",
 "callMicrophoneRequired": "Allow microphone access in system settings to make calls.",
+"callMicrophoneWindows": "Windows did not give CubeChat the microphone. Turn on Settings → Privacy & security → Microphone → \"Let desktop apps access your microphone\".",
+"callElsewhere": "A call is already on on another device of this account.",
 "callRelayUnavailable": "Call server unavailable. Please try again later.",
 "callBusy": "Busy",
 "callNoAnswer": "No answer",

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:local_notifier/local_notifier.dart';
 
 import '../../../core/util/platform_info.dart';
 
@@ -408,5 +409,150 @@ IncomingCallSurface platformCallSurface({
 }) {
   if (PlatformInfo.isAndroid) return AndroidIncomingCallSurface(labels: labels);
   if (PlatformInfo.isIOS) return IosCallKitSurface(onVoipToken: onVoipToken);
+  if (PlatformInfo.isWindows) return WindowsIncomingCallSurface(labels: labels);
   return const NoIncomingCallSurface();
+}
+
+/// A button pressed on a desktop toast: which call, and which button by
+/// position — 0 Answer, 1 Decline.
+typedef DesktopToastPress = ({String key, int button});
+
+/// The toast a computer raises for a call. An interface so the surface can be
+/// tested without Windows; [LocalNotifierCallToast] is the real one.
+abstract interface class DesktopCallToast {
+  Stream<DesktopToastPress> get presses;
+  Future<void> show({
+    required String key,
+    required String title,
+    required String body,
+    required String answer,
+    required String decline,
+  });
+  Future<void> close(String key);
+}
+
+/// Windows' own toast, through local_notifier — the plugin the message
+/// notifications on a computer already use.
+class LocalNotifierCallToast implements DesktopCallToast {
+  final _presses = StreamController<DesktopToastPress>.broadcast();
+  final _shown = <String, LocalNotification>{};
+
+  @override
+  Stream<DesktopToastPress> get presses => _presses.stream;
+
+  @override
+  Future<void> show({
+    required String key,
+    required String title,
+    required String body,
+    required String answer,
+    required String decline,
+  }) async {
+    final toast = LocalNotification(
+      identifier: 'call-$key',
+      title: title,
+      body: body,
+      // The app rings; a toast chime on top would be the second ringtone.
+      silent: true,
+      actions: [
+        LocalNotificationAction(text: answer),
+        LocalNotificationAction(text: decline),
+      ],
+    )..onClickAction = (index) => _presses.add((key: key, button: index));
+    _shown[key] = toast;
+    await toast.show();
+  }
+
+  @override
+  Future<void> close(String key) async {
+    final toast = _shown.remove(key);
+    if (toast != null) await toast.close();
+  }
+}
+
+/// The incoming call on a Windows computer.
+///
+/// No CallKit and no pushes there: a call reaches a computer only while
+/// CubeChat runs, minimised or not. It rings — this surface plays the tone
+/// itself, at the front or not, hence [ringsInForeground] — and raises a
+/// toast with Answer and Decline, whose buttons come back on [actions] exactly
+/// as the phones' do. The app's own call screen draws over everything as
+/// usual.
+class WindowsIncomingCallSurface implements IncomingCallSurface {
+  WindowsIncomingCallSurface({
+    required this.labels,
+    CallTones? tones,
+    DesktopCallToast? toast,
+  })  : _tones = tones ?? AudioCallTones(),
+        _toast = toast ?? LocalNotifierCallToast();
+
+  final IncomingCallLabels Function() labels;
+  final CallTones _tones;
+  final DesktopCallToast _toast;
+  String? _shown;
+
+  @override
+  bool get ringsInForeground => true;
+
+  @override
+  Stream<IncomingCallAction> get actions => _toast.presses.map(
+        (p) => (
+          kind: p.button == 0
+              ? IncomingCallActionKind.answer
+              : IncomingCallActionKind.decline,
+          key: p.key,
+        ),
+      );
+
+  @override
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  }) async {
+    _shown = key;
+    final words = labels();
+    await _tones.play(CallTone.incoming);
+    try {
+      await _toast.show(
+        key: key,
+        title: words.title,
+        body: name,
+        answer: words.answer,
+        decline: words.decline,
+      );
+    } catch (e) {
+      // A toast that cannot be raised still leaves the ring and the app's
+      // own call screen.
+      DebugLog.instance.log('CALL', 'windows call toast failed: $e');
+    }
+  }
+
+  @override
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  }) async {}
+
+  @override
+  Future<void> answered(String key) => _takeDown(key);
+
+  @override
+  Future<void> dismiss(String? key) => _takeDown(key ?? _shown);
+
+  Future<void> _takeDown(String? key) async {
+    await _tones.stop();
+    if (key == null) return;
+    if (_shown == key) _shown = null;
+    try {
+      await _toast.close(key);
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'windows call toast close failed: $e');
+    }
+  }
+
+  @override
+  Future<void> nearEar({required bool watch}) async {}
 }

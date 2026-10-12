@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/motion.dart';
+import '../../../core/util/platform_info.dart';
 import '../../../core/widgets/bar_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
@@ -519,7 +520,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             CallPhase.connecting => t.callConnecting,
             CallPhase.talking => callClock(call.elapsed),
             _ => switch (call.error) {
-                'microphone' => t.callMicrophoneRequired,
+                'microphone' => PlatformInfo.isWindows
+                    ? t.callMicrophoneWindows
+                    : t.callMicrophoneRequired,
+                'elsewhere' => t.callElsewhere,
                 'turn' => t.callRelayUnavailable,
                 'busy' => t.callBusy,
                 'noAnswer' => t.callNoAnswer,

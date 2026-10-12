@@ -134,6 +134,18 @@ abstract class AppLocalizations {
   /// **'Allow microphone access in system settings to make calls.'**
   String get callMicrophoneRequired;
 
+  /// No description provided for @callMicrophoneWindows.
+  ///
+  /// In en, this message translates to:
+  /// **'Windows did not give CubeChat the microphone. Turn on Settings → Privacy & security → Microphone → \"Let desktop apps access your microphone\".'**
+  String get callMicrophoneWindows;
+
+  /// No description provided for @callElsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'A call is already on on another device of this account.'**
+  String get callElsewhere;
+
   /// No description provided for @callRelayUnavailable.
   ///
   /// In en, this message translates to:

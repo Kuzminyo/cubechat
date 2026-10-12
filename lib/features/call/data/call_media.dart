@@ -9,6 +9,15 @@ import '../domain/call_network_quality.dart';
 
 enum CallMediaEvent { connected, disconnected, failed }
 
+/// The system would not give the call a microphone. Thrown by [CallMedia]
+/// while it prepares, so the call ends as `microphone` and says so.
+class CallMicrophoneUnavailable implements Exception {
+  const CallMicrophoneUnavailable(this.reason);
+  final String reason;
+  @override
+  String toString() => 'CallMicrophoneUnavailable($reason)';
+}
+
 /// Where a call's sound comes out.
 enum CallAudioRouteKind { earpiece, speaker, bluetooth, wired }
 
@@ -141,7 +150,9 @@ class WebRtcCallMedia implements CallMedia {
       await _configureAppleAudio();
     }
     _checkOpen();
-    final local = _local = await navigator.mediaDevices.getUserMedia({
+    final MediaStream local;
+    try {
+      local = _local = await navigator.mediaDevices.getUserMedia({
       'audio': {
         // flutter_webrtc 0.12's native parser ignores top-level browser
         // constraints. Supply its optional list so AGC/NS/AEC actually reach
@@ -154,6 +165,15 @@ class WebRtcCallMedia implements CallMedia {
       },
       'video': false,
     });
+    } catch (e) {
+      // Windows asks nothing, but its "let desktop apps use the microphone"
+      // switch can be off, and capture then fails here — a microphone
+      // problem, which the call screen names, not a call that failed.
+      throw CallMicrophoneUnavailable('$e');
+    }
+    if (local.getAudioTracks().isEmpty) {
+      throw const CallMicrophoneUnavailable('no audio track');
+    }
     _checkOpen();
     if (_muted) {
       for (final track in local.getAudioTracks()) {

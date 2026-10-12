@@ -28,6 +28,14 @@ class AppLocalizationsUk extends AppLocalizations {
       'Дозвольте доступ до мікрофона в системних налаштуваннях.';
 
   @override
+  String get callMicrophoneWindows =>
+      'Windows не дав CubeChat мікрофон. Увімкніть Параметри → Конфіденційність і захист → Мікрофон → «Дозволити класичним програмам доступ до мікрофона».';
+
+  @override
+  String get callElsewhere =>
+      'Дзвінок уже йде на іншому пристрої цього акаунта.';
+
+  @override
   String get callRelayUnavailable =>
       'Сервер дзвінків недоступний. Спробуйте пізніше.';
 

@@ -34,7 +34,7 @@ void main() {
       final c = PlatformCapabilities.forPlatform(p);
       expect(
         [
-          c.bluetooth, c.googleMaps, c.shareLocation, c.camera, c.calls,
+          c.bluetooth, c.googleMaps, c.shareLocation, c.camera,
           c.translation, c.gallery,
         ],
         everyElement(isFalse),
@@ -42,6 +42,20 @@ void main() {
       );
       expect(c.maps, isTrue, reason: '$p draws the map from tiles, to look');
     }
+  });
+
+  test('calls on Windows, where the WebRTC library is shipped, and nowhere '
+      'else on a computer', () {
+    expect(PlatformCapabilities.forPlatform(TargetPlatform.windows).calls,
+        isTrue);
+    expect(
+        PlatformCapabilities.forPlatform(TargetPlatform.macOS).calls, isFalse);
+    expect(
+        PlatformCapabilities.forPlatform(TargetPlatform.linux).calls, isFalse);
+    expect(
+      PlatformCapabilities.forPlatform(TargetPlatform.windows, web: true).calls,
+      isFalse,
+    );
     expect(
       PlatformCapabilities.forPlatform(TargetPlatform.android, web: true)
           .bluetooth,
