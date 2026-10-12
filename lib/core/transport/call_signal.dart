@@ -111,14 +111,19 @@ class CallSignal {
     this.deviceState,
   });
 
+  /// Carries its own moment, as an invite does: relays hand stored events
+  /// over again on every reconnect, and a "busy" from an hour ago read as news
+  /// would keep this account from calling for a minute.
   factory CallSignal.device({
     required Uint8List callId,
     required CallDeviceState state,
+    required int sentAtMs,
   }) =>
       CallSignal._(
         kind: CallSignalKind.device,
         callId: callId,
         deviceState: state,
+        sentAtMs: sentAtMs,
       );
 
   factory CallSignal.invite({
@@ -226,7 +231,13 @@ class CallSignal {
       case CallSignalKind.busy:
         return Uint8List(0);
       case CallSignalKind.device:
-        return Uint8List.fromList([deviceState!.tag]);
+        final out = Uint8List(9);
+        out[0] = deviceState!.tag;
+        // Cut in two the same way as the invite's, for the same reason.
+        final view = ByteData.sublistView(out);
+        view.setUint32(1, sentAtMs! ~/ 0x100000000);
+        view.setUint32(5, sentAtMs! % 0x100000000);
+        return out;
     }
   }
 
@@ -286,12 +297,16 @@ class CallSignal {
       case CallSignalKind.busy:
         return CallSignal.busy(callId);
       case CallSignalKind.device:
-        if (body.isEmpty) {
-          throw const FormatException('a device notice must carry a state');
+        if (body.length < 9) {
+          throw const FormatException(
+            'a device notice must carry a state and a moment',
+          );
         }
+        final view = ByteData.sublistView(body);
         return CallSignal.device(
           callId: callId,
           state: CallDeviceState.fromByte(body[0]),
+          sentAtMs: view.getUint32(1) * 0x100000000 + view.getUint32(5),
         );
     }
   }
