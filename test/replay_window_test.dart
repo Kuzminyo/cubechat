@@ -81,7 +81,14 @@ void main() {
       final survives = InnerPayloadType.values
           .where(MessagingService.survivesReplayWindow)
           .length;
-      expect(survives, 6);
+      // Seven since 2026-10-12: ownDevice, so a device switched off for days
+      // still gets its sign-out. A sign-out names a device id that changes on
+      // sign-out, and an old hello cannot move "last seen" back.
+      expect(survives, 7);
+      expect(
+        MessagingService.survivesReplayWindow(InnerPayloadType.ownDevice),
+        isTrue,
+      );
     });
   });
 }

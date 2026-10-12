@@ -204,6 +204,13 @@ other devices so, with a short message sent through the internet relays to
 your own key and encrypted to it. It says only that a call is on, declined or
 over, and when; nobody but your own devices can read it.
 
+**Your devices.** The devices signed in with one account tell each other they
+exist — each one's name, kind (Android, iPhone, Windows) and when it was last
+online — with the same kind of message, sent through the relays to your own
+key and encrypted to it, so Profile → Data → Devices can list them. Signing a
+device out there sends it a message to erase CubeChat's data on it, which it
+does the next time it goes online.
+
 ---
 
 ## 6. Location
