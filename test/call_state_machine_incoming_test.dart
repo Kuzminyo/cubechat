@@ -268,4 +268,50 @@ void main() {
       });
     }
   });
+
+  group('another device of this account took it', () {
+    test('a ringing call stops without a word to the caller', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.handleInvite(inviteAt(id(1), t.clock()));
+        async.flushMicrotasks();
+        t.sent.clear();
+        t.machine.endElsewhere();
+        async.flushMicrotasks();
+        expect(t.machine.phase, CallPhase.ended);
+        expect(t.sent, isEmpty,
+            reason: 'the device that answered or declined has told them');
+        expect(t.outcomes.single.cause, CallEndCause.elsewhere);
+        expect(t.machine.hasEnded(id(1)), isTrue);
+        t.machine.dispose();
+      });
+    });
+
+    test('a call already answered here is not ended by it', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.handleInvite(inviteAt(id(1), t.clock()));
+        t.machine.accept(sdp: 'answer');
+        async.flushMicrotasks();
+        t.machine.endElsewhere();
+        expect(t.machine.phase, CallPhase.connecting);
+        expect(t.outcomes, isEmpty);
+        t.machine.dispose();
+      });
+    });
+
+    test('our own dial yields, telling the person we called', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.startOutgoing(callId: id(2), sdp: 'offer');
+        async.flushMicrotasks();
+        t.sent.clear();
+        t.machine.yieldToOwnDevice();
+        async.flushMicrotasks();
+        expect(t.sent.single.kind, CallSignalKind.hangup);
+        expect(t.outcomes.single.cause, CallEndCause.glareLost);
+        t.machine.dispose();
+      });
+    });
+  });
 }

@@ -31,6 +31,8 @@ String encodeCallRecord(CallOutcome outcome) {
   // replaced by the call that won. Recording both leaves two lines for one
   // conversation, which reads as a bug to the person scrolling.
   if (outcome.cause == CallEndCause.glareLost) return '';
+  // Taken by another device of this account, which writes its own line.
+  if (outcome.cause == CallEndCause.elsewhere) return '';
   final answered = outcome.talkedFor > Duration.zero;
   final payload = <String, Object>{
     'o': outcome.outgoing,

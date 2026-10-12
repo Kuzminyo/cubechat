@@ -72,6 +72,16 @@ void main() {
     );
   });
 
+  test('a call another device of this account took leaves no record here',
+      () {
+    // The device that answered or declined writes the line; a second one here
+    // would be two calls in a chat that had one.
+    expect(
+      encodeCallRecord(outcome(outgoing: false, cause: CallEndCause.elsewhere)),
+      isEmpty,
+    );
+  });
+
   test('ordinary text is not mistaken for a record', () {
     expect(tryParseCallRecord('позвони мне'), isNull);
     expect(tryParseCallRecord('cubechat:loc:v1:abc'), isNull);

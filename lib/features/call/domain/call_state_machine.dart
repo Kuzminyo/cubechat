@@ -18,6 +18,10 @@ enum CallEndCause {
   unavailable,
   failed,
   glareLost,
+
+  /// Another device of this account answered or declined it. Nothing went to
+  /// the caller from here, and nothing is recorded here.
+  elsewhere,
 }
 
 /// What ended a call — separate from [CallEndCause], which says how it ended.
@@ -313,6 +317,23 @@ class CallStateMachine extends ChangeNotifier {
       reason: CallEndReason.declined,
     )));
     _end(CallEndCause.declined, source);
+  }
+
+  /// Another device of this account answered or declined the call ringing
+  /// here. Stops it in silence: the caller already has that device's answer,
+  /// and a decline from here would end the call it just took.
+  void endElsewhere() {
+    if (_phase != CallPhase.incoming) return;
+    _end(CallEndCause.elsewhere, CallEndSource.remote);
+  }
+
+  /// Another device of this account started a call at the same moment and its
+  /// id is the lower: one call per account, so ours goes. The person we were
+  /// calling is told, as for any call we give up.
+  void yieldToOwnDevice() {
+    if (_phase != CallPhase.dialing && _phase != CallPhase.ringing) return;
+    _sendHangup(CallEndReason.hungUp);
+    _end(CallEndCause.glareLost, CallEndSource.remote);
   }
 
   void hangUp({CallEndSource source = CallEndSource.button}) {
