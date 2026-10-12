@@ -327,6 +327,18 @@ class CallStateMachine extends ChangeNotifier {
     _end(CallEndCause.elsewhere, CallEndSource.remote);
   }
 
+  /// Another device of this account answered the call this one is
+  /// connecting, at the same moment. The caller applied only the first answer,
+  /// so one of the two will never carry sound — and when it gives up, a hangup
+  /// from it would end the call the other is having. Marked, so that failure
+  /// ends here in silence. Which of the two it is cannot be told yet: both
+  /// mark, and only the one that never connects ever fails.
+  void markAnsweredElsewhere() {
+    if (_phase == CallPhase.connecting) _answeredElsewhere = true;
+  }
+
+  bool _answeredElsewhere = false;
+
   /// Another device of this account started a call at the same moment and its
   /// id is the lower: one call per account, so ours goes. The person we were
   /// calling is told, as for any call we give up.
@@ -351,6 +363,10 @@ class CallStateMachine extends ChangeNotifier {
 
   void mediaFailed({CallEndSource source = CallEndSource.media}) {
     if (!isLive) return;
+    if (_answeredElsewhere && _phase == CallPhase.connecting) {
+      _end(CallEndCause.elsewhere, CallEndSource.remote);
+      return;
+    }
     _sendHangup(CallEndReason.failed);
     _end(CallEndCause.failed, source);
   }
@@ -400,6 +416,7 @@ class CallStateMachine extends ChangeNotifier {
   }) {
     if (!isLive) return;
     _disarm();
+    _answeredElsewhere = false;
     final since = _talkingSince;
     final outcome = CallOutcome(
       callId: _callId!,

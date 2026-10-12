@@ -278,6 +278,13 @@ class CallController extends ChangeNotifier {
           _machine.endElsewhere();
           return;
         }
+        // Both devices pressed Answer at once. See markAnsweredElsewhere.
+        if (phase == CallPhase.connecting &&
+            listEquals(_machine.callId, id)) {
+          _log('another device of this account answered ${_hex(id)} too');
+          _machine.markAnsweredElsewhere();
+          return;
+        }
         // Both devices dialled at once. The same comparison as two people
         // dialling each other, so both devices reach the same answer alone.
         final mine = _machine.callId;

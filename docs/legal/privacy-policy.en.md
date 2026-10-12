@@ -196,6 +196,14 @@ By default both phones only ever see the relay's address, not each other's. If
 you turn on **direct calls** in your profile, a call may connect phone to phone
 instead, and then the other person's phone can see your IP address.
 
+**Calls on a computer.** CubeChat for Windows makes and takes calls the same
+way, through the same relay; everything above about phones applies to it.
+When a computer is signed in with your phone's account, a call rings on both,
+and only one call can be on at a time: the device that has a call tells your
+other devices so, with a short message sent through the internet relays to
+your own key and encrypted to it. It says only that a call is on, declined or
+over, and when; nobody but your own devices can read it.
+
 ---
 
 ## 6. Location

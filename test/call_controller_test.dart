@@ -1210,6 +1210,29 @@ void main() {
       });
     });
 
+    test('both devices answering at once: the one that never connects leaves '
+        'quietly, without ending the other\'s call', () {
+      inZone((async) {
+        receive(inviteFor(id(1)));
+        async.flushMicrotasks();
+        media.connectOnAccept = false;
+        unawaited(call.answer());
+        async.flushMicrotasks();
+        expect(call.phase, CallPhase.connecting);
+        // The other device answered the same call; the caller took its
+        // answer, so ours will never connect.
+        fromMe(notice(id(1), CallDeviceState.busy));
+        async.flushMicrotasks();
+        sent.clear();
+        async.elapse(CallTimings.connecting + const Duration(seconds: 1));
+        expect(call.active, isFalse);
+        expect(sent, isEmpty,
+            reason: 'a hangup from here would end the call the other device '
+                'is having');
+        expect(outcomes.single.cause, CallEndCause.elsewhere);
+      });
+    });
+
     test('declining here tells the other devices', () {
       inZone((async) {
         receive(inviteFor(id(1)));

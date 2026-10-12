@@ -55,6 +55,7 @@ established. No new cryptographic primitive.
 | 0x04 | decline | `[reason:1]` |
 | 0x05 | busy | empty |
 | 0x06 | hangup | `[reason:1]` |
+| 0x07 | device | `[state:1][sentAtMs:8]` — to our **own** other devices only |
 
 There is no message for ICE candidates. Media goes through our TURN by default,
 so each side has exactly one candidate and it is already inside the SDP: one
@@ -73,6 +74,34 @@ never sent — each already knows how the call ended.
 | `connecting` | 30 s | an answered call that carries no sound by then is given up |
 | `clockSkew` | 30 s | how far ahead a sender's clock may be |
 | `endedMemory` | 90 s | a finished `callId` is remembered this long |
+| `ownDeviceHeartbeat` | 20 s | a device with a call says so again to the account's others |
+| `ownDeviceSilence` | 60 s | another device silent this long no longer counts as in a call |
+
+## One call at a time per account (2026-10-12)
+
+A computer signed in with the phone's account holds the same keys and gets the
+same invites. Spec: `docs/superpowers/specs/2026-10-12-desktop-calls-design.md`.
+
+- The `device` notice is sealed to **our own key** and sent relay-only, no
+  `w`/`c` tag (`MessagingService.sendCallSignalToOwnDevices`). It is believed
+  only from our own key, before `allowed` is asked — nobody is their own
+  contact — and the stranger gate passes it (`strangerVerdict(fromSelf:)`).
+- States: `busy` (placed or answered, repeated every heartbeat), `free` (over),
+  `declined`. Ringing here is not "having" the call — every device rings.
+- `busy` → a device ringing stops in silence (`CallEndCause.elsewhere`, no
+  signal to the caller, no history line); no dialling (`error == 'elsewhere'`);
+  an invite neither rings nor is answered — the busy device answers busy.
+  Both devices dialling at once: the higher call id yields (`yieldToOwnDevice`).
+- `sentAtMs` is in the body because relays replay stored events on reconnect;
+  older than `ownDeviceSilence + clockSkew` is dropped.
+- Builds before it throw on the unknown kind and drop it: an old phone just
+  does not know about the computer's call.
+
+**Windows** (`PlatformCapabilities.windows`): `WindowsIncomingCallSurface` —
+a local_notifier toast with Answer/Decline and the ringtone, while CubeChat
+runs (no pushes on a computer). The microphone is never asked for; a refused
+one throws `CallMicrophoneUnavailable` and ends the call as `microphone`.
+flutter_webrtc's Windows tree is vendored, see its `CUBECHAT_PATCH.md`.
 
 ## Rules that each fixed a real failure
 
