@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/channels/data/channel_controller.dart';
+import '../../features/devices/data/own_devices_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/drafts_controller.dart';
@@ -79,11 +80,20 @@ import 'nickname_controller.dart';
 /// After this call, opening the app again is indistinguishable from a fresh
 /// install — a brand new identity gets minted on first read of
 /// identityProvider, and chats list is empty.
-Future<void> emergencyWipe(WidgetRef ref) async {
+///
+/// [releaseName] false is the remote sign-out of one device of an account
+/// (docs/superpowers/specs/2026-10-12-own-devices-design.md): the account goes
+/// on living on its other devices, and the @name belongs to it, not to this
+/// device — giving it back would take it from the phone still using it.
+Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
   // Give the @name back while the key that owns it still exists. Bounded to
   // three seconds: a wipe is an emergency and does not wait on a server, and
   // one that cannot be reached frees the name after six months on its own.
-  await ref.read(cubeIdControllerProvider.notifier).release();
+  if (releaseName) {
+    await ref.read(cubeIdControllerProvider.notifier).release();
+  }
+  // A wiped install is a new device among the account's, with a new id.
+  await ref.read(deviceIdentityStoreProvider).wipe();
   // Remembered "does this file exist" answers, which outlive the rows that
   // asked. Cheap to drop and wrong to keep: a wipe must not leave anything
   // still saying yes about a photo it just deleted.

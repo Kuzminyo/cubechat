@@ -36,6 +36,8 @@ import 'features/moderation/data/ban_list_controller.dart';
 import 'core/util/platform_info.dart';
 import 'features/desktop/desktop_split_view.dart' show DesktopOpenChat, desktopOpenChatProvider;
 import 'features/desktop/touchpad_swipe.dart';
+import 'features/devices/data/own_devices.dart';
+import 'features/devices/data/own_devices_controller.dart';
 import 'core/util/transition_probe.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
@@ -285,9 +287,37 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       _startDiscovery();
       _refreshPushRegistration();
       _announceOnLaunch();
+      _startOwnDevices();
       _pushUnreadTotal();
       _askCallPermissionsAhead();
     });
+  }
+
+  StreamSubscription<void>? _signedOutHere;
+
+  /// Say hello to the account's other devices, and obey a sign-out from one
+  /// of them (docs/superpowers/specs/2026-10-12-own-devices-design.md).
+  ///
+  /// The service is rebuilt with the messaging service after a wipe, so the
+  /// subscription follows it rather than holding the first one.
+  void _startOwnDevices() {
+    void attach(OwnDevicesService devices) {
+      unawaited(_signedOutHere?.cancel());
+      _signedOutHere = devices.signedOutHere.listen((_) async {
+        DebugLog.instance.log('DEVICES', 'signing this device out');
+        // The @name stays: the account lives on on its other devices.
+        await emergencyWipe(ref, releaseName: false);
+      });
+      unawaited(devices.start());
+    }
+
+    attach(ref.read(ownDevicesProvider));
+    ref.listenManual<OwnDevicesService>(
+      ownDevicesProvider,
+      (previous, next) {
+        if (!identical(previous, next)) attach(next);
+      },
+    );
   }
 
   /// The microphone, asked once the app is up rather than on the first call -
@@ -638,6 +668,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   @override
   void dispose() {
     unawaited(_linkSub?.cancel() ?? Future<void>.value());
+    unawaited(_signedOutHere?.cancel() ?? Future<void>.value());
     unawaited(_reportConnectivitySub?.cancel() ?? Future<void>.value());
     _banListTimer?.cancel();
     _goodbyeTimer?.cancel();
