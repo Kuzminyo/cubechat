@@ -77,6 +77,7 @@ import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'call_signal.dart';
+import 'direct_write.dart';
 import 'nearby_offer.dart';
 import 'own_device_notice.dart';
 import 'control_delivery.dart';
@@ -12491,11 +12492,45 @@ class MessagingService {
     final session = _directSessionTo(peerHex);
     if (session == null) return false;
     final client = _clients[session.peerId];
+    final peerIsCentral = _ref
+        .read(peripheralControllerProvider)
+        .connectedCentralIds
+        .contains(session.peerId);
     try {
-      if (client != null && client.isConnected) {
-        return await _writeFrameToClient(client, frameBytes);
+      var path = directWritePath(
+        hasClient: client != null,
+        clientReady: client?.isReady ?? false,
+        clientConnected: client?.isConnected ?? false,
+        peerIsCentral: peerIsCentral,
+      );
+      if (path == DirectWritePath.waitForClient) {
+        // Its services are being found. A few seconds is what that took in
+        // the field; past that the link is not coming.
+        for (var i = 0; i < 30 && !client!.isReady; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+        path = client!.isReady ? DirectWritePath.client : DirectWritePath.none;
       }
-      return await _notifyFrameToPeripheral(frameBytes);
+      switch (path) {
+        case DirectWritePath.client:
+          try {
+            return await _writeFrameToClient(client!, frameBytes);
+          } catch (e) {
+            // Their connection to us may still be there to carry it.
+            if (!peerIsCentral) rethrow;
+            DebugLog.instance.log(
+              'AIRDROP',
+              'link write failed ($e), notifying from our peripheral instead',
+            );
+            return await _notifyFrameToPeripheral(frameBytes);
+          }
+        case DirectWritePath.peripheral:
+          return await _notifyFrameToPeripheral(frameBytes);
+        case DirectWritePath.waitForClient:
+        case DirectWritePath.none:
+          DebugLog.instance.log('AIRDROP', 'direct write: no ready link');
+          return false;
+      }
     } catch (e) {
       DebugLog.instance.log('AIRDROP', 'direct write failed: $e');
       return false;
