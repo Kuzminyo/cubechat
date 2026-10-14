@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../storage/secure_read_policy.dart';
 import 'identity_keys.dart';
 
 /// Generates the long-term X25519 identity on first run and persists the
@@ -14,18 +15,20 @@ import 'identity_keys.dart';
 /// The public key is rederived from the private key on every load — no need
 /// to store it.
 class IdentityService {
-  IdentityService({FlutterSecureStorage? storage})
+  IdentityService({FlutterSecureStorage? storage, SecureReadPolicy? policy})
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
               iOptions:
                   IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-            );
+            ),
+        _policy = policy ?? secureReadPolicy;
 
   static const _privateKeyKey = 'cubechat.identity.priv';
   static const _signSeedKey = 'cubechat.identity.signseed';
 
   final FlutterSecureStorage _storage;
+  final SecureReadPolicy _policy;
   final _x25519 = X25519();
   final _ed25519 = Ed25519();
 
@@ -41,21 +44,37 @@ class IdentityService {
     // most notably after an OS update (e.g. One UI 8.5) or a backup/restore
     // invalidates the underlying key, surfacing as
     // `BadPaddingException: BAD_DECRYPT`. An unhandled throw here used to
-    // crash the whole handshake. Treat any read failure as "no stored
-    // identity": reset the corrupt store and mint a fresh keypair so the
-    // app keeps working (the user appears as a new identity, which is the
-    // unavoidable cost of the old private key being unrecoverable).
+    // crash the whole handshake.
+    //
+    // It then answered *every* failed read with `deleteAll()` and a fresh
+    // keypair — a new identity, every conversation dead on both ends, and the
+    // history key gone with it, since `deleteAll()` empties the whole store.
+    // HiveCipherProvider was taken off `deleteAll()` for exactly that reason;
+    // this was not. And the likely failure is a locked store, not a corrupt
+    // one: `first_unlock` refuses every read before the first unlock after a
+    // reboot, which is when a push launches us. So a failed read waits and
+    // asks again, and the reset — still the only way out of BAD_DECRYPT —
+    // happens only once the store has failed with no success for longer than
+    // a locked phone explains. See [SecureReadPolicy].
     String? hexX;
     String? hexEd;
-    try {
-      hexX = await _storage.read(key: _privateKeyKey);
-      hexEd = await _storage.read(key: _signSeedKey);
-    } catch (e, st) {
-      debugPrint('IdentityService: secure read failed ($e) — '
-          'resetting identity store\n$st');
-      await _resetSecureStore();
-      hexX = null;
-      hexEd = null;
+    for (var attempt = 1;; attempt++) {
+      try {
+        hexX = await _storage.read(key: _privateKeyKey);
+        hexEd = await _storage.read(key: _signSeedKey);
+        await _policy.succeeded();
+        break;
+      } catch (e, st) {
+        if (await _policy.shouldReset('identity', e, attempts: attempt)) {
+          debugPrint('IdentityService: secure read failed ($e) — '
+              'resetting identity store\n$st');
+          await _resetSecureStore();
+          hexX = null;
+          hexEd = null;
+          break;
+        }
+        await Future<void>.delayed(_policy.delayAfter(attempt));
+      }
     }
 
     final Uint8List xPriv;

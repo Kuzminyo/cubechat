@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
+
+import 'secure_read_policy.dart';
 
 /// Lazily-loaded HiveAesCipher backed by a 32-byte key in the platform
 /// secure store. First call mints a fresh key; every subsequent call
@@ -14,20 +17,24 @@ import 'package:hive/hive.dart';
 /// keychain entries. The cipher key is data-encryption-only - it never
 /// signs anything and is independent of the X25519 / Ed25519 identity.
 class HiveCipherProvider {
-  HiveCipherProvider({FlutterSecureStorage? storage})
-      : _storage = storage ??
+  HiveCipherProvider({
+    FlutterSecureStorage? storage,
+    SecureReadPolicy? policy,
+  })  : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
               iOptions: IOSOptions(
                 accessibility: KeychainAccessibility.first_unlock,
               ),
-            );
+            ),
+        _policy = policy ?? secureReadPolicy;
 
   static const _keyName = 'cubechat.hive.aeskey';
   static const _keyLen = 32;
   static final _rand = Random.secure();
 
   final FlutterSecureStorage _storage;
+  final SecureReadPolicy _policy;
   HiveAesCipher? _cached;
   Future<HiveAesCipher>? _inFlight;
 
@@ -56,43 +63,37 @@ class HiveCipherProvider {
   }
 
   Future<HiveAesCipher> _loadUncached() async {
-    // Same Keystore-corruption hazard as IdentityService: a read can throw
-    // BadPaddingException after an OS update invalidates the master key.
-    // Treat a read failure as "no key yet" — mint a fresh one. The old
-    // encrypted boxes become unreadable, but openEncryptedBox already
-    // deletes-and-recreates a box it can't decrypt, so chat history just
-    // resets rather than crashing.
+    // A read that throws is not a missing key. See [SecureReadPolicy].
+    //
+    // This used to delete the key and mint a new one on any failure, with the
+    // note that "History can still reset here … there is no way to tell a
+    // corrupt store from a locked one from inside this method" and that a
+    // retry "turns the failure path into a second of dead startup". Both were
+    // weighed against a reset that cost only the history. It cost the history
+    // every time the store was merely locked — a push launching us before the
+    // first unlock — because Hive opens a box under the new key, sees a bad
+    // checksum and truncates the file to zero itself. Waiting cannot be worse
+    // than that, and it does not hold the boot: `_bootStep('hive')` is bounded,
+    // and the boxes open the moment the key reads.
+    //
+    // Still our own key only, never `deleteAll()` — that took the identity
+    // with it, see IdentityService.
     String? existing;
-    try {
-      existing = await _storage.read(key: _keyName);
-    } catch (e) {
-      // Our own key, never `deleteAll()`.
-      //
-      // It used to be `deleteAll()`, which is not "forget the history key" —
-      // it empties the whole secure store, and IdentityService keeps
-      // `cubechat.identity.priv` and `cubechat.identity.signseed` in the same
-      // one, under the same options. So a single failed read here threw away
-      // the identity: new pubkey, new Nostr key, every existing conversation
-      // dead on both ends, unrecoverable. That is the outcome an uninstall
-      // produces, reached by a transient error.
-      //
-      // And transient is the likely case, not the corrupt one: the iOS entries
-      // are `first_unlock`, so a read before the first unlock after a reboot
-      // fails by design — and a push that starts us in the background is
-      // exactly how we get there now.
-      //
-      // History can still reset here, and that half is unchanged: a key we
-      // cannot read is a key we cannot decrypt yesterday's boxes with, and
-      // there is no way to tell a corrupt store from a locked one from inside
-      // this method. Retrying was tried and taken back out — it turns the
-      // failure path into a second of dead startup, on the path where the app
-      // is already having a bad morning. What changed is only the blast
-      // radius: the identity no longer goes with the history.
-      debugPrint('Hive cipher: secure read failed ($e) — resetting key');
+    for (var attempt = 1;; attempt++) {
       try {
-        await _storage.delete(key: _keyName);
-      } catch (_) {}
-      existing = null;
+        existing = await _storage.read(key: _keyName);
+        await _policy.succeeded();
+        break;
+      } catch (e) {
+        if (await _policy.shouldReset('history key', e, attempts: attempt)) {
+          try {
+            await _storage.delete(key: _keyName);
+          } catch (_) {}
+          existing = null;
+          break;
+        }
+        await Future<void>.delayed(_policy.delayAfter(attempt));
+      }
     }
     Uint8List keyBytes;
     if (existing != null && existing.length == _keyLen * 2) {
@@ -183,6 +184,20 @@ class HiveCipherProvider {
         // Opened out from under us despite the single-flight guard (e.g. by
         // code that opens Hive boxes directly). Reuse rather than destroy.
         return _handle<T>(name);
+      }
+      // The disk said no, not the box. A file iOS keeps sealed until the first
+      // unlock, a lock another isolate holds, a directory that is not there
+      // yet: none of them says anything about what is in the box, and deleting
+      // it answers a question nobody asked by losing the history. Left alone,
+      // the next open finds it intact.
+      //
+      // That is also all this branch ever caught. A box written under another
+      // key, or before encryption, does not throw at all — Hive's crash
+      // recovery truncates it on open (see SecureReadPolicy) — so the delete
+      // below only ever ran for errors like these and for data a newer build
+      // wrote.
+      if (e is FileSystemException) {
+        throw HiveBoxOpenException(name, e);
       }
       // Genuine open failure — most likely an undecryptable legacy
       // (unencrypted) box from a pre-encryption build. Delete + retry.
