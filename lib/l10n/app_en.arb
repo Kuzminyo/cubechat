@@ -822,6 +822,7 @@
   "attachFile": "File",
   "attachGallery": "Gallery",
   "attachCamera": "Camera",
+  "cameraUnavailable": "Camera unavailable",
   "profileEditName": "Name",
   "profileMyCard": "Card",
   "mediaCaptionHint": "Add a caption…",
@@ -1272,6 +1273,14 @@
   "desktopLinkConfirmTitle": "Send a copy of this account to the computer?",
   "desktopLinkConfirmMessage": "The computer gets your keys, contacts and chats. This phone keeps working as it is.",
   "desktopLinkConfirmAction": "Send",
+  "desktopLinkConfirmWhere": "Only if you scanned this code from your own computer's screen just now. It goes to {address} on this network.",
+  "@desktopLinkConfirmWhere": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
   "desktopLinkSending": "Sending the account…",
   "desktopLinkSent": "The computer is connected",
   "desktopLinkPhoneFound": "The phone found this computer and is making a copy of the account. With photos this can take a few minutes.",

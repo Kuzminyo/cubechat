@@ -2906,6 +2906,12 @@ abstract class AppLocalizations {
   /// **'Camera'**
   String get attachCamera;
 
+  /// No description provided for @cameraUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera unavailable'**
+  String get cameraUnavailable;
+
   /// No description provided for @profileEditName.
   ///
   /// In en, this message translates to:
@@ -4555,6 +4561,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Send'**
   String get desktopLinkConfirmAction;
+
+  /// No description provided for @desktopLinkConfirmWhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Only if you scanned this code from your own computer\'s screen just now. It goes to {address} on this network.'**
+  String desktopLinkConfirmWhere(String address);
 
   /// No description provided for @desktopLinkSending.
   ///

@@ -92,12 +92,18 @@ class ReportClient {
 
   static const String storageKey = 'moderation.reportQueue';
 
-  /// Same shape of fallback as `PushRegistration.endpoints`: the real name
-  /// first, the sslip.io stand-in behind it, tried in order until one
-  /// answers.
+  /// Our own name only.
+  ///
+  /// It had the sslip.io stand-in behind it, the same fallback
+  /// `PushRegistration.endpoints` keeps. That one is harmless there — a
+  /// registration is signed and carries no secret — and the ban list is signed
+  /// too. A report is different: it carries the text of the message being
+  /// reported, and sslip.io's answers are its operator's to give, so a report
+  /// sent through that name went wherever a stranger's DNS said. A report that
+  /// cannot reach push.cubechat.tech stays queued and is retried (see
+  /// [maxQueueAge]), which is a delay, not a loss. Removed 2026-10-14.
   static const List<String> defaultEndpoints = <String>[
     'https://push.cubechat.tech/report',
-    'https://209-38-225-225.sslip.io/report',
   ];
 
   /// A queued report older than this is a report about a moment nobody can

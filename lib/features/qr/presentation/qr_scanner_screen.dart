@@ -109,11 +109,19 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
       // sends rather than receives — nothing here is replaced.
       final computer = DesktopLinkPayload.tryDecode(text);
       if (computer != null) {
+        // Where it goes, and that it should be one's own screen. This code
+        // also arrives as a tapped link (app.dart opens `cubechat.tech/l1`
+        // here as if scanned), so anybody on the same Wi-Fi — a café, an
+        // office — could send one naming their own laptop, and one "Send"
+        // would hand them the keys. The addresses are held to the local
+        // network already; this is the part only the person can check.
         final confirmed = await confirmAction(
           context,
           title: t.desktopLinkConfirmTitle,
-          message: t.desktopLinkConfirmMessage,
+          message: '${t.desktopLinkConfirmMessage}\n\n'
+              '${t.desktopLinkConfirmWhere(computer.candidates.join(', '))}',
           confirmLabel: t.desktopLinkConfirmAction,
+          destructive: true,
         );
         if (!confirmed) {
           await _resume();

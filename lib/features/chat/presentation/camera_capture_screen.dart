@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// In-app camera: a live preview with a shutter, front/back flip and a flash
 /// cycle. Pops with the captured photo's JPEG bytes, or null if the user backs
@@ -197,7 +198,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
             const Icon(Icons.no_photography_rounded,
                 color: Colors.white54, size: 56),
             const SizedBox(height: 12),
-            Text('Camera unavailable',
+            Text(AppLocalizations.of(context).cameraUnavailable,
                 style:
                     TextStyle(color: AppColors.textOnGlassDim, fontSize: 13)),
           ],

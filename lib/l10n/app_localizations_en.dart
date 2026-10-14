@@ -1608,6 +1608,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachCamera => 'Camera';
 
   @override
+  String get cameraUnavailable => 'Camera unavailable';
+
+  @override
   String get profileEditName => 'Name';
 
   @override
@@ -2617,6 +2620,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get desktopLinkConfirmAction => 'Send';
+
+  @override
+  String desktopLinkConfirmWhere(String address) {
+    return 'Only if you scanned this code from your own computer\'s screen just now. It goes to $address on this network.';
+  }
 
   @override
   String get desktopLinkSending => 'Sending the account…';

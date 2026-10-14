@@ -1617,6 +1617,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get attachCamera => 'Камера';
 
   @override
+  String get cameraUnavailable => 'Камера недоступна';
+
+  @override
   String get profileEditName => 'Ім\'я';
 
   @override
@@ -2646,6 +2649,11 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get desktopLinkConfirmAction => 'Надіслати';
+
+  @override
+  String desktopLinkConfirmWhere(String address) {
+    return 'Лише якщо ви щойно відсканували цей код з екрана власного комп\'ютера. Копію буде надіслано на $address у цій мережі.';
+  }
 
   @override
   String get desktopLinkSending => 'Надсилаємо акаунт…';
