@@ -63,16 +63,33 @@ push.cubechat.tech {
 # X-Forwarded-For is not set here either: Caddy passes it by default and says
 # so out loud when told to do it twice.
 #
-# /media and /geo are not split off here, and that is the live state, checked
-# on 2026-10-14: both answer NIP-11 `name: cubechat`, the root strfry. The
-# separate media database (relay/README.md, "Separate media inbox") is a
-# server step not yet taken; when it is, this block becomes the one in
-# relay/deploy/Caddyfile.fragment — in this file, not only on the droplet.
+# /media goes to its own strfry and database (relay/README.md, "Separate media
+# inbox"), so "wait for Wi-Fi" can hold photos back on mobile data without
+# silencing text at the root. Everything else, /geo included, is the root.
+#
+# **This route was lost once, silently.** The media strfry was installed on
+# 2026-09-21 (its unit and database date from then, as does the
+# Caddyfile.bak that step makes). A later copy of this file over the live one
+# — it was replaced on 2026-09-24 and again on 2026-09-29 — carried no route,
+# so the media relay ran with nobody reaching it and every chunk went through
+# the root, held back from nobody. Found and restored 2026-10-14. Same lesson
+# as above: the live config and this file are one thing.
 relay.cubechat.tech {
-	reverse_proxy 127.0.0.1:8081 {
-		transport http {
-			versions 1.1
-			keepalive off
+	handle_path /media* {
+		reverse_proxy 127.0.0.1:8082 {
+			transport http {
+				versions 1.1
+				keepalive off
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8081 {
+			transport http {
+				versions 1.1
+				keepalive off
+			}
 		}
 	}
 }

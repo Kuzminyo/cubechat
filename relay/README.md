@@ -219,13 +219,15 @@ fix that keeps a held photo's manifest past five minutes; on a separate
 database it would lose media on mobile data. Split the server only once the
 phones run 1095 or later.
 
-**Status, 2026-10-14: not done.** `/media` and `/geo` both answered NIP-11
-`name: cubechat` — the root strfry — so "wait for Wi-Fi" still holds nothing
-back on mobile data, and the radio carries every held photo anyway. AUTH on
-`/media` and `/geo` was checked the same day and succeeds with the socket's own
-URL in the `relay` tag, so the split does not need a different `serviceUrl`.
-When it is done, `push/deploy/Caddyfile` changes in the same commit — it is the
-whole live config (see the 2026-09-24 outage in `caddyfile-holds-the-relay`).
+**Status: live since 2026-10-14 — the second time.** The media strfry was
+installed on 2026-09-21, but `push/deploy/Caddyfile` never had the route, and a
+later copy of it over the live file dropped it: for three weeks `/media`
+answered `name: cubechat` from the root database and "wait for Wi-Fi" held
+nothing back. The route is now in `push/deploy/Caddyfile` itself. Checked after
+the reload: `/media` answers `cubechat media`, NIP-42 AUTH succeeds with the
+socket's own URL in the `relay` tag (no `serviceUrl` change needed), and a
+kind-1059 frame published there reads back after AUTH. Chunks already in the
+root database still reach their recipients over the root socket.
 
 ### Install
 

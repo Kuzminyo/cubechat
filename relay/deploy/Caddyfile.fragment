@@ -6,8 +6,9 @@
 # takes effect and nothing says so (README, "Caddy: replace the block").
 # Do not replace the whole file either: the push and id blocks live there.
 #
-# Live state on 2026-10-14: NOT deployed. /media and /geo answered NIP-11
-# `name: cubechat`, the root strfry, whose database holds everything.
+# Live since 2026-10-14 (it was live from 2026-09-21 too, until a copy of
+# push/deploy/Caddyfile without it replaced the live file). push/deploy/Caddyfile
+# now carries this block; that file is what gets deployed.
 #
 # /media has its own strfry process and LMDB. This is what lets the app close
 # the media REQ on cellular data without silencing text at the host root.
