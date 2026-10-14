@@ -63,6 +63,28 @@ const MAX_TOKENS = Number(process.env.MAX_TOKENS || 10_000);
 const NEW_REGISTRATIONS_PER_IP_HOUR = 30;
 const NEW_REGISTRATIONS_PER_HOUR = 600;
 
+// A registration not renewed for this long is dropped. A phone renews on
+// every launch, so this only ever reaches a phone whose owner has not opened
+// cubechat in two months — and the next launch registers it again. Without it
+// the cap above could be filled once, with tokens nobody ever pushes to and so
+// nothing ever retires, and stay full for good.
+const TOKEN_STALE_DAYS = 60;
+
+export function pruneStaleTokens(nowSeconds = Math.floor(Date.now() / 1000), map = tokens) {
+  const cutoff = nowSeconds - TOKEN_STALE_DAYS * 24 * 60 * 60;
+  let removed = 0;
+  for (const [npub, entry] of map) {
+    // An entry with no time on it is kept: every registration this code
+    // writes carries one, so only something older could lack it, and
+    // dropping that on deploy would silence a real phone without a word.
+    if (Number.isFinite(entry?.updatedAt) && entry.updatedAt < cutoff) {
+      map.delete(npub);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 // npubs per wake subscription. A REQ carries every npub as 64 hex characters
 // plus quoting; public relays cap a message at 64-128 KB, so one filter holding
 // them all stops being accepted somewhere under two thousand phones — not a
@@ -1082,7 +1104,12 @@ function resubscribe() {
 export function clientIpOf(request) {
   const peer = request.socket?.remoteAddress ?? '';
   if (ADMIN_LOCAL_ADDRESSES.has(peer)) {
-    const forwarded = String(request.headers?.['x-forwarded-for'] ?? '').split(',')[0].trim();
+    // The *last* entry: whatever a client sent, the last address on the list
+    // is the one Caddy itself saw. Caddy 2.5+ replaces an untrusted client's
+    // header outright, so today the list has one entry and first = last; read
+    // from the end, a Caddy that appended instead would still not let a
+    // client choose its own address and with it a fresh quota per request.
+    const forwarded = String(request.headers?.['x-forwarded-for'] ?? '').split(',').pop().trim();
     if (forwarded) return forwarded;
   }
   return peer;
@@ -1103,7 +1130,19 @@ function readBody(request, limit = 8 * 1024) {
   });
 }
 
+/// The routes that verify a signature before anything else can refuse them.
+const SIGNED_ROUTES = new Set(['/register', '/turn', '/report']);
+
 export const server = createServer(async (request, response) => {
+  // Every other limit here sits *behind* a Schnorr verification, which is the
+  // most expensive thing this process does per request — so without this a
+  // flood of junk was answered one signature check at a time, the limits
+  // never reached. Per address, far above a phone's few requests a launch.
+  if (request.method === 'POST' && SIGNED_ROUTES.has(request.url) &&
+      !requestLimiter.allow(clientIpOf(request), Math.floor(Date.now() / 1000))) {
+    response.setHeader('cache-control', 'no-store');
+    return json(response, 429, { ok: false, reason: 'rate' });
+  }
   if (request.method === 'GET' && request.url === '/health') {
     return json(response, 200, {
       ok: true,
@@ -1217,7 +1256,14 @@ function log(scope, message) {
 // retention window and cheap enough not to matter.
 const REPORT_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-async function purgeReportsOnce() {
+/// The daily sweep: stale registrations, then decided reports past retention.
+async function purgeOnce() {
+  const stale = pruneStaleTokens();
+  if (stale > 0) {
+    log('store', `dropped ${stale} registration(s) not renewed in ${TOKEN_STALE_DAYS} days`);
+    void saveStore();
+    resubscribe();
+  }
   try {
     const removed = await reportStore.purge();
     if (removed > 0) {
@@ -1251,8 +1297,8 @@ async function main() {
   // Once at start, then daily. Unref'd so a pending purge never keeps the
   // process alive by itself — same reasoning as everything else on a timer
   // here would need, there just wasn't anything else on one yet.
-  await purgeReportsOnce();
-  setInterval(() => void purgeReportsOnce(), REPORT_PURGE_INTERVAL_MS).unref();
+  await purgeOnce();
+  setInterval(() => void purgeOnce(), REPORT_PURGE_INTERVAL_MS).unref();
 }
 
 // Importing the HTTP handler in tests must not connect to production relays,
@@ -1438,7 +1484,10 @@ export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 36
     },
     allow(pubkey, nowSeconds) {
       const cutoff = nowSeconds - windowSeconds;
-      totalHits = totalHits.filter((t) => t > cutoff);
+      // An unbounded total is not tracked at all. Tracked, it was every hit
+      // of the window in one array, filtered on every call — quadratic in a
+      // flood, which is the one moment a limiter has to be cheap.
+      if (Number.isFinite(total)) totalHits = totalHits.filter((t) => t > cutoff);
       const keyHits = (perKeyHits.get(pubkey) ?? []).filter((t) => t > cutoff);
       if (keyHits.length === 0) perKeyHits.delete(pubkey);
       else perKeyHits.set(pubkey, keyHits);
@@ -1451,7 +1500,7 @@ export function createRateLimiter({ perKey = 10, total = 200, windowSeconds = 36
       }
 
       keyHits.push(nowSeconds);
-      totalHits.push(nowSeconds);
+      if (Number.isFinite(total)) totalHits.push(nowSeconds);
       perKeyHits.set(pubkey, keyHits);
       return true;
     },
@@ -1678,6 +1727,8 @@ const registerLimiter = createRateLimiter({
 // Keys `ip:…` and `key:…` share one limiter; each request counts twice
 // against `total`, which is sized for that.
 const turnLimiter = createRateLimiter({ perKey: 60, total: 10_000 });
+// Any signed route, per address, before the signature is checked.
+const requestLimiter = createRateLimiter({ perKey: 120, total: Infinity, windowSeconds: 60 });
 
 function logReport(report) {
   log('report', `${short(report.reporter)} reported ${report.context} (${report.reason}) [${report.id}]`);

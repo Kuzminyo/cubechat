@@ -168,7 +168,9 @@ by your phone.
 Registrations are cryptographically signed, so nobody can register a token
 against somebody else's key. Turning the feature off in the app deletes your
 entry from the service. Uninstalling the app leaves the entry until the token
-is refused by Apple or Google, at which point it is deleted automatically.
+is refused by Apple or Google, at which point it is deleted automatically. An
+entry not renewed for 60 days — the app renews it every time it starts — is
+deleted as well.
 
 **Apple and Google are involved.** Apple Push Notification service (iOS) and
 Firebase Cloud Messaging (Android) receive the device token and the fact that a

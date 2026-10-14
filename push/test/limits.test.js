@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -11,7 +12,7 @@ import { schnorr } from '@noble/curves/secp256k1';
 process.env.STORE_PATH = join(tmpdir(), `cubechat-push-test-${process.pid}.json`);
 const {
   clientIpOf, createRateLimiter, handleRegister, handleReport, handleTurn,
-  wakeFilters,
+  pruneStaleTokens, server, wakeFilters,
 } = await import('../src/index.js');
 
 const now = Math.floor(Date.now() / 1000);
@@ -131,7 +132,45 @@ test('the client address is believed only from loopback', () => {
   const request = (peer, forwarded) => ({ socket: { remoteAddress: peer },
     headers: forwarded ? { 'x-forwarded-for': forwarded } : {} });
   assert.equal(clientIpOf(request('127.0.0.1', '203.0.113.5')), '203.0.113.5');
-  assert.equal(clientIpOf(request('::ffff:127.0.0.1', '203.0.113.5, 10.0.0.1')), '203.0.113.5');
+  // A client that sends its own header and meets a proxy that appends gets
+  // the address the proxy saw, not the one it wrote.
+  assert.equal(clientIpOf(request('::ffff:127.0.0.1', '1.1.1.1, 203.0.113.5')), '203.0.113.5');
   assert.equal(clientIpOf(request('198.51.100.1', '1.2.3.4')), '198.51.100.1');
   assert.equal(clientIpOf(request('127.0.0.1')), '127.0.0.1');
+});
+
+test('an unbounded total costs nothing per call, and keys are still held', () => {
+  const limiter = createRateLimiter({ perKey: 1, total: Infinity });
+  const started = process.hrtime.bigint();
+  for (let i = 0; i < 20_000; i++) assert.equal(limiter.allow(`ip-${i}`, now), true);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  // Tracked, the total made this quadratic: ~2·10⁸ comparisons, seconds.
+  assert.ok(ms < 1000, `took ${ms} ms`);
+  assert.equal(limiter.allow('ip-0', now), false);
+});
+
+test('a registration not renewed in sixty days is dropped, a live one kept', () => {
+  const day = 24 * 60 * 60;
+  const map = new Map([
+    ['old', { token: 't', updatedAt: now - 61 * day }],
+    ['live', { token: 't', updatedAt: now - 59 * day }],
+    ['undated', { token: 't' }],
+  ]);
+  assert.equal(pruneStaleTokens(now, map), 1);
+  assert.deepEqual([...map.keys()], ['live', 'undated']);
+});
+
+test('a flood of junk is refused before any signature is checked', async () => {
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const url = `http://127.0.0.1:${server.address().port}/register`;
+  const post = () => fetch(url, { method: 'POST', body: '{}' }).then((r) => r.status);
+  try {
+    const statuses = [];
+    for (let i = 0; i < 121; i++) statuses.push(await post());
+    assert.equal(statuses.filter((s) => s === 400).length, 120);
+    assert.equal(statuses.at(-1), 429);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

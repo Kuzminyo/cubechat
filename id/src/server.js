@@ -11,7 +11,7 @@ import { normalizeName } from './names.js';
 import { openRegistry } from './registry.js';
 
 /// What /health reports. Bump it in the same commit as any change here.
-export const VERSION = '2026-09-29-names';
+export const VERSION = '2026-10-14-forwarded-for';
 
 function limiter(max, windowMs, now) {
   const hits = new Map();
@@ -56,12 +56,16 @@ function readBody(req, limit = 16 * 1024) {
 
 const loopback = (addr) => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 
-// Behind Caddy every request comes from loopback, so the real client is the
-// first X-Forwarded-For entry; from anywhere else the header is not trusted.
-function clientIp(req) {
+// Behind Caddy every request comes from loopback, so the real client is in
+// X-Forwarded-For; from anywhere else the header is not trusted. The *last*
+// entry, which is the address Caddy itself saw: Caddy 2.5+ replaces an
+// untrusted client's header, so today there is one entry, but a proxy that
+// appended would leave the client's own guess first — and the per-address
+// limits below would be one forged header away from meaning nothing.
+export function clientIp(req) {
   const peer = req.socket.remoteAddress ?? '';
   if (loopback(peer)) {
-    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').pop().trim();
     if (fwd) return fwd;
   }
   return peer;
