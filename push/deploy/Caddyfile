@@ -62,6 +62,12 @@ push.cubechat.tech {
 #
 # X-Forwarded-For is not set here either: Caddy passes it by default and says
 # so out loud when told to do it twice.
+#
+# /media and /geo are not split off here, and that is the live state, checked
+# on 2026-10-14: both answer NIP-11 `name: cubechat`, the root strfry. The
+# separate media database (relay/README.md, "Separate media inbox") is a
+# server step not yet taken; when it is, this block becomes the one in
+# relay/deploy/Caddyfile.fragment — in this file, not only on the droplet.
 relay.cubechat.tech {
 	reverse_proxy 127.0.0.1:8081 {
 		transport http {

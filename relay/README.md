@@ -219,6 +219,14 @@ fix that keeps a held photo's manifest past five minutes; on a separate
 database it would lose media on mobile data. Split the server only once the
 phones run 1095 or later.
 
+**Status, 2026-10-14: not done.** `/media` and `/geo` both answered NIP-11
+`name: cubechat` — the root strfry — so "wait for Wi-Fi" still holds nothing
+back on mobile data, and the radio carries every held photo anyway. AUTH on
+`/media` and `/geo` was checked the same day and succeeds with the socket's own
+URL in the `relay` tag, so the split does not need a different `serviceUrl`.
+When it is done, `push/deploy/Caddyfile` changes in the same commit — it is the
+whole live config (see the 2026-09-24 outage in `caddyfile-holds-the-relay`).
+
 ### Install
 
 The binary and the `cubechat-relay` user already exist from the root relay.
@@ -272,3 +280,47 @@ caddy` puts the old routing back; nothing in the app depends on the split.
 The app keeps the two public media relays behind the owned one, so builds
 before 1094 — which do not subscribe to `/media` — still receive attachments
 from newer builds through them.
+
+## Write policy (2026-10-14)
+
+Until this date both relays ran `writePolicy.plugin = ""`: reads of kind 1059
+were behind AUTH, but anybody could *write* any kind, 128 KB an event, with no
+rate, kept for one to two weeks on a droplet with ~21 GB free. A full LMDB is
+the text lane down as well as the media one.
+
+`write-policy.mjs` (tests: `node --test` in this directory) stores only kind
+1059, holds each source address to 3000 events a minute and 1 GiB an hour —
+a 115 MB video is ~1800 chunks over a few minutes — and refuses every write
+while the disk has less than 3 GiB free. strfry's own imports and syncs pass.
+The three numbers are environment variables (`EVENTS_PER_IP_MINUTE`,
+`BYTES_PER_IP_HOUR`, `MIN_FREE_BYTES`). The source address is the one
+`realIpHeader = "x-forwarded-for"` gives strfry, i.e. the phone, not Caddy.
+
+### Install
+
+From the repository, on your own machine:
+
+```powershell
+scp relay/write-policy.mjs root@209.38.225.225:/tmp/
+```
+
+On the droplet — Node is already there for the push server. One line of the
+live config changes, rather than the file being replaced by the repository's:
+the live one is what is running, and a copy that drifted from it is how the
+relay lost its certificate on 2026-09-24.
+
+```bash
+install -m 755 -o cubechat-relay -g cubechat-relay /tmp/write-policy.mjs /opt/cubechat-relay/write-policy.mjs
+cp /opt/cubechat-relay/strfry.conf /opt/cubechat-relay/strfry.conf.bak
+sed -i 's#plugin = ""#plugin = "/opt/cubechat-relay/write-policy.mjs"#' /opt/cubechat-relay/strfry.conf
+grep -n 'plugin =' /opt/cubechat-relay/strfry.conf
+echo '{"type":"new","event":{"id":"t","kind":1},"sourceType":"IP4","sourceInfo":"1.2.3.4"}' | sudo -u cubechat-relay /opt/cubechat-relay/write-policy.mjs
+systemctl restart cubechat-relay
+journalctl -u cubechat-relay -n 20 --no-pager
+```
+
+The `echo` line must print `"action":"reject"` — the plugin runs as the
+relay's user. strfry reloads a changed plugin by itself; the restart is for the
+config. Put the old config back with the `.bak` if the journal shows the plugin
+failing to start. Once the media relay exists, copy the same file to
+`/opt/cubechat-media-relay/write-policy.mjs`.

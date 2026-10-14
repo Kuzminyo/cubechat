@@ -1,5 +1,13 @@
-# Append this to /etc/caddy/Caddyfile. Do not replace the file: the push
-# server's blocks are already in there.
+# Replaces the relay.cubechat.tech block in /etc/caddy/Caddyfile — and in
+# push/deploy/Caddyfile, which is the whole live config, in the same commit.
+#
+# It used to say "append this". Appending leaves two relay.cubechat.tech
+# blocks; Caddy validates that and serves only the first, so the split never
+# takes effect and nothing says so (README, "Caddy: replace the block").
+# Do not replace the whole file either: the push and id blocks live there.
+#
+# Live state on 2026-10-14: NOT deployed. /media and /geo answered NIP-11
+# `name: cubechat`, the root strfry, whose database holds everything.
 #
 # /media has its own strfry process and LMDB. This is what lets the app close
 # the media REQ on cellular data without silencing text at the host root.

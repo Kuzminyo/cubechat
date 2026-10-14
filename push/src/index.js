@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-25-report-retention';
+const VERSION = '2026-10-14-rate-limits';
 
 const RECIPIENT_TAG = 'p';
 
@@ -50,6 +50,25 @@ const REGISTER_KIND = 24242;
 // registration could be replayed forever to keep a token alive after the phone
 // that owned it asked to be forgotten.
 const REGISTER_MAX_AGE_SECONDS = 5 * 60;
+
+// How many npubs this doorbell will hold at all, and how fast new ones may
+// arrive. Until 2026-10-14 neither was bounded: a key costs nothing to mint, a
+// registration with a made-up FCM token passes every check here, and every new
+// npub goes into the REQ sent to the public relays — so a script could grow
+// that REQ until the relays refused it, and push stopped for everybody. The
+// cap is what the relays will carry (see WAKE_CHUNK); the rate is per client
+// address, generous enough for a carrier NAT full of real phones. A phone that
+// is already registered refreshes for free, however often it launches.
+const MAX_TOKENS = Number(process.env.MAX_TOKENS || 10_000);
+const NEW_REGISTRATIONS_PER_IP_HOUR = 30;
+const NEW_REGISTRATIONS_PER_HOUR = 600;
+
+// npubs per wake subscription. A REQ carries every npub as 64 hex characters
+// plus quoting; public relays cap a message at 64-128 KB, so one filter holding
+// them all stops being accepted somewhere under two thousand phones — not a
+// limit to meet on the day it happens. 500 is ~35 KB, and WAKE_CHUNK × the
+// usual 20 subscriptions a connection is MAX_TOKENS.
+const WAKE_CHUNK = 500;
 
 const PORT = Number(process.env.PORT || 8080);
 const RELAYS = (process.env.RELAYS || 'wss://nos.lol,wss://relay.primal.net')
@@ -265,7 +284,13 @@ function voipTokenOf(event, platform) {
   return null;
 }
 
-function handleRegister(event, { bans = adminBans } = {}) {
+export function handleRegister(event, {
+  bans = adminBans,
+  ip = null,
+  limiter = registerLimiter,
+  nowSeconds = Math.floor(Date.now() / 1000),
+  maxTokens = MAX_TOKENS,
+} = {}) {
   if (!verifyEvent(event)) return { ok: false, reason: 'signature' };
   if (event.kind !== REGISTER_KIND) return { ok: false, reason: 'kind' };
   // Checked right after the signature verifies and before anything else, for
@@ -288,7 +313,7 @@ function handleRegister(event, { bans = adminBans } = {}) {
   if (event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action')) {
     return { ok: false, reason: 'purpose' };
   }
-  const age = Math.abs(Math.floor(Date.now() / 1000) - event.created_at);
+  const age = Math.abs(nowSeconds - event.created_at);
   if (age > REGISTER_MAX_AGE_SECONDS) return { ok: false, reason: 'stale' };
 
   // An empty content is how a phone says "forget me": the same signed shape,
@@ -311,6 +336,17 @@ function handleRegister(event, { bans = adminBans } = {}) {
 
   const previous = tokens.get(event.pubkey);
   const before = previous?.token;
+  // Only a *new* npub is counted or capped — see MAX_TOKENS. Checked last, so
+  // nothing that would have been refused anyway spends an address's quota.
+  if (!previous) {
+    if (tokens.size >= maxTokens) {
+      log('register', `full (${tokens.size}) — refusing ${short(event.pubkey)}`);
+      return { ok: false, reason: 'full', status: 503 };
+    }
+    if (!limiter.allow(ip ?? 'unknown', nowSeconds)) {
+      return { ok: false, reason: 'rate', status: 429 };
+    }
+  }
   tokens.set(event.pubkey, {
     token,
     updatedAt: event.created_at,
@@ -988,13 +1024,29 @@ function subscribeOn(socket) {
   // A build that predates the tag rings no doorbell at all. That is the safe
   // direction and it cost nothing when it shipped: push had one registered
   // device in the world, and it took the new build the same day.
-  const filter = {
-    kinds: [FRAME_KIND],
-    '#p': npubs,
-    '#w': ['1'],
-    since: Math.floor(Date.now() / 1000),
-  };
-  socket.send(JSON.stringify(['REQ', 'wake', filter]));
+  //
+  // In chunks of WAKE_CHUNK, each its own subscription, so the REQ stays a size
+  // every relay accepts however many phones there are. `wake` alone is what
+  // one filter used to be called, and it is still closed on a resubscribe in
+  // case a socket opened under the old code is the one being reused.
+  const ids = wakeFilters(npubs, Math.floor(Date.now() / 1000)).map((filter, i) => {
+    const id = `wake-${i}`;
+    socket.send(JSON.stringify(['REQ', id, filter]));
+    return id;
+  });
+  wakeSubscriptions.set(socket, ids);
+}
+
+/// The subscription ids last sent on each socket, so a resubscribe closes
+/// exactly those — a chunk that no longer exists must not stay open.
+const wakeSubscriptions = new WeakMap();
+
+export function wakeFilters(npubs, since = 0) {
+  const filters = [];
+  for (let at = 0; at < npubs.length; at += WAKE_CHUNK) {
+    filters.push({ kinds: [FRAME_KIND], '#p': npubs.slice(at, at + WAKE_CHUNK), '#w': ['1'], since });
+  }
+  return filters;
 }
 
 let resubscribeTimer = null;
@@ -1007,7 +1059,9 @@ function resubscribe() {
     resubscribeTimer = null;
     for (const socket of sockets.values()) {
       if (socket.readyState !== WebSocket.OPEN) continue;
-      socket.send(JSON.stringify(['CLOSE', 'wake']));
+      for (const id of ['wake', ...(wakeSubscriptions.get(socket) ?? [])]) {
+        socket.send(JSON.stringify(['CLOSE', id]));
+      }
       subscribeOn(socket);
     }
     log('relay', `watching ${tokens.size} npub(s)`);
@@ -1017,6 +1071,22 @@ function resubscribe() {
 // ---------------------------------------------------------------------------
 // HTTP
 // ---------------------------------------------------------------------------
+
+/// Who is asking, for the per-address limits.
+///
+/// Every public request arrives from Caddy on loopback, so the address is the
+/// X-Forwarded-For Caddy writes — and only from loopback: Caddy replaces a
+/// client's own X-Forwarded-For rather than trusting it, and a request that
+/// reached this port some other way has no business choosing its address.
+/// The same rule as `clientIp` in id/src/server.js.
+export function clientIpOf(request) {
+  const peer = request.socket?.remoteAddress ?? '';
+  if (ADMIN_LOCAL_ADDRESSES.has(peer)) {
+    const forwarded = String(request.headers?.['x-forwarded-for'] ?? '').split(',')[0].trim();
+    if (forwarded) return forwarded;
+  }
+  return peer;
+}
 
 function readBody(request, limit = 8 * 1024) {
   return new Promise((resolve, reject) => {
@@ -1065,7 +1135,7 @@ export const server = createServer(async (request, response) => {
     } catch {
       return json(response, 400, { ok: false, reason: 'body' });
     }
-    const result = handleTurn(event);
+    const result = handleTurn(event, { ip: clientIpOf(request) });
     response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
   }
@@ -1078,6 +1148,7 @@ export const server = createServer(async (request, response) => {
     }
     const result = await handleReport(event, {
       limiter: reportLimiter, store: reportStore, notify: logReport,
+      ip: clientIpOf(request), ipLimiter: reportIpLimiter,
     });
     response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
@@ -1089,10 +1160,10 @@ export const server = createServer(async (request, response) => {
     } catch {
       return json(response, 400, { ok: false, reason: 'body' });
     }
-    const result = handleRegister(event);
-    // `status` is only ever set for the one case that isn't a plain 200/400
-    // — a banned npub, which is 403. Everything else keeps the shape this
-    // route always had.
+    const result = handleRegister(event, { ip: clientIpOf(request) });
+    // `status` is only set for the cases that aren't a plain 200/400 — a
+    // banned npub (403), an address over its rate (429), a full registry
+    // (503). Everything else keeps the shape this route always had.
     return json(response, result.status ?? (result.ok ? 200 : 400), result);
   }
   if (request.method === 'GET' && request.url === '/banned') {
@@ -1205,6 +1276,8 @@ export function handleTurn(event, {
   secret = process.env.TURN_SECRET,
   urls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean),
   bans = adminBans,
+  ip = null,
+  limiter = turnLimiter,
 } = {}) {
   // A registration signature must not be reusable to obtain TURN access.
   // The purpose is signed too; the client uses the same identity key.
@@ -1228,6 +1301,15 @@ export function handleTurn(event, {
   // a turns: URL is not usable until a certificate has been installed.
   if (!urls.length || urls.some((url) => !/^turns?:[^\s]+$/.test(url))) {
     return { status: 503, body: { ok: false, reason: 'unconfigured' } };
+  }
+  // A key is free to mint, so the signature proves nothing about who is
+  // asking — and coturn holds 40 allocations in all (`total-quota`), each a
+  // login valid for ten minutes. Without a bound one script could keep every
+  // one of them and no call anywhere would connect. Per address and per key,
+  // both well above what a person placing calls asks for: a call asks once.
+  if (!limiter.allow(`ip:${ip ?? 'unknown'}`, nowSeconds) ||
+      !limiter.allow(`key:${event.pubkey}`, nowSeconds)) {
+    return { status: 429, body: { ok: false, reason: 'rate' } };
   }
   try {
     return { status: 200, body: { ok: true,
@@ -1585,6 +1667,17 @@ export function createReportStore(path = process.env.REPORTS_PATH || './reports.
 
 const reportLimiter = createRateLimiter();
 const reportStore = createReportStore();
+const MAX_OPEN_REPORTS = 5000;
+// Per client address; `total` is the service-wide backstop above, not here.
+const reportIpLimiter = createRateLimiter({ perKey: 20, total: Infinity });
+// New npubs only — see MAX_TOKENS.
+const registerLimiter = createRateLimiter({
+  perKey: NEW_REGISTRATIONS_PER_IP_HOUR,
+  total: NEW_REGISTRATIONS_PER_HOUR,
+});
+// Keys `ip:…` and `key:…` share one limiter; each request counts twice
+// against `total`, which is sized for that.
+const turnLimiter = createRateLimiter({ perKey: 60, total: 10_000 });
 
 function logReport(report) {
   log('report', `${short(report.reporter)} reported ${report.context} (${report.reason}) [${report.id}]`);
@@ -1595,6 +1688,9 @@ export async function handleReport(event, {
   limiter,
   store,
   notify = () => {},
+  ip = null,
+  ipLimiter = null,
+  maxOpen = MAX_OPEN_REPORTS,
 } = {}) {
   if (!verifyEvent(event) || event.kind !== REPORT_KIND ||
       !event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action' && tag[1] === 'report')) {
@@ -1607,8 +1703,23 @@ export async function handleReport(event, {
   }
   const payload = parseReportPayload(event.content);
   if (!payload) return { status: 400, body: { ok: false, reason: 'payload' } };
+  // The address first. The per-key limit below is no limit to somebody who
+  // signs each report with a fresh key, and its service-wide total of 200 an
+  // hour is shared by everyone — so one script used to be able to spend it
+  // and leave every real report that hour refused. The total stays as the
+  // backstop; this keeps one address from reaching it.
+  if (ipLimiter && !ipLimiter.allow(ip ?? 'unknown', nowSeconds)) {
+    return { status: 429, body: { ok: false, reason: 'rate' } };
+  }
   if (!limiter.allow(event.pubkey, nowSeconds)) {
     return { status: 429, body: { ok: false, reason: 'rate' } };
+  }
+  // Open reports are never purged (only decided ones are, after 90 days), so
+  // without a ceiling the file grows for as long as nobody decides. 4.5 KB at
+  // most each; the ceiling is ~25 MB.
+  if (typeof store.open === 'function' && (await store.open()).length >= maxOpen) {
+    log('report', `queue full (${maxOpen} open) — refusing`);
+    return { status: 503, body: { ok: false, reason: 'full' } };
   }
 
   const report = {

@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 29 September 2026**
+**Last updated: 14 October 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -177,6 +177,12 @@ policies apply to that processing.
 
 Server logs are kept for operational purposes and contain shortened public key
 fragments and delivery outcomes, not content.
+
+**Your IP address**, on a registration, a call-server login or a report, is
+used only in the server's memory, for at most an hour, to limit how often such
+requests can arrive, and is not written to disk. The cubechat relay likewise
+holds in memory the IP address of a phone publishing to it, so that no single
+address can fill its disk.
 
 ### 5.1 Voice calls
 
