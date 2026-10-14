@@ -12,7 +12,7 @@ import { schnorr } from '@noble/curves/secp256k1';
 process.env.STORE_PATH = join(tmpdir(), `cubechat-push-test-${process.pid}.json`);
 const {
   clientIpOf, createRateLimiter, handleRegister, handleReport, handleTurn,
-  pruneStaleTokens, server, wakeFilters,
+  limitKeyOf, pruneStaleTokens, server, wakeFilters,
 } = await import('../src/index.js');
 
 const now = Math.floor(Date.now() / 1000);
@@ -137,6 +137,18 @@ test('the client address is believed only from loopback', () => {
   assert.equal(clientIpOf(request('::ffff:127.0.0.1', '1.1.1.1, 203.0.113.5')), '203.0.113.5');
   assert.equal(clientIpOf(request('198.51.100.1', '1.2.3.4')), '198.51.100.1');
   assert.equal(clientIpOf(request('127.0.0.1')), '127.0.0.1');
+});
+
+test('IPv6 is limited by its /64, which one subscriber holds whole', () => {
+  assert.equal(limitKeyOf('2001:db8:aa:bb:1:2:3:4'), '2001:db8:aa:bb::/64');
+  assert.equal(limitKeyOf('2001:0db8:00aa:00bb:ffff::1'), '2001:db8:aa:bb::/64');
+  assert.equal(limitKeyOf('2001:db8::1'), '2001:db8:0:0::/64');
+  assert.equal(limitKeyOf('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(limitKeyOf('203.0.113.9'), '203.0.113.9');
+  const request = (forwarded) => ({ socket: { remoteAddress: '127.0.0.1' },
+    headers: { 'x-forwarded-for': forwarded } });
+  assert.equal(clientIpOf(request('2001:db8:aa:bb:dead:beef:0:1')),
+    clientIpOf(request('2001:db8:aa:bb:1234::9')));
 });
 
 test('an unbounded total costs nothing per call, and keys are still held', () => {

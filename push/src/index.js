@@ -59,6 +59,13 @@ const REGISTER_MAX_AGE_SECONDS = 5 * 60;
 // cap is what the relays will carry (see WAKE_CHUNK); the rate is per client
 // address, generous enough for a carrier NAT full of real phones. A phone that
 // is already registered refreshes for free, however often it launches.
+//
+// What is left, said plainly: somebody with enough addresses (a botnet, many
+// /64s) can still spend the hourly total and, over days, the cap — and then it
+// is *new* phones that are refused, while every registered one keeps ringing.
+// That is the failure this trades for, since the one it replaces silenced
+// everybody. Closing it needs the registration to cost something an address
+// does not: proof of work on a first registration, as Cube ID already asks.
 const MAX_TOKENS = Number(process.env.MAX_TOKENS || 10_000);
 const NEW_REGISTRATIONS_PER_IP_HOUR = 30;
 const NEW_REGISTRATIONS_PER_HOUR = 600;
@@ -1110,9 +1117,28 @@ export function clientIpOf(request) {
     // from the end, a Caddy that appended instead would still not let a
     // client choose its own address and with it a fresh quota per request.
     const forwarded = String(request.headers?.['x-forwarded-for'] ?? '').split(',').pop().trim();
-    if (forwarded) return forwarded;
+    if (forwarded) return limitKeyOf(forwarded);
   }
-  return peer;
+  return limitKeyOf(peer);
+}
+
+/// What a per-address limit counts by: an IPv4 address as it is, an IPv6 one
+/// by its /64. One IPv6 subscriber is routinely handed a whole /64 — 2⁶⁴
+/// addresses — so a limit per IPv6 *address* is a fresh quota per request to
+/// anybody who rotates through theirs, and the global caps behind it would be
+/// the only thing left between one person and every new phone being refused.
+export function limitKeyOf(address) {
+  const raw = String(address).trim();
+  const mapped = raw.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) return mapped[1];
+  if (!raw.includes(':')) return raw;
+  const [head, tail = ''] = raw.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = raw.includes('::')
+    ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right]
+    : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 function readBody(request, limit = 8 * 1024) {
