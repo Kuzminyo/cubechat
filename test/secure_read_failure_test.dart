@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cubechat/core/crypto/identity_service.dart';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/storage/secure_read_policy.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -29,7 +30,11 @@ class _FlakyStore extends FlutterSecureStorage {
   }) async {
     if (failReads > 0) {
       failReads--;
-      throw Exception('errSecInteractionNotAllowed (-25308)');
+      // What the plugin raises for a locked Keychain.
+      throw PlatformException(
+        code: 'Unexpected security result code',
+        message: 'Code: -25308, Message: User interaction is not allowed.',
+      );
     }
     return store[key];
   }
@@ -143,6 +148,8 @@ void main() {
 
   group('SecureReadPolicy', () {
     var now = DateTime.utc(2026, 10, 14, 9);
+    final locked = PlatformException(code: '-25308');
+    final bad = PlatformException(code: 'BAD_DECRYPT');
     SecureReadPolicy policy() => SecureReadPolicy(
           now: () => now,
           window: const Duration(minutes: 5),
@@ -153,33 +160,45 @@ void main() {
       final p = policy();
       for (var attempt = 1; attempt <= 50; attempt++) {
         now = now.add(const Duration(seconds: 5));
-        expect(await p.shouldReset('t', 'locked', attempts: attempt), isFalse);
+        expect(await p.shouldReset('t', locked, attempts: attempt), isFalse);
       }
     });
 
     test('resets a store that has failed past the window with no success',
         () async {
       final p = policy();
-      expect(await p.shouldReset('t', 'bad', attempts: 1), isFalse);
+      expect(await p.shouldReset('t', bad, attempts: 1), isFalse);
       now = now.add(const Duration(minutes: 6));
       // Too few attempts to call it broken, even this late.
-      expect(await p.shouldReset('t', 'bad', attempts: 2), isFalse);
-      expect(await p.shouldReset('t', 'bad', attempts: 3), isTrue);
+      expect(await p.shouldReset('t', bad, attempts: 2), isFalse);
+      expect(await p.shouldReset('t', bad, attempts: 3), isTrue);
     });
 
     test('the window is kept across launches', () async {
-      expect(await policy().shouldReset('t', 'bad', attempts: 1), isFalse);
+      expect(await policy().shouldReset('t', bad, attempts: 1), isFalse);
       now = now.add(const Duration(hours: 1));
       // A new process: a fresh policy, the same preferences.
-      expect(await policy().shouldReset('t', 'bad', attempts: 3), isTrue);
+      expect(await policy().shouldReset('t', bad, attempts: 3), isTrue);
     });
 
     test('a success in between starts the window again', () async {
       final p = policy();
-      expect(await p.shouldReset('t', 'locked', attempts: 1), isFalse);
+      expect(await p.shouldReset('t', locked, attempts: 1), isFalse);
       now = now.add(const Duration(hours: 1));
       await p.succeeded();
-      expect(await p.shouldReset('t', 'locked', attempts: 3), isFalse);
+      expect(await p.shouldReset('t', locked, attempts: 3), isFalse);
+    });
+
+    test('a platform with no secure store resets at once instead of waiting',
+        () async {
+      // What tests meet: no plugin behind the channel, or no binding at all.
+      // Waiting for those to unlock hung them for thirty seconds apiece.
+      for (final error in <Object>[
+        MissingPluginException('no implementation'),
+        StateError('Binding has not yet been initialized.'),
+      ]) {
+        expect(await policy().shouldReset('t', error, attempts: 1), isTrue);
+      }
     });
 
     test('backs off to thirty seconds', () {

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../util/debug_log.dart';
@@ -75,6 +76,14 @@ class SecureReadPolicy {
     Object error, {
     required int attempts,
   }) async {
+    // Only the platform's own refusal is worth waiting out. A locked Keychain
+    // (errSecInteractionNotAllowed) and Android's BAD_DECRYPT both arrive as a
+    // PlatformException; anything else — no plugin behind the channel, no
+    // binding at all — means there is no secure store here, so nothing is
+    // locked and nothing was ever stored, and the old answer (a key for this
+    // session) is right. Waiting on those hung every test that opens an
+    // encrypted box for thirty seconds apiece.
+    if (error is! PlatformException) return true;
     final now = _now();
     DateTime? first;
     try {
