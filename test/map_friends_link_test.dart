@@ -39,4 +39,30 @@ void main() {
       expect(chatIsMapFriend(const []), isFalse);
     });
   });
+
+  group('the link itself', () {
+    test('points at our own domain, with the payload in the fragment', () {
+      // cubechat.app is a domain nobody here holds; see MapFriendLink._prefix.
+      expect(invite, startsWith('https://cubechat.tech/map#'));
+      expect(invite, isNot(contains('cubechat.app')));
+      final parsed = MapFriendLink.tryParse(invite)!;
+      expect(parsed.kind, MapFriendLinkKind.invite);
+      expect(parsed.displayName, 'Kuz');
+    });
+
+    test('an invitation from an older build still reads', () {
+      final legacy = invite.replaceFirst(
+        'https://cubechat.tech/map#',
+        'https://cubechat.app/map/',
+      );
+      final parsed = MapFriendLink.tryParse(legacy)!;
+      expect(parsed.kind, MapFriendLinkKind.invite);
+      expect(chatIsMapFriend([text(legacy, isMine: true)]), isTrue);
+    });
+
+    test('the same payload under any other host is not a map link', () {
+      final foreign = invite.replaceFirst('cubechat.tech', 'cubechat.example');
+      expect(MapFriendLink.tryParse(foreign), isNull);
+    });
+  });
 }

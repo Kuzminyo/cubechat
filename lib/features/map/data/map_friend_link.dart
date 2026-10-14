@@ -15,7 +15,18 @@ class MapFriendLink {
   final String displayName;
   final DateTime createdAt;
 
-  static const _prefix = 'https://cubechat.app/map/';
+  /// cubechat.tech, our own site, since 2026-10-14 — the move contact cards
+  /// made in 1120 (see `ContactCard.linkPrefix`). It was `cubechat.app`, which
+  /// nobody here has registered: a build that cannot read the link, or another
+  /// messenger it is forwarded to, shows it as a tappable URL, and whoever buys
+  /// that domain decides where the tap goes. The payload is in the fragment,
+  /// which a browser never sends to the host, so a name in it stays on the
+  /// phone even when somebody does tap it.
+  ///
+  /// The old prefix is still read. A build before this one reads only the old
+  /// one, so to it a new invitation is a plain link until it updates.
+  static const _prefix = 'https://cubechat.tech/map#';
+  static const _legacyPrefix = 'https://cubechat.app/map/';
 
   static MapFriendLink invite({required String displayName}) => MapFriendLink._(
         kind: MapFriendLinkKind.invite,
@@ -43,9 +54,12 @@ class MapFriendLink {
 
   static MapFriendLink? tryParse(String raw) {
     final text = raw.trim();
-    if (!text.startsWith(_prefix)) return null;
+    final prefix = text.startsWith(_prefix)
+        ? _prefix
+        : (text.startsWith(_legacyPrefix) ? _legacyPrefix : null);
+    if (prefix == null) return null;
     try {
-      var b64 = text.substring(_prefix.length);
+      var b64 = text.substring(prefix.length);
       b64 = b64.padRight((b64.length + 3) ~/ 4 * 4, '=');
       final map =
           (jsonDecode(utf8.decode(base64Url.decode(b64))) as Map).cast<String, dynamic>();
