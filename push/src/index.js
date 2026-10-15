@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-10-14-rate-limits';
+const VERSION = '2026-10-14-register-pow';
 
 const RECIPIENT_TAG = 'p';
 
@@ -60,15 +60,44 @@ const REGISTER_MAX_AGE_SECONDS = 5 * 60;
 // address, generous enough for a carrier NAT full of real phones. A phone that
 // is already registered refreshes for free, however often it launches.
 //
-// What is left, said plainly: somebody with enough addresses (a botnet, many
-// /64s) can still spend the hourly total and, over days, the cap — and then it
+// What the limits alone left open: somebody with enough addresses (a botnet,
+// many /64s) could spend the hourly total and, over days, the cap — and then it
 // is *new* phones that are refused, while every registered one keeps ringing.
-// That is the failure this trades for, since the one it replaces silenced
-// everybody. Closing it needs the registration to cost something an address
-// does not: proof of work on a first registration, as Cube ID already asks.
+// That is the failure they trade for, since the one they replaced silenced
+// everybody. Since 2026-10-14 a first registration also costs proof of work
+// (REGISTER_POW_BITS below), which an extra address does not buy.
 const MAX_TOKENS = Number(process.env.MAX_TOKENS || 10_000);
 const NEW_REGISTRATIONS_PER_IP_HOUR = 30;
 const NEW_REGISTRATIONS_PER_HOUR = 600;
+
+// NIP-13 difficulty a *new* npub's registration must carry (leading zero bits
+// of the event id, mined with a `nonce` tag). A refresh never pays it: the
+// phone sends its registration unmined, and only on `reason: 'pow'` mines one
+// and sends it again — see `_publish` in push_registration.dart.
+//
+// 14, as Cube ID asks (POW_BITS in id/src/events.js). The app's miner measured
+// ~113k hashes/s on the development PC (2026-10-14), so 2^14 is ~0.15 s there
+// on average and ~1 s on a phone, in an isolate, once per install.
+//
+// Said plainly, that is a price and not a wall: 16k SHA-256s is milliseconds
+// for native code, so it turns "a fresh key and an address" into "a fresh key,
+// an address and some CPU", which is what makes the caps above expensive to
+// spend rather than free. If they are being spent anyway, raise this in .env:
+// the refusal says how many bits it wants and the app mines to that (up to
+// `pushPowMaxBits`, 18), so a raise needs no app release. Each bit doubles the
+// wait for a real phone as well as for the script.
+const REGISTER_POW_BITS = Number(process.env.REGISTER_POW_BITS || 14);
+
+// Below this many npubs a first registration is accepted without proof of
+// work, as it always was. Builds up to 1149 never mine, so demanding it from
+// the first deploy would refuse every one of them that had not registered yet
+// — a reinstall, a new phone — with nothing on screen to say why. Their
+// already-registered phones are never affected: refreshes stay free at any
+// size. Past the mark, an unmined first registration is refused with 'pow' and
+// the phone needs a build that mines. Spending the free part costs an attacker
+// over three hours of the whole hourly budget (NEW_REGISTRATIONS_PER_HOUR) and
+// locks out only old builds; new ones mine and keep getting in.
+const POW_FREE_BELOW = Number(process.env.POW_FREE_BELOW || 2000);
 
 // A registration not renewed for this long is dropped. A phone renews on
 // every launch, so this only ever reaches a phone whose owner has not opened
@@ -216,6 +245,18 @@ function verifyEvent(event) {
   }
 }
 
+/// NIP-13: the number of leading zero bits of the event id. The same function
+/// as `difficulty` in id/src/events.js — a separate deployment, so a copy.
+export function difficulty(idHex) {
+  let bits = 0;
+  for (const ch of idHex) {
+    const v = parseInt(ch, 16);
+    if (v === 0) { bits += 4; continue; }
+    return bits + Math.clz32(v) - 28;
+  }
+  return bits;
+}
+
 /// Which push network a registration belongs to.
 ///
 /// Carried on the event rather than guessed from the token's shape. The shapes
@@ -319,6 +360,8 @@ export function handleRegister(event, {
   limiter = registerLimiter,
   nowSeconds = Math.floor(Date.now() / 1000),
   maxTokens = MAX_TOKENS,
+  powBits = REGISTER_POW_BITS,
+  powFreeBelow = POW_FREE_BELOW,
 } = {}) {
   if (!verifyEvent(event)) return { ok: false, reason: 'signature' };
   if (event.kind !== REGISTER_KIND) return { ok: false, reason: 'kind' };
@@ -367,7 +410,12 @@ export function handleRegister(event, {
   const before = previous?.token;
   // Only a *new* npub is counted or capped — see MAX_TOKENS. Checked last, so
   // nothing that would have been refused anyway spends an address's quota.
+  // The work comes first of the three: an unmined attempt must not spend a
+  // quota either, and the phone answers this refusal by mining and retrying.
   if (!previous) {
+    if (tokens.size >= powFreeBelow && difficulty(event.id) < powBits) {
+      return { ok: false, reason: 'pow', bits: powBits, status: 403 };
+    }
     if (tokens.size >= maxTokens) {
       log('register', `full (${tokens.size}) — refusing ${short(event.pubkey)}`);
       return { ok: false, reason: 'full', status: 503 };
@@ -1227,8 +1275,9 @@ export const server = createServer(async (request, response) => {
     }
     const result = handleRegister(event, { ip: clientIpOf(request) });
     // `status` is only set for the cases that aren't a plain 200/400 — a
-    // banned npub (403), an address over its rate (429), a full registry
-    // (503). Everything else keeps the shape this route always had.
+    // banned npub or a first registration without enough work (403), an
+    // address over its rate (429), a full registry (503). Everything else
+    // keeps the shape this route always had.
     return json(response, result.status ?? (result.ok ? 200 : 400), result);
   }
   if (request.method === 'GET' && request.url === '/banned') {

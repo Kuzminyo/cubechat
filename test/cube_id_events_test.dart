@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/dart.dart';
 import 'package:cubechat/core/transport/nostr/nostr_event.dart';
+import 'package:cubechat/core/transport/nostr/nostr_pow.dart';
 import 'package:cubechat/core/transport/nostr/nostr_signer.dart';
 import 'package:cubechat/features/cube_id/data/cube_id_events.dart';
 import 'package:flutter_test/flutter_test.dart';

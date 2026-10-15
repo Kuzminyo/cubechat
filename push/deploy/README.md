@@ -178,6 +178,38 @@ whole of what "working" looks like until a phone registers.
 An empty reply means nothing is listening — the service is not running, or
 Caddy is not in front of it. Both show up in `systemctl status`.
 
+## How fast new phones may arrive
+
+A phone that is already registered refreshes for free, as often as it likes.
+A *new* npub is what is limited, and since 2026-10-14 it is checked in this
+order (constants at the top of `src/index.js`, comments there say why):
+
+1. **Proof of work** — once the registry holds `POW_FREE_BELOW` npubs (2000 by
+   default), a first registration has to carry `REGISTER_POW_BITS` (14) leading
+   zero bits in its event id, mined with a NIP-13 `nonce` tag. Without it the
+   answer is `403 {"reason":"pow","bits":14}` and nothing is counted. A build
+   that mines (after 1149) sends its registration unmined, mines only on that
+   refusal — about a second on a phone — and sends it again.
+2. **The registry cap** — `MAX_TOKENS` (10000), else `503 full`.
+3. **The rate** — 30 new npubs an hour per client address (an IPv6 client by
+   its /64), 600 an hour in all, else `429 rate`.
+
+Builds up to 1149 never mine. Below the watermark that changes nothing for
+them; above it, such a phone that has *never* registered — a fresh install of
+an old APK — is refused until it is updated, and the journal shows no line
+for it (the refusal is not logged; the phone's own log says
+`register refused by push.cubechat.tech: {"ok":false,"reason":"pow",…}`).
+Phones already in `tokens.json` are never affected.
+
+Both numbers are `.env` settings, and changing them needs only a restart:
+
+- New phones being refused for `rate` or `full` while `tokens` climbs much
+  faster than real installs would: raise `REGISTER_POW_BITS` by one or two. The
+  refusal carries the number and the app mines to it — up to 18, where it stops
+  — so no app release is needed. Each bit doubles the wait on a real phone too.
+- `/health`'s `tokens` is near `POW_FREE_BELOW` and old builds are still in
+  testers' hands: raise it, or ship them a new APK first.
+
 ## What the service keeps, and for how long
 
 On disk it holds exactly one file of its own: `tokens.json`, the registry of

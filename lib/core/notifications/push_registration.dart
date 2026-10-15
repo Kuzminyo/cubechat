@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,7 @@ import '../storage/hive_init.dart';
 import '../crypto/identity_service.dart';
 import '../locale/locale_controller.dart';
 import '../transport/nostr/nostr_event.dart';
+import '../transport/nostr/nostr_pow.dart';
 import '../transport/nostr/nostr_signer.dart';
 import '../util/coalescer.dart';
 import '../util/debug_log.dart';
@@ -113,6 +115,35 @@ class PushRegistration {
   /// place.
   static String get platformTag => PlatformInfo.isAndroid ? 'android' : 'ios';
 
+  /// NIP-13 difficulty a first registration is mined to when the server's
+  /// refusal does not say (`REGISTER_POW_BITS` in push/src/index.js). It
+  /// always does; this is only the floor under a malformed answer.
+  static const powBits = 14;
+
+  /// The most work this phone will do for the doorbell, whatever it asks.
+  ///
+  /// The server names its difficulty in the refusal so it can be raised
+  /// without a release, and this is the bound on that: the miner did ~113k
+  /// hashes/s on the development PC (2026-10-14) and a phone is several times
+  /// slower, so 18 bits is already seconds of a core in the background. A
+  /// demand above it is mined to 18 and refused again, which costs one more
+  /// request rather than a minute of battery.
+  static const powMaxBits = 18;
+
+  /// The bits a refusal asks to be mined to, or null when it is a refusal of
+  /// something else.
+  static int? powBitsAsked(String body) {
+    final Object? reply;
+    try {
+      reply = jsonDecode(body);
+    } on FormatException {
+      return null;
+    }
+    if (reply is! Map<String, Object?> || reply['reason'] != 'pow') return null;
+    final bits = reply['bits'];
+    return bits is int ? bits.clamp(1, powMaxBits) : powBits;
+  }
+
   /// Ask for permission, get the token, and hand the server a signed line.
   ///
   /// The three failures are told apart because only one of them has a way out.
@@ -174,36 +205,62 @@ class PushRegistration {
   Future<bool> disable() => _publish('');
 
   Future<bool> _publish(String token) async {
-    final NostrEvent event;
+    final Secp256k1NostrSigner signer;
+    final NostrEvent unsigned;
+    NostrEvent event;
     try {
-      final signer = await _signer();
-      event = await signer.sign(
-        NostrEvent(
-          pubkey: signer.npubHex,
-          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          kind: registrationKind,
-          tags: <List<String>>[
-            <String>['lang', await _language()],
-            <String>['platform', platformTag],
-            // The PushKit token, when there is one. It is what lets a call
-            // wake an iPhone whose app was swiped away and ring CallKit's
-            // screen; the alert token in the content can only draw a banner.
-            // Signed with the rest, so a call cannot be redirected to another
-            // phone. Absent on Android and on an unregistration.
-            if (token.isNotEmpty && PlatformInfo.isIOS)
-              if (await _voipToken() case final voip?) <String>['voip', voip],
-          ],
-          content: token,
-        ),
+      signer = await _signer();
+      unsigned = NostrEvent(
+        pubkey: signer.npubHex,
+        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        kind: registrationKind,
+        tags: <List<String>>[
+          <String>['lang', await _language()],
+          <String>['platform', platformTag],
+          // The PushKit token, when there is one. It is what lets a call
+          // wake an iPhone whose app was swiped away and ring CallKit's
+          // screen; the alert token in the content can only draw a banner.
+          // Signed with the rest, so a call cannot be redirected to another
+          // phone. Absent on Android and on an unregistration.
+          if (token.isNotEmpty && PlatformInfo.isIOS)
+            if (await _voipToken() case final voip?) <String>['voip', voip],
+        ],
+        content: token,
       );
+      event = await signer.sign(unsigned);
     } catch (e) {
       DebugLog.instance.log('PUSH', 'could not sign the registration: $e');
       return false;
     }
     // Signed once and offered to each in turn: the same event is valid at any
     // of them, and re-signing per attempt would only move the timestamp.
+    int? asked;
     for (final endpoint in endpoints) {
-      if (await _post(endpoint, event, token)) return true;
+      final reply = await _post(endpoint, event, token);
+      if (reply.ok) return true;
+      asked ??= reply.powBits;
+    }
+    // A first registration of this npub — a new install, or one the server
+    // let go after two months away — has to carry proof of work once the
+    // registry is past its watermark (see REGISTER_POW_BITS on the server).
+    // Mined only after being asked, so the refresh every launch makes, which
+    // the server never charges for, costs no CPU; a first one costs a second
+    // round trip and about a second of a background isolate.
+    if (asked != null) {
+      try {
+        final watch = Stopwatch()..start();
+        event = await signer.sign(await minePushRegistration(unsigned, asked));
+        DebugLog.instance.log(
+          'PUSH',
+          'mined $asked bits in ${watch.elapsedMilliseconds} ms',
+        );
+      } catch (e) {
+        DebugLog.instance.log('PUSH', 'could not mine the registration: $e');
+        return false;
+      }
+      for (final endpoint in endpoints) {
+        if ((await _post(endpoint, event, token)).ok) return true;
+      }
     }
     DebugLog.instance.log(
       'PUSH',
@@ -226,7 +283,12 @@ class PushRegistration {
   }
 
   /// One attempt at one endpoint. Never throws; the caller tries the next.
-  Future<bool> _post(String endpoint, NostrEvent event, String token) async {
+  /// [powBits] is set when the refusal was for want of proof of work.
+  Future<({bool ok, int? powBits})> _post(
+    String endpoint,
+    NostrEvent event,
+    String token,
+  ) async {
     final host = Uri.parse(endpoint).host;
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 12);
@@ -244,12 +306,12 @@ class PushRegistration {
         '${token.isEmpty ? 'unregister' : 'register'} '
             '${ok ? 'accepted' : 'refused'} by $host: $body',
       );
-      return ok;
+      return (ok: ok, powBits: ok ? null : powBitsAsked(body));
     } catch (e) {
       // Named rather than swallowed, because "could not resolve host" is the
       // failure this list exists for and it must be readable in a log.
       DebugLog.instance.log('PUSH', '$host did not answer: $e');
-      return false;
+      return (ok: false, powBits: null);
     } finally {
       client.close(force: true);
     }
@@ -303,6 +365,14 @@ class PushRegistration {
     );
   }
 }
+
+/// [unsigned] with a NIP-13 nonce tag appended, mined off the UI isolate.
+///
+/// Top-level rather than a method so the closure sent to the isolate carries
+/// only the event and the number — a closure inside [PushRegistration] could
+/// drag its `Ref` along, and that cannot cross an isolate.
+Future<NostrEvent> minePushRegistration(NostrEvent unsigned, int bits) =>
+    Isolate.run(() => mineNonce(unsigned, bits));
 
 /// Why turning it on did or did not work.
 ///

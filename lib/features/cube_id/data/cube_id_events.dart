@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'dart:isolate';
 
-import 'package:cryptography/dart.dart';
-
 import '../../../core/transport/nostr/nostr_event.dart';
+import '../../../core/transport/nostr/nostr_pow.dart';
 import '../../../core/transport/nostr/nostr_signer.dart';
 
 /// Kind of every Cube ID operation. Its own kind, not push's 24242, so a push
@@ -19,38 +18,6 @@ const int cubeIdKind = 24243;
 /// slower than that — the tail would have been a claim button that spins for
 /// ten seconds. 14 is a quarter of the work.
 const int cubeIdPowBits = 14;
-
-int leadingZeroBits(List<int> digest) {
-  var bits = 0;
-  for (final byte in digest) {
-    if (byte == 0) {
-      bits += 8;
-      continue;
-    }
-    var b = byte;
-    while (b & 0x80 == 0) {
-      bits++;
-      b = (b << 1) & 0xff;
-    }
-    break;
-  }
-  return bits;
-}
-
-/// Pure and synchronous so it can run in [Isolate.run]: hashing with the
-/// async `Sha256` would cost an await per attempt, tens of thousands of them.
-NostrEvent mineNonce(NostrEvent unsigned, int bits) {
-  const sha = DartSha256();
-  for (var nonce = 0;; nonce++) {
-    final candidate = unsigned.copyWith(
-      tags: [
-        ['nonce', '$nonce', '$bits'],
-      ],
-    );
-    final digest = sha.hashSync(utf8.encode(candidate.serializeForId())).bytes;
-    if (leadingZeroBits(digest) >= bits) return candidate;
-  }
-}
 
 /// A signed Cube ID operation. [Secp256k1NostrSigner.sign] computes the id
 /// itself, so the mined nonce tag is part of the id it signs.

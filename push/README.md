@@ -14,7 +14,10 @@ only be driven by a server. This is the smallest server that can drive it.
    relay checks one — id is the SHA-256 of the canonical array, and the
    signature verifies against the pubkey in the event. That is what stops
    anybody registering a token against somebody else's npub and turning this
-   into an oracle for "did they get mail".
+   into an oracle for "did they get mail". A *first* registration of an npub
+   also has to carry NIP-13 proof of work once the registry is past
+   `POW_FREE_BELOW`; the phone mines it only when refused with `reason: "pow"`,
+   so the refresh on every launch stays free.
 2. It subscribes to the same relays the app uses, filtered to the npubs it holds
    tokens for.
 3. An event addressed to one of them becomes one APNs push carrying a fixed
