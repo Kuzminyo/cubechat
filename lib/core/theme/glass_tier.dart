@@ -144,6 +144,17 @@ class GlassTierController extends Notifier<GlassTier> {
       if (chosen != state) state = chosen;
       final remembered = _rememberedVerdict(box);
       _apply(chosen, remembered: remembered);
+      // Which of the three it is — chosen by hand, judged, or still to be —
+      // since the Diagnostics line shows only the outcome. 1168's log had no
+      // verdict six minutes in, and nothing said whether one was coming.
+      DebugLog.instance.log(
+        'GLASS',
+        chosen != GlassTier.auto
+            ? '${chosen.name}, chosen by hand — not measured'
+            : remembered != null
+                ? 'auto, judged $remembered earlier'
+                : 'auto, measuring from ${_settleAfter.inSeconds} s in',
+      );
       if (chosen == GlassTier.auto && remembered == null) {
         _scheduleMeasurement();
       }
@@ -201,6 +212,7 @@ class GlassTierController extends Notifier<GlassTier> {
   RasterWindow? _slides;
 
   bool _watchingFrames = false;
+  int _waits = 0;
 
   /// Frames built while a screen was changing, by engine frame number.
   ///
@@ -253,6 +265,15 @@ class GlassTierController extends Notifier<GlassTier> {
     // what did happen already says light, which more frames cannot undo.
     if (window.count < _minFrames ||
         (verdict == GlassTier.full && slides.count < _minSlideFrames)) {
+      // Said the first few times only: a phone left on one screen would
+      // otherwise write this every 45 s into a 200-line log.
+      if (_waits++ < 3) {
+        DebugLog.instance.log(
+          'GLASS',
+          'not judged yet — ${window.count} frames, ${slides.count} of them '
+              'screen changes; watching on',
+        );
+      }
       _measure = Timer(_measureAfter, _judge);
       return;
     }
