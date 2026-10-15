@@ -71,9 +71,37 @@ class _BranchContainerState extends State<BranchContainer>
   bool _dragging = false;
   double _width = 1;
 
+  /// The branches built so far.
+  ///
+  /// Only the one on screen goes into the first frame; the rest follow one per
+  /// frame after it. Every branch built at once made the first frame of a cold
+  /// start build Chats, Contacts and the profile together, behind the launch
+  /// screen: 1165 on the S24+ logged 1253 ms from the process starting to the
+  /// first frame on screen, 430 of them between the router's first page and
+  /// that frame. A branch about to be dragged on screen is built at once,
+  /// whatever the queue says — see [build].
+  late final Set<int> _built = {widget.currentIndex};
+
+  void _buildNextBranch() {
+    if (!mounted) return;
+    for (var i = 0; i < widget.branches.length; i++) {
+      if (_built.add(i)) {
+        setState(() {});
+        WidgetsBinding.instance.addPostFrameCallback((_) => _buildNextBranch());
+        return;
+      }
+    }
+  }
+
+  bool _isBuilt(int i, double page) {
+    if ((i - page).abs() < 1 || i == widget.currentIndex) _built.add(i);
+    return _built.contains(i);
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _buildNextBranch());
     // Both set here rather than as `late` field initialisers, which are
     // evaluated on first *access*: the first read of the target happened inside
     // didUpdateWidget, by which time `widget` was already the new one — so it
@@ -302,7 +330,11 @@ class _BranchContainerState extends State<BranchContainer>
                   // nobody is looking at cost nothing.
                   visible: (i - page).abs() < 1,
                   active: i == widget.currentIndex,
-                  child: widget.branches[i],
+                  // Not built yet, unless it is about to be seen — and once
+                  // built, never taken down again.
+                  child: _isBuilt(i, page)
+                      ? widget.branches[i]
+                      : const SizedBox.shrink(),
                 ),
             ],
           ),

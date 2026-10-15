@@ -36,6 +36,8 @@ void main() {
         ),
       ),
     );
+    // The hidden branch is built on the frame after the first.
+    await tester.pump();
 
     expect(active.last, isTrue, reason: 'the visible branch runs tickers');
     expect(inactive.last, isFalse,
@@ -57,6 +59,8 @@ void main() {
         );
 
     await tester.pumpWidget(shell(0));
+    // The hidden branch is built on the frame after the first.
+    await tester.pump();
     expect(first.last, isTrue);
     expect(second.last, isFalse);
 

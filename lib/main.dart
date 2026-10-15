@@ -361,12 +361,18 @@ Future<void> main() async {
 
   // After runApp for the same reason: a question, not a step. The answer lands
   // in the log a few frames in, which is where anybody reading it is looking.
-  unawaited(_bootStep('build-facts', BuildProbe.logBuildFacts,
-      limit: const Duration(seconds: 3)));
-  // How the last run ended, if it did not end normally — the stack of the
-  // crash that took the previous log with it. See [ExitProbe].
-  unawaited(_bootStep('previous-exit', ExitProbe.logPreviousExits,
-      limit: const Duration(seconds: 3)));
+  //
+  // And after the first frame, as display-mode is: 1165 logged them at 98 and
+  // 106 ms, both platform-thread calls landing while that thread was still
+  // putting the first frame on screen.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_bootStep('build-facts', BuildProbe.logBuildFacts,
+        limit: const Duration(seconds: 3)));
+    // How the last run ended, if it did not end normally — the stack of the
+    // crash that took the previous log with it. See [ExitProbe].
+    unawaited(_bootStep('previous-exit', ExitProbe.logPreviousExits,
+        limit: const Duration(seconds: 3)));
+  });
 
   // Also after runApp, and also unawaited: the map is four tabs away, so
   // opening its tile cache has no business delaying the first frame. By the
