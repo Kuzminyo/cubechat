@@ -159,8 +159,27 @@ class _AuroraBackgroundState extends State<AuroraBackground>
     }
   }
 
+  /// Whether the blobs drift at all. **Off, on every phone, since 1155.**
+  ///
+  /// Everything above parks the drift whenever nobody is looking, and it still
+  /// cost the most frames the app draws on its own: ~30 repaints a second for
+  /// two seconds after every touch, and through every launch. The frame meter's
+  /// first five-second window on a Galaxy S24+ (2026-10-15, 1154) counted
+  /// `aurora x173` in 5.5 s of launch — 254 of 266 frames with a ticker
+  /// running. On that phone each of those frames is 2-6 ms of raster; on the
+  /// slow phones the owner tests on it is several times that, and those frames
+  /// land exactly where a chat open or a scroll needs the GPU. Motion with a
+  /// 24-second period, mostly parked anyway, was not worth a GPU the cheap
+  /// phones do not have — the owner's call, "universal, smooth on every phone".
+  ///
+  /// The backdrop is the same picture, held still; a tab change still eases it
+  /// sideways through [_focus], which runs only for that change. The ticker
+  /// machinery below is kept so a per-device return is one line, not a rewrite.
+  static const bool _driftEnabled = false;
+
   /// Run the drift now, and park it once things go quiet again.
   void _wake() {
+    if (!_driftEnabled) return;
     _startTicker();
     _scheduleIdle();
   }
