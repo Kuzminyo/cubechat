@@ -115,6 +115,7 @@ class FrameStats {
           ? const <String, int>{}
           : Map<String, int>.of(_buildCounts);
       _buildCounts.clear();
+      _noteWindow(counts);
       // By the engine's frame number, which is what each timing carries too.
       final number = PlatformDispatcher.instance.frameData.frameNumber;
       if (number >= 0) {
@@ -136,6 +137,46 @@ class FrameStats {
   }
 
   bool _closingFrames = false;
+
+  /// Every [_windowLength] of a measurement, one line: how many frames were
+  /// drawn, how many had an animation ticking, and what rebuilt or repainted.
+  ///
+  /// The slow-frame line answers "why was this frame expensive". It cannot
+  /// answer the question the 2026-10-15 measurement on a Galaxy S24+ raised:
+  /// why frames are drawn *at all* on a screen nobody is touching. The Chats
+  /// tab sat at 0-1% of a core idle; Contacts, both halves, at 5-8% — about
+  /// nine frames a second whose screenshots were pixel-identical. Each frame
+  /// was cheap (0.4 ms build, 2.2 ms raster); there were just frames where
+  /// there should be none. A ticker still running and a provider still
+  /// changing look the same from outside; [SchedulerBinding.transientCallbackCount]
+  /// tells them apart, because a running ticker re-registers for every frame.
+  void _noteWindow(Map<String, int> counts) {
+    final now = DateTime.now();
+    final start = _windowStart ??= now;
+    _windowFrames++;
+    if (SchedulerBinding.instance.transientCallbackCount > 0) {
+      _windowTicking++;
+    }
+    counts.forEach((k, v) => _windowCounts[k] = (_windowCounts[k] ?? 0) + v);
+    final span = now.difference(start);
+    if (span < _windowLength) return;
+    DebugLog.instance.log(
+      'FRAME',
+      '${(span.inMilliseconds / 1000).toStringAsFixed(1)} s: '
+          '$_windowFrames frame(s), $_windowTicking with an animation ticking'
+          ' — ${_windowCounts.isEmpty ? 'nothing counted' : _format(_windowCounts)}',
+    );
+    _windowStart = now;
+    _windowFrames = 0;
+    _windowTicking = 0;
+    _windowCounts.clear();
+  }
+
+  static const Duration _windowLength = Duration(seconds: 5);
+  DateTime? _windowStart;
+  int _windowFrames = 0;
+  int _windowTicking = 0;
+  final Map<String, int> _windowCounts = <String, int>{};
 
   /// Per-frame build counts, oldest first, waiting for their timing.
   ///
@@ -259,6 +300,10 @@ class FrameStats {
     _frameCounts.clear();
     _countsByFrame.clear();
     _lastSlowFrameWho = null;
+    _windowStart = null;
+    _windowFrames = 0;
+    _windowTicking = 0;
+    _windowCounts.clear();
   }
 
   /// What the last reported slow frame said rebuilt, for tests.

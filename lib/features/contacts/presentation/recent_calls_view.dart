@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../../core/util/platform_capabilities.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/floating_glass.dart';
@@ -111,6 +112,7 @@ class _CallRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    FrameStats.countBuild('callRow');
     final t = AppLocalizations.of(context);
     final name = _nameFor(ref, call.peerId);
     final (icon, label) = switch (call.kind) {

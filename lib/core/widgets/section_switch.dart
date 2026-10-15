@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../util/frame_stats.dart';
 import 'floating_glass.dart';
 
 /// Two or three halves of one screen, picked from a glass island — Contacts |
@@ -36,6 +37,7 @@ class SectionSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('sectionSwitch');
     final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 220);

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../theme/colors.dart';
+import '../util/frame_stats.dart';
 import '../util/motion.dart';
 import '../util/ui_activity.dart';
 import 'aurora_textures.dart';
@@ -452,6 +453,8 @@ class _AuroraPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // A paint, not a build: the drift repaints without rebuilding anything.
+    FrameStats.countBuild('aurora');
     final rect = Offset.zero & size;
     final paletteStamp = Object.hash(AppColors.bgTop, AppColors.bgBottom);
     _blobPalette = Object.hash(

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/widgets/appear_animation.dart';
@@ -190,6 +191,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Counted like Chats: idle Contacts drew ~9 frames/s (2026-10-15).
+    FrameStats.countBuild('contacts');
     final t = AppLocalizations.of(context);
     final all = ref.watch(contactChatsProvider);
     final tags = ref.watch(contactTagsControllerProvider);
@@ -624,6 +627,7 @@ class _ContactTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    FrameStats.countBuild('contactTile');
     final t = AppLocalizations.of(context);
     // The one thing this row does read for itself, and it reads exactly one
     // key of one map — which is the same rule the tag above states, not an

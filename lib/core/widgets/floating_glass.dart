@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../theme/glass.dart';
+import '../util/frame_stats.dart';
 import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
@@ -114,6 +115,7 @@ class FloatingGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('glass');
     final radius = BorderRadius.circular(borderRadius);
 
     // The tint, on its own. It is what the pane *looks* like; the blur behind

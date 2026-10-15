@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../util/frame_stats.dart';
+
 /// Pages of one screen moving as a strip, the way the main tabs do: they sit
 /// side by side, and picking one slides the old one out as the new one slides
 /// in, a full width each. Nearby | AirDrop | Files, and Contacts | Calls.
@@ -35,6 +37,7 @@ class StripPageSlide extends StatelessWidget {
       animation: animation,
       child: child,
       builder: (context, inner) {
+        FrameStats.countBuild('stripSlide');
         final t =
             reduced ? 1.0 : Curves.easeOutCubic.transform(animation.value);
         final dx = leaving ? -t * from * width : (1 - t) * from * width;

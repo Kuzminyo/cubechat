@@ -3,6 +3,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../util/frame_stats.dart';
 
 /// A search field that becomes a round button as a list scrolls — one shape
 /// the whole way, because two shapes cross-fading is what made it look like a
@@ -38,6 +39,7 @@ class MorphingSearch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('search');
     // The words are gone well before the shape is, so they are never seen
     // being squeezed into a circle.
     final textOpacity = (1 - collapse * 2.2).clamp(0.0, 1.0);

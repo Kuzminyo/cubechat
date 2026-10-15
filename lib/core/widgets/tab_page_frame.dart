@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../util/frame_stats.dart';
 import 'morphing_search.dart';
 import 'scroll_hiding_island.dart';
 import 'section_switch.dart';
@@ -172,6 +173,7 @@ class _TabPageFrameState extends State<TabPageFrame> {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('tabFrame');
     final reduced = MediaQuery.disableAnimationsOf(context);
     final motion = reduced ? Duration.zero : const Duration(milliseconds: 220);
     return TweenAnimationBuilder<double>(
