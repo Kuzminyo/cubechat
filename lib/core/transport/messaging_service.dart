@@ -7802,9 +7802,16 @@ class MessagingService {
         case InnerPayloadType.ownDevice:
           // Another device of this account — believed from our own key only.
           // Anybody else could seal a frame to us; nobody else can sign as us.
+          //
+          // Read off the signature, not off [senderPub]. That one is the
+          // sender's X25519 key as the *contact list* knows it — origin hash
+          // or verified signer looked up among known peers — and this account
+          // is never a contact of itself, so it was null for every notice and
+          // each device dropped every other device's hello, sign-out and
+          // goodbye. "The devices do not see each other" (1150/1151, a phone
+          // and the computer it had signed in, 2026-10-15).
           final own = await _ref.read(identityProvider.future);
-          if (senderPub == null ||
-              !_bytesEqual(senderPub, Uint8List.fromList(own.publicKey))) {
+          if (!signedByOwnKey(verifiedSenderEdPub, own.signPublicKey)) {
             DebugLog.instance
                 .log('DEVICES', 'drop own-device notice not from our own key');
             break;
@@ -11999,6 +12006,19 @@ class MessagingService {
     await _announceOverNostrTo(_hexOf(ann.nostrPubkey), ann.pubkey);
     return pubkeyHex;
   }
+
+  /// Whether a frame's verified signature is this account's own — the only
+  /// thing that makes an own-device notice believable. [verifiedSignerEdPub]
+  /// is the Ed25519 key the signature checked out against (null when nothing
+  /// was signed); the signature covers the envelope's origin and msgId, so it
+  /// cannot be lifted onto another frame.
+  @visibleForTesting
+  static bool signedByOwnKey(
+    Uint8List? verifiedSignerEdPub,
+    List<int> ownSignPub,
+  ) =>
+      verifiedSignerEdPub != null &&
+      _bytesEqual(verifiedSignerEdPub, Uint8List.fromList(ownSignPub));
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {
     if (a.length != b.length) return false;
