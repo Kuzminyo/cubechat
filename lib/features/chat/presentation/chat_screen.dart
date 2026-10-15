@@ -72,6 +72,7 @@ import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/drafts_controller.dart';
 import '../data/messages_controller.dart';
+import 'widgets/chat_islands_layout.dart';
 import 'widgets/empty_chat_greeting.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
@@ -1582,9 +1583,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return built;
   }
 
-  /// How far down the floating header reaches, published by the scaffold that
-  /// measures it — see [_FloatingComposerBody.headerBottom].
-  final ValueNotifier<double> _headerBottom = ValueNotifier<double>(0);
+  /// How far down the list's own box the floating header reaches — see
+  /// [_FloatingComposerBody.headerBottom]. Fixed since the list stopped
+  /// running under the header's measured height (1170).
+  final ValueNotifier<double> _headerBottom =
+      ValueNotifier<double>(_FloatingComposerBody._clearance);
 
   /// Held for the life of the screen: a [BackdropGroup] given a new key
   /// notifies every pane under it, which on each rebuild would be all three.
@@ -2521,11 +2524,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                 ),
               )
             : Stack(
+                // The list's box ends at the islands; its messages carry on
+                // behind them. See ChatIslandsLayout.
+                clipBehavior: Clip.none,
                 children: [
                   ListView.builder(
                     key: _listKey,
                     reverse: true,
                     controller: _scroll,
+                    clipBehavior: Clip.none,
                     padding: padding,
                     itemCount: messages.length,
                     itemBuilder: (_, i) {
@@ -3678,12 +3685,12 @@ class _PinRail extends StatelessWidget {
 /// conversation scrolling underneath it — the same principle as the floating
 /// nav bar, rather than a bar welded across the foot of the screen.
 ///
-/// The list needs bottom room equal to the composer's height, or the newest
-/// message sits behind it. That height is not a constant: the input grows with
-/// multi-line text and gains a "Replying to …" bar above it. So the composer is
-/// measured after layout and the padding follows it, instead of guessing a
-/// number that would be wrong exactly when someone is typing a long message.
-class _FloatingComposerBody extends StatefulWidget {
+/// The list needs to end where the composer begins, or the newest message
+/// sits behind it. That height is not a constant: the input grows with
+/// multi-line text and gains a "Replying to …" bar above it. So the islands
+/// are laid out first and the list is given the room between them, in the
+/// same pass — see [ChatIslandsLayout] for why not measured afterwards.
+class _FloatingComposerBody extends StatelessWidget {
   const _FloatingComposerBody({
     required this.listBuilder,
     required this.composer,
@@ -3692,13 +3699,12 @@ class _FloatingComposerBody extends StatefulWidget {
     this.scrollToBottom,
   });
 
-  /// How far down the screen the floating header reaches, published so a jump
-  /// can check its own work.
+  /// How far down the list's own box the floating header reaches, published
+  /// so a jump can check its own work.
   ///
-  /// Only this widget knows: the header's height is measured here, after every
-  /// build, because it grows and shrinks with the pinned bar. A jump lands a
-  /// message by scrolling, and scrolling has no idea anything is floating over
-  /// the top of the conversation.
+  /// The list now begins where the header ends, so this is just the
+  /// clearance — it used to be the header's measured height plus that, when
+  /// the list ran from the top of the screen.
   final ValueNotifier<double> headerBottom;
 
   /// Builds the conversation, given the padding that keeps it clear of the two
@@ -3713,117 +3719,28 @@ class _FloatingComposerBody extends StatefulWidget {
   /// island. Floats over the conversation exactly as the composer does.
   final Widget header;
 
-  @override
-  State<_FloatingComposerBody> createState() => _FloatingComposerBodyState();
-}
-
-class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
-  final _composerKey = GlobalKey();
-  final _headerKey = GlobalKey();
-
-  /// Heights used until the first real measurement lands — a single-line
-  /// composer, and a header with no pinned bar. Only ever wrong for one frame.
-  static const double _initialComposerGuess = 76;
-  static const double _initialHeaderGuess = 72;
-
   /// Breathing room between the outermost message and the island beyond it.
   static const double _clearance = 12;
 
-  double _composerHeight = _initialComposerGuess;
-  double _headerHeight = _initialHeaderGuess;
-
-  void _measure(Duration _) {
-    _measureOne(_composerKey, _composerHeight, (h) => _composerHeight = h);
-    _measureOne(_headerKey, _headerHeight, (h) => _headerHeight = h);
-    widget.headerBottom.value = _headerHeight + _clearance;
-  }
-
-  void _measureOne(GlobalKey key, double current, void Function(double) apply) {
-    final box = key.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final h = box.size.height;
-    // Sub-pixel churn would otherwise setState on every frame.
-    if ((h - current).abs() < 0.5) return;
-    setState(() => apply(h));
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Re-measured after each build because both islands change height: the
-    // composer grows with multi-line text and the reply bar, the header gains
-    // and loses the pinned bar. The guard above makes the steady state a no-op.
-    WidgetsBinding.instance.addPostFrameCallback(_measure);
-
-    return Stack(
-      children: [
-        // reverse: true means the list starts at the visual bottom, so `bottom`
-        // is what the newest message clears the composer by and `top` is what
-        // the oldest clears the header by. Both islands float over the
-        // conversation rather than occupying a band of their own, so the chat
-        // stays visible behind them right to the edges of the screen.
-        widget.listBuilder(
-          EdgeInsets.only(
-            top: _headerHeight + _clearance,
-            bottom: _composerHeight + _clearance,
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          child: _RemeasureOnResize(
-            onResize: () =>
-                WidgetsBinding.instance.addPostFrameCallback(_measure),
-            child: KeyedSubtree(key: _headerKey, child: widget.header),
-          ),
-        ),
-        // Only once there is somewhere to go. The list is reversed, so being
-        // at the newest message means offset ~0 — showing the button there
-        // would be a control that does nothing, parked over the conversation.
-        // Always in the tree so it can slide in and out; see the button.
-        Positioned(
-          right: 16,
-          bottom: _composerHeight + _clearance + 8,
-          child: _ScrollToBottomButton(onTap: widget.scrollToBottom),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _RemeasureOnResize(
-            onResize: () =>
-                WidgetsBinding.instance.addPostFrameCallback(_measure),
-            child: KeyedSubtree(key: _composerKey, child: widget.composer),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Calls back whenever [child] changes size, even without a rebuild here.
-///
-/// The islands are measured in a post-frame callback scheduled from this
-/// widget's build — which was enough while they appeared and vanished in one
-/// frame, and stopped being enough the moment they started animating: an
-/// [AnimatedSize] relayouts without rebuilding its ancestors, so the padding
-/// under it would hold the height the header had when the animation *started*
-/// until something unrelated rebuilt the screen. This notices the layout
-/// instead of the build.
-class _RemeasureOnResize extends StatelessWidget {
-  const _RemeasureOnResize({required this.onResize, required this.child});
-
-  final VoidCallback onResize;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return NotificationListener<SizeChangedLayoutNotification>(
-      onNotification: (_) {
-        onResize();
-        return false;
-      },
-      child: SizeChangedLayoutNotifier(child: child),
+    return ChatIslandsLayout(
+      // reverse: true means the list starts at the visual bottom, so `bottom`
+      // is what the newest message clears the composer by and `top` is what
+      // the oldest clears the header by. The list's box ends at both islands;
+      // its paint does not, so the chat stays visible behind them right to
+      // the edges of the screen.
+      list: listBuilder(
+        const EdgeInsets.only(top: _clearance, bottom: _clearance),
+      ),
+      header: header,
+      // Only once there is somewhere to go. The list is reversed, so being
+      // at the newest message means offset ~0 — showing the button there
+      // would be a control that does nothing, parked over the conversation.
+      // Always in the tree so it can slide in and out; see the button.
+      button: _ScrollToBottomButton(onTap: scrollToBottom),
+      buttonGap: _clearance + 8,
+      composer: composer,
     );
   }
 }

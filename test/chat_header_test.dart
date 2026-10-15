@@ -42,9 +42,9 @@ void main() {
   Future<void> beat(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    // One more, for the islands' measure-then-pad loop: the pinned bar grows
-    // into place over 220 ms and the list's padding is measured off it in a
-    // post-frame callback, so the padding lands a frame after the animation.
+    // One more, for anything scheduled after the pinned bar's 220 ms growth.
+    // (The list no longer waits a frame for the islands — see
+    // ChatIslandsLayout — but the extra frame costs nothing.)
     await tester.pump();
   }
 
@@ -136,20 +136,23 @@ void main() {
     // there now, where the message being unpinned is in front of you.
     expect(find.byTooltip('All pinned messages'), findsOneWidget);
 
-    // The conversation runs *behind* both islands: it reserves room by padding
-    // itself, rather than being pushed down by a bar that would show a band of
-    // background between the header and the first message.
-    final list = tester.widget<ListView>(find.byType(ListView).first);
-    final padding = list.padding as EdgeInsets;
+    // The conversation's box is laid out between the islands, on the same
+    // frame as they change height (see ChatIslandsLayout) — and it still runs
+    // *behind* both of them, because it paints past its own box.
+    final listFinder = find.byType(ListView).first;
+    final list = tester.widget<ListView>(listFinder);
     expect(
-      padding.top,
+      tester.getTopLeft(listFinder).dy,
       greaterThan(80),
-      reason: 'top padding must clear the header capsule and the pinned island',
+      reason: 'the list must begin under the header capsule and pinned island',
     );
+    expect(list.clipBehavior, Clip.none,
+        reason: 'the conversation shows through the glass above and below');
+    final padding = list.padding as EdgeInsets;
     expect(
       padding.bottom,
       greaterThan(0),
-      reason: 'and the bottom still clears the composer',
+      reason: 'and the newest message still clears the composer',
     );
   });
 
