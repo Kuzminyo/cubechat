@@ -11,6 +11,7 @@ import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/freeze_when_offstage.dart';
 import '../../../core/widgets/more_button.dart';
 import '../../../core/widgets/scroll_hiding_island.dart';
 import '../../../core/widgets/section_switch.dart';
@@ -106,7 +107,7 @@ class ContactsScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactsScreenState extends ConsumerState<ContactsScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, FreezeWhenOffstage {
   late final AnimationController _slide = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 260),
@@ -189,9 +190,13 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
   /// The label being filtered by, or null for everybody.
   String? _tag;
 
+  /// Built only while this tab is on screen — see [FreezeWhenOffstage].
   @override
-  Widget build(BuildContext context) {
-    // Counted like Chats: idle Contacts drew ~9 frames/s (2026-10-15).
+  Widget build(BuildContext context) =>
+      buildUnlessOffstage(() => _buildTab(context));
+
+  Widget _buildTab(BuildContext context) {
+    // Counted, as Chats is: the frame meter names what rebuilt.
     FrameStats.countBuild('contacts');
     final t = AppLocalizations.of(context);
     final all = ref.watch(contactChatsProvider);

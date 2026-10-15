@@ -61,6 +61,8 @@ List<Widget> recentCallSlivers({
             _nameFor(ref, c.peerId).toLowerCase().contains(needle),
       )
       .toList(growable: false);
+  // Named here, once, and handed to each row — see [_CallRow.name].
+  final names = {for (final c in calls) c.peerId: _nameFor(ref, c.peerId)};
   final wrap = animate ?? (Widget child) => child;
   return [
     SliverToBoxAdapter(
@@ -99,22 +101,35 @@ List<Widget> recentCallSlivers({
         sliver: SliverList.separated(
           itemCount: calls.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => wrap(_CallRow(call: calls[index])),
+          itemBuilder: (context, index) => wrap(
+            _CallRow(
+              call: calls[index],
+              name: names[calls[index].peerId] ?? calls[index].peerId,
+            ),
+          ),
         ),
       ),
   ];
 }
 
 class _CallRow extends ConsumerWidget {
-  const _CallRow({required this.call});
+  const _CallRow({required this.call, required this.name});
 
   final RecentCall call;
+
+  /// Passed in rather than looked up here, as [_ContactTile] takes its tag.
+  ///
+  /// Looked up here, every row watched the whole chat list and the whole
+  /// roster, so any change to either — opening a chat marks it read —
+  /// rebuilt all of them, on a tab nobody was looking at. A Galaxy S24+ log
+  /// (2026-10-15) had `callRow x10` in every slow frame of a chat open, beside
+  /// builds of 17-39 ms against a 120 Hz budget of 8.3.
+  final String name;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     FrameStats.countBuild('callRow');
     final t = AppLocalizations.of(context);
-    final name = _nameFor(ref, call.peerId);
     final (icon, label) = switch (call.kind) {
       RecentCallKind.incoming => (
           Icons.call_received_rounded,
