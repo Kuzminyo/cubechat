@@ -447,6 +447,34 @@ Future<String?> _forwardWireAuthorId(
 bool _isOurs(Message original, String? earlier) =>
     earlier == Message.selfAuthorId || (earlier == null && original.isMine);
 
+/// A row that takes [rise] of its child's height, with the child pinned to
+/// its top and hanging out of its bottom — unclipped, so what has not yet
+/// risen into the row is still drawn below it. See `_MessageBubbleState._rise`.
+///
+/// At rest ([rise] at 1) it lays out exactly as its child. The [Align] stays
+/// in the tree then too: dropping it when the rise ends would change the
+/// shape above the bubble and rebuild everything in it — a playing circle, a
+/// swipe in progress — from nothing.
+class _RiseIn extends AnimatedWidget {
+  const _RiseIn({required Animation<double> rise, required this.child})
+      : super(listenable: rise);
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = (listenable as Animation<double>).value;
+    return Align(
+      alignment: Alignment.topCenter,
+      // Its child's width, as the transitions it replaced were: a bubble is
+      // also drawn outside the list, where the width is not tight.
+      widthFactor: 1,
+      heightFactor: f.clamp(0.0, 1.0),
+      child: child,
+    );
+  }
+}
+
 class MessageBubble extends ConsumerStatefulWidget {
   const MessageBubble({
     super.key,
@@ -522,27 +550,37 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// exactly once.
   bool _armed = false;
 
-  late final Animation<double> _scale = Tween<double>(
-    begin: widget.animateEntry ? 0.96 : 1,
-    end: 1,
-  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
-  late final Animation<double> _fade = Tween<double>(
-    begin: widget.animateEntry ? 0 : 1,
-    end: 1,
-  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: widget.animateEntry
-        ? Offset(widget.message.isMine ? 0.06 : -0.04, 0.18)
-        : Offset.zero,
-    end: Offset.zero,
-  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+  /// How much of its own height the row has taken so far, 0 to 1.
+  ///
+  /// The entrance is Telegram's: the conversation rises to make room and the
+  /// new bubble rises with it, out from behind the composer. It used to fade
+  /// in where it stood, nudged and scaled, over 360 ms — while every message
+  /// above jumped up by its whole height on the first frame. The one thing
+  /// that moved smoothly was the one thing that had not moved anywhere, which
+  /// is what "дерганая и не понятная" (2026-10-15) was describing.
+  ///
+  /// The row's height grows, so the list — reversed, anchored at the bottom —
+  /// lifts everything above it by the same amount each frame; the bubble is
+  /// pinned to the top of that growing row and overhangs its bottom, so it is
+  /// carried up from below the list's edge, behind the composer's glass.
+  late final Animation<double> _rise =
+      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+
+  /// A quick fade under the rise, so the first frames are not a hard edge
+  /// sliding out from behind the glass.
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0, 0.45, curve: Curves.easeOut),
+  );
 
   @override
   void initState() {
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 360),
+      // Telegram's pace for a sent message: quick to clear the field, slow
+      // to settle.
+      duration: const Duration(milliseconds: 320),
       value: widget.animateEntry ? 0 : 1,
     );
     _swipe = AnimationController(
@@ -2402,13 +2440,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ),
     );
 
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: ScaleTransition(
-          scale: _scale,
-          alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
+    return _RiseIn(
+      rise: _rise,
+      child: FadeTransition(
+        opacity: _fade,
+        child: KeyedSubtree(
           // The jump marker is a band across the whole row, edge to edge, the
           // way Telegram does it — not a ring around the bubble. A ring is
           // read as a property of the message ("this one is special"); a band
