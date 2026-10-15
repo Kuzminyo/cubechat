@@ -38,6 +38,31 @@ Page<T> fadeSlidePage<T>({
   return _SlidePage<T>(key: state.pageKey, child: child);
 }
 
+/// The page the tab shell sits on: it fades in once, and then holds still.
+///
+/// go_router would put the shell on a [MaterialPage], and on Android that
+/// page's transition is `PredictiveBackPageTransitionsBuilder` — which builds
+/// a different tree whenever the *navigator* has a user gesture in progress,
+/// not just this route. [EdgeBackGesture] holds that flag for the length of
+/// every swipe that closes a chat, so the shell's subtree, which sits under a
+/// GlobalKey, was reparented when the swipe started and again when it ended,
+/// and every tab — the hidden ones included — was rebuilt for it. A Galaxy
+/// S24+ on 1162 (2026-10-15): `act:page` in every slow frame, 18-30 ms of
+/// build against a 120 Hz budget of 8.3. A fade has one shape whatever the
+/// finger is doing.
+///
+/// Stilled from inside while a chat covers it — see [StillWhileCovered].
+Page<T> shellPage<T>({required Widget child, required GoRouterState state}) {
+  return CustomTransitionPage<T>(
+    key: state.pageKey,
+    name: state.name ?? state.path,
+    restorationId: state.pageKey.value,
+    child: StillWhileCovered(child: child),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
+}
+
 /// Cupertino's route, at this app's pace.
 ///
 /// [CupertinoPage] would do everything here except the timing: iOS spends
@@ -177,10 +202,25 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
     Widget? child,
   ) =>
       // The page's own transition arrives here with its secondary animation
-      // held at rest, so the page itself does not move.
-      child == null
-          ? null
-          : _StillWhileCovered(covering: secondaryAnimation, child: child);
+      // held at rest, so the page itself does not move — and it is handed
+      // back exactly as it came, with nothing wrapped round it.
+      //
+      // It used to come back inside a [_StillWhileCovered]. Flutter applies a
+      // delegated transition only while this route is on top, so that wrapper
+      // appeared over the page underneath on every push and went away on every
+      // pop — a change in the shape of the tree above a page Flutter keeps
+      // under a GlobalKey. Reparented, every element in it with an inherited
+      // dependency rebuilt: on the tab shell that is all five tabs, the hidden
+      // ones included. A Galaxy S24+ (2026-10-15) traced one slow frame per
+      // chat open and one per close to it — nine contact rows, ten call rows,
+      // twenty-two glass panes on the Contacts tab nobody could see, 17-85 ms
+      // of build against a 120 Hz budget of 8.3. Neither freezing that tab's
+      // build, nor holding MediaQuery, nor holding its navigator touched it,
+      // because none of those was the cause.
+      //
+      // The tickers this wrapper stopped are stopped from inside the page now,
+      // where its shape never changes — see [StillWhileCovered].
+      child;
 
   /// The mixin's own transition, with a reachable drag strip in place of its
   /// 20-pixel one.
@@ -372,6 +412,27 @@ class _TimedFromFirstFrame extends Animation<double>
 /// stop the moment the screen on top has finished arriving. They run again as
 /// soon as it starts to leave — a slide back or a drag — so nothing underneath
 /// is frozen while it can be seen.
+/// [_StillWhileCovered] for a page that is not one of ours — the tab shell,
+/// which go_router puts on a Material page — placed inside it, where it stays.
+///
+/// Those pages used to be stilled from outside, by the delegated transition
+/// of the screen on top; that wrapper came and went with every push and pop,
+/// and a page under a GlobalKey with a changing shape above it is rebuilt from
+/// the inside. See [_SlideRoute._standStill]. Here the covering animation is
+/// the page's own, read from its route, so nothing above it has to change.
+class StillWhileCovered extends StatelessWidget {
+  const StillWhileCovered({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _StillWhileCovered(
+        covering: ModalRoute.of(context)?.secondaryAnimation ??
+            kAlwaysDismissedAnimation,
+        child: child,
+      );
+}
+
 class _StillWhileCovered extends StatefulWidget {
   const _StillWhileCovered({required this.covering, required this.child});
 

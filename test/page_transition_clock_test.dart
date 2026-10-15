@@ -22,7 +22,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: navigatorKey,
-        home: const Scaffold(body: Text('list')),
+        // The tab shell's shape: a Material page that stills itself while
+        // covered (see StillWhileCovered), since the slide on top no longer
+        // wraps it — that wrapper rebuilt the whole shell on every push.
+        home: const StillWhileCovered(child: Scaffold(body: Text('list'))),
       ),
     );
     return navigatorKey.currentState!;

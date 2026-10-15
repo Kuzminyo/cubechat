@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../util/frame_stats.dart';
+
 /// How many times each tab has been left, by router branch index.
 ///
 /// **A tab you leave is a fresh screen when you come back.** Every tab stays
@@ -63,6 +65,7 @@ class TabReset extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    FrameStats.countBuild('tabReset');
     final generation = ref.watch(
       tabGenerationsProvider.select((g) => g[branch] ?? 0),
     );

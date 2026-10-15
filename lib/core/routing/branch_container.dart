@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../util/frame_stats.dart';
+
 /// Container for the tab-shell branches: four screens side by side, and a
 /// finger that drags between them.
 ///
@@ -264,6 +266,7 @@ class _BranchContainerState extends State<BranchContainer>
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('branches');
     return LayoutBuilder(
       builder: (context, constraints) {
         _width = constraints.maxWidth;
@@ -362,6 +365,7 @@ class _Branch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('branch');
     return Offstage(
       offstage: !visible,
       child: Transform.translate(

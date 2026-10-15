@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../util/frame_stats.dart';
 import '../util/motion.dart';
 
 /// Slide-up + fade entrance animation, driven by a delay-aware controller.
@@ -129,5 +130,8 @@ class _AppearOnceState extends State<AppearOnce> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.builder(context, _animate);
+  Widget build(BuildContext context) {
+    FrameStats.countBuild('appearOnce');
+    return widget.builder(context, _animate);
+  }
 }

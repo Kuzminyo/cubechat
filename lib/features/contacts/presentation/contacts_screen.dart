@@ -435,6 +435,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                 itemCount: contacts.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
+                  FrameStats.countBuild('contactItem');
                   final contact = contacts[index];
                   return AppearAnimation(
                     enabled: animate &&

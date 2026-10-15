@@ -10,6 +10,7 @@ import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/desktop/desktop_split_view.dart' show DesktopChrome;
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
+import '../util/frame_stats.dart';
 import '../util/haptics.dart';
 import '../util/platform_info.dart';
 import '../theme/colors.dart';
@@ -90,6 +91,7 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    FrameStats.countBuild('shell');
     final t = AppLocalizations.of(context);
     final layout = ref.watch(navBarControllerProvider);
     final tabs = [for (final d in layout.shown) tabSpecFor(d, t)];

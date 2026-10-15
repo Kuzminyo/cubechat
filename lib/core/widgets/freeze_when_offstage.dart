@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../util/frame_stats.dart';
+
 /// Hands back what a tab built last while its branch is offstage, instead of
 /// building again.
 ///
@@ -30,7 +32,10 @@ mixin FreezeWhenOffstage<T extends StatefulWidget> on State<T> {
     // Read every time: it is what makes a change of tab rebuild this at all.
     final visible = TickerMode.valuesOf(context).enabled;
     final frozen = _frozen;
-    if (!visible && frozen != null) return frozen;
+    if (!visible && frozen != null) {
+      FrameStats.countBuild('frozen');
+      return frozen;
+    }
     return _frozen = build();
   }
 }

@@ -31,6 +31,7 @@ class StripPageSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('stripOuter');
     final width = MediaQuery.sizeOf(context).width;
     final reduced = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
