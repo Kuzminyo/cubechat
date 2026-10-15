@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../util/frame_stats.dart';
+import 'header_surface.dart';
 import 'morphing_search.dart';
 import 'scroll_hiding_island.dart';
 import 'section_switch.dart';
@@ -103,8 +104,48 @@ class _TabPageFrameState extends State<TabPageFrame> {
   double get _searchRoom =>
       widget.search == null ? 0 : TabPageFrame.searchRoom;
 
-  /// How far below the header its surface fades out over the page.
+  /// Over how many points of scroll the header's surface fades in.
   static const double _fade = 20;
+
+  /// How far below the header its surface runs out over the page.
+  ///
+  /// Twenty, the fade-in distance reused, was too short for an eased tail to
+  /// land without being seen; this is near the depth of Chats' folder row,
+  /// which does the same job there.
+  static const double _tail = 36;
+
+  /// The header's surface, once a row is on its way under it.
+  Widget _veil(double bottom, double veil) {
+    final height = bottom + _tail;
+    final edge = bottom / height;
+    final tail = HeaderSurface.tail(
+      from: HeaderSurface.edgeAlpha * veil,
+      start: edge,
+    );
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: height,
+      child: IgnorePointer(
+        key: TabPageFrame.veilKey,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.bgDeep.withValues(alpha: veil),
+                AppColors.bgTop.withValues(alpha: veil),
+                ...tail.colors,
+              ],
+              stops: [0, HeaderSurface.midStop * edge, ...tail.stops],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   double get _collapse {
     if (_searchRoom == 0) return 0;
@@ -270,34 +311,13 @@ class _TabPageFrameState extends State<TabPageFrame> {
           // at rest there is no surface at all, the header sits on the aurora
           // as it always did, and the surface fades in over the last [_fade]
           // points before the first row reaches the header.
-          if (veil > 0)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: top + headerHeight + _fade,
-              child: IgnorePointer(
-                key: TabPageFrame.veilKey,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.bgDeep.withValues(alpha: veil),
-                        AppColors.bgTop.withValues(alpha: 0.96 * veil),
-                        AppColors.bgTop.withValues(alpha: 0),
-                      ],
-                      stops: [
-                        0,
-                        (top + headerHeight) / (top + headerHeight + _fade),
-                        1,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          //
+          // The same surface as Chats' header, stop for stop, and the same
+          // eased tail below it (2026-10-15: "not so dark when scrolled, like
+          // in Chats"). It used to run from the deepest tone almost to the
+          // bottom of the header, at 0.96, and then drop to nothing in 20
+          // points: darker than Chats, and the drop read as an edge.
+          if (veil > 0) _veil(top + headerHeight, veil),
           Positioned(
             top: top,
             left: 0,

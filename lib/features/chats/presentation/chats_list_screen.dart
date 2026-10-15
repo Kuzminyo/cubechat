@@ -1991,20 +1991,20 @@ class _PinnedFolderFilterHeader extends SliverPersistentHeaderDelegate {
     // the palette's — a seam across the top of the screen, which is what
     // "match the colours" was about.
     if (_extent <= 0.5) return const SizedBox.shrink();
+    // Built here, not cached: the palette rewrites AppColors.
+    final fade = HeaderSurface.tail();
     return SizedBox(
       height: _extent,
       child: ClipRect(
         child: DecoratedBox(
+          // Eased to nothing — see [HeaderSurface.tail]. A straight ramp here
+          // was the line under the header.
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                AppColors.bgTop.withValues(alpha: 0.88),
-                AppColors.bgTop.withValues(alpha: 0.55),
-                AppColors.bgTop.withValues(alpha: 0),
-              ],
-              stops: const [0, 0.6, 1],
+              colors: fade.colors,
+              stops: fade.stops,
             ),
           ),
           // Anchored to the top and clipped, so the capsule slides up out of
