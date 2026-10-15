@@ -94,6 +94,152 @@ void main() {
     );
   });
 
+  group('profile parts', () {
+    final hash = Uint8List.fromList(List.generate(32, (i) => 0xA0 ^ i));
+    const len = OwnDeviceNotice.maxPartBytes + 10; // two parts
+
+    OwnDeviceNotice part({
+      int seq = 1,
+      int total = 2,
+      int avatarLen = len,
+      Uint8List? avatarHash,
+      Uint8List? bytes,
+      String nickname = 'Даня 🐈',
+    }) =>
+        OwnDeviceNotice.profilePart(
+          deviceId: id(4),
+          sentAtMs: at,
+          nickname: nickname,
+          seq: seq,
+          total: total,
+          avatarLen: avatarLen,
+          avatarHash: avatarHash ?? hash,
+          part: bytes ?? Uint8List.fromList(List.filled(10, 0x5A)),
+        );
+
+    test('take the next free kind', () {
+      expect(OwnDeviceKind.profile.tag, 0x04);
+      expect(OwnDeviceKind.fromByte(0x04), OwnDeviceKind.profile);
+    });
+
+    test('round-trip the nickname, the count, the digest and the bytes', () {
+      final back = OwnDeviceNotice.decode(part().encode());
+      expect(back.kind, OwnDeviceKind.profile);
+      expect(back.deviceId, equals(id(4)));
+      expect(back.sentAtMs, at);
+      expect(back.name, 'Даня 🐈');
+      expect(back.seq, 1);
+      expect(back.total, 2);
+      expect(back.avatarLen, len);
+      expect(back.avatarHash, equals(hash));
+      expect(back.part, equals(List.filled(10, 0x5A)));
+    });
+
+    test('no picture is one empty part with an all-zero digest', () {
+      final back = OwnDeviceNotice.decode(
+        part(
+          seq: 0,
+          total: 1,
+          avatarLen: 0,
+          avatarHash: Uint8List(32),
+          bytes: Uint8List(0),
+        ).encode(),
+      );
+      expect(back.avatarLen, 0);
+      expect(back.total, 1);
+      expect(back.part, isEmpty);
+      expect(OwnDeviceNotice.partsFor(0), 1);
+      expect(OwnDeviceNotice.partsFor(1), 1);
+      expect(OwnDeviceNotice.partsFor(OwnDeviceNotice.maxPartBytes), 1);
+      expect(OwnDeviceNotice.partsFor(len), 2);
+    });
+
+    test('a part that cannot be one is refused on the way out', () {
+      expect(() => part(seq: 2).encode(), throwsFormatException);
+      expect(() => part(total: 3).encode(), throwsFormatException);
+      expect(
+        () => part(avatarHash: Uint8List(31)).encode(),
+        throwsFormatException,
+      );
+      expect(
+        () => part(
+          seq: 0,
+          total: 1,
+          avatarLen: 0,
+          bytes: Uint8List(1),
+        ).encode(),
+        throwsFormatException,
+      );
+      expect(
+        () => part(
+          bytes: Uint8List(OwnDeviceNotice.maxPartBytes + 1),
+        ).encode(),
+        throwsFormatException,
+      );
+      expect(
+        () => part(
+          avatarLen: OwnDeviceNotice.maxAvatarBytes + 1,
+          total: OwnDeviceNotice.partsFor(OwnDeviceNotice.maxAvatarBytes + 1),
+        ).encode(),
+        throwsFormatException,
+      );
+    });
+
+    test('tampered bytes are refused, never trusted', () {
+      final good = part().encode();
+      Uint8List copy() => Uint8List.fromList(good);
+      const body = 1 + 1 + 8 + 16;
+      final nickLen = good[body + 2];
+
+      // seq past the count, and a count that does not fit the length.
+      expect(
+        () => OwnDeviceNotice.decode(copy()..[body] = 2),
+        throwsFormatException,
+      );
+      expect(
+        () => OwnDeviceNotice.decode(copy()..[body + 1] = 9),
+        throwsFormatException,
+      );
+      // A nickname length that runs past the end, and one past the cap.
+      expect(
+        () => OwnDeviceNotice.decode(copy()..[body + 2] = 255),
+        throwsFormatException,
+      );
+      // An avatar length past the cap.
+      expect(
+        () => OwnDeviceNotice.decode(copy()..[body + 3 + nickLen] = 0xFF),
+        throwsFormatException,
+      );
+      // Cut inside the digest, and cut before the nickname.
+      for (final end in [body + 3 + nickLen + 4 + 10, body + 2]) {
+        expect(
+          () => OwnDeviceNotice.decode(Uint8List.sublistView(good, 0, end)),
+          throwsFormatException,
+        );
+      }
+      // An empty "no picture" part that carries bytes after all.
+      final none = part(
+        seq: 0,
+        total: 1,
+        avatarLen: 0,
+        avatarHash: Uint8List(32),
+        bytes: Uint8List(0),
+      ).encode();
+      expect(
+        () => OwnDeviceNotice.decode(
+          Uint8List.fromList([...none, 0x01]),
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('a nickname past 96 bytes is cut on a character', () {
+      final back = OwnDeviceNotice.decode(part(nickname: 'Ж' * 60).encode());
+      expect(utf8.encode(back.name!).length, lessThanOrEqualTo(96));
+      expect(back.name, 'Ж' * 48);
+    });
+  });
+
   test('a name longer than 64 bytes is cut on a character, not mid-letter',
       () {
     final name = 'Ж' * 40; // 80 bytes

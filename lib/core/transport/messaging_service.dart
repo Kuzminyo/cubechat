@@ -3670,8 +3670,18 @@ class MessagingService {
 
   /// Tell this account's other devices about this one — see
   /// [OwnDeviceNotice]. The same road as [sendCallSignalToOwnDevices].
+  ///
+  /// A profile part goes on the media lane: up to 32 KiB of avatar each, and
+  /// a run of them is the burst that lane exists to keep off the relays
+  /// carrying conversation.
   Future<ControlDelivery> sendOwnDeviceNotice(OwnDeviceNotice notice) =>
-      _sendToOwnDevices(InnerPayloadType.ownDevice, notice.encode());
+      _sendToOwnDevices(
+        InnerPayloadType.ownDevice,
+        notice.encode(),
+        lane: notice.kind == OwnDeviceKind.profile
+            ? RelayLane.media
+            : RelayLane.conversation,
+      );
 
   /// Notices from this account's other devices, from our own key only.
   Stream<OwnDeviceNotice> get ownDeviceNotices => _ownDeviceNotices.stream;
@@ -3679,8 +3689,9 @@ class MessagingService {
 
   Future<ControlDelivery> _sendToOwnDevices(
     InnerPayloadType type,
-    Uint8List body,
-  ) async {
+    Uint8List body, {
+    RelayLane lane = RelayLane.conversation,
+  }) async {
     final transport = _nostr;
     if (transport == null || _disposed) return ControlDelivery.notSent;
     if (!await _ensureRelayAwakeForSend()) return ControlDelivery.notSent;
@@ -3694,6 +3705,7 @@ class MessagingService {
       final receipt = await transport.sendFrame(
         recipientNpubHex: transport.npubHex,
         frameBytes: frame,
+        lane: lane,
       );
       return combineControlDelivery(
         meshLinks: 0,

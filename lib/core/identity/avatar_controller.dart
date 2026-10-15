@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
+import 'own_profile_edits.dart';
 
 /// The user's own avatar picture, or null when they haven't set one and the
 /// generated identity gradient stands in.
@@ -89,10 +90,43 @@ class AvatarController extends Notifier<Uint8List?> {
     } catch (e) {
       debugPrint('Avatar persist failed: $e');
     }
+    ref.read(ownProfileEditsProvider.notifier).state++;
     return true;
   }
 
+  /// Completes once the stored picture has been read back from disk.
+  Future<void> get loaded => _ready;
+
+  /// The person removed their picture on this device.
   Future<void> clear() async {
+    await _forget();
+    ref.read(ownProfileEditsProvider.notifier).state++;
+  }
+
+  /// The picture another device of this account has — its stored bytes as
+  /// they are, not re-encoded, so both devices derive the same copy and the
+  /// same digest for contacts. Not an edit: it is not sent on.
+  Future<void> setFromAnotherDevice(Uint8List stored) async {
+    await _ready;
+    if (state != null && listEquals(state, stored)) return;
+    _userSet = true;
+    _shareable = null;
+    state = stored;
+    try {
+      await _box?.put(_key, stored);
+    } catch (e) {
+      debugPrint('Avatar persist failed: $e');
+    }
+  }
+
+  /// Another device of this account removed the picture.
+  Future<void> clearFromAnotherDevice() async {
+    await _ready;
+    if (state == null) return;
+    await _forget();
+  }
+
+  Future<void> _forget() async {
     _userSet = true;
     state = null;
     _shareable = null;
@@ -188,7 +222,7 @@ class AvatarController extends Notifier<Uint8List?> {
 
   /// Back to no picture — used by Emergency Wipe, which restores every setting
   /// to what a fresh install would have.
-  Future<void> reset() => clear();
+  Future<void> reset() => _forget();
 }
 
 /// Centre-crop to a square, resize to [AvatarController.storedSize] and encode

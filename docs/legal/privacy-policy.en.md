@@ -217,7 +217,10 @@ exist — each one's name, kind (Android, iPhone, Windows) and when it was last
 online — with the same kind of message, sent through the relays to your own
 key and encrypted to it, so Profile → Data → Devices can list them. Signing a
 device out there sends it a message to erase CubeChat's data on it, which it
-does the next time it goes online.
+does the next time it goes online. When you change your nickname or profile
+picture on one of them, the new name and picture are sent to the others the
+same way — through the relays, to your own key, encrypted to it — so every
+device shows the same profile.
 
 ---
 

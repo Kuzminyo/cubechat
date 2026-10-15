@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
+import 'own_profile_edits.dart';
 
 /// User-chosen display name. Persisted in the Hive settings box, used as the
 /// peripheral's advertised BLE name and as our peerLabel when other devices
@@ -57,8 +58,22 @@ class NicknameController extends Notifier<String> {
   /// Validate + persist. Trims whitespace, caps at [maxLength], ignores
   /// empty values.
   Future<void> set(String value) async {
+    if (!await _store(value)) return;
+    ref.read(ownProfileEditsProvider.notifier).state++;
+  }
+
+  /// The name another device of this account has. Not an edit: it is not
+  /// sent on.
+  Future<void> setFromAnotherDevice(String value) async {
+    await _loading;
+    if (value.trim() == state) return;
+    await _store(value);
+  }
+
+  /// False when [value] is empty and nothing was stored.
+  Future<bool> _store(String value) async {
     final trimmed = value.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return false;
     final capped = trimmed.length > maxLength
         ? trimmed.substring(0, maxLength)
         : trimmed;
@@ -72,6 +87,7 @@ class NicknameController extends Notifier<String> {
     } catch (e) {
       debugPrint('NicknameController persist failed: $e');
     }
+    return true;
   }
 
   /// Reset to the default — used by Emergency Wipe.

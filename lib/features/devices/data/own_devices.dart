@@ -220,6 +220,9 @@ class OwnDevicesService extends ChangeNotifier {
             if (d.idHex != from) d,
         ];
         _changed();
+      case OwnDeviceKind.profile:
+        // The account's profile, not this list — see [OwnProfileSync].
+        break;
     }
   }
 

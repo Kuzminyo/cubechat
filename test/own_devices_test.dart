@@ -137,6 +137,31 @@ void main() {
     });
   });
 
+  test('a profile part is not a device saying hello', () {
+    fakeAsync((async) {
+      final devices = build();
+      unawaited(devices.start());
+      async.flushMicrotasks();
+      sent.clear();
+      inbound.add(
+        OwnDeviceNotice.profilePart(
+          deviceId: phone,
+          sentAtMs: clock.millisecondsSinceEpoch,
+          nickname: 'Pixel',
+          seq: 0,
+          total: 1,
+          avatarLen: 0,
+          avatarHash: Uint8List(32),
+          part: Uint8List(0),
+        ),
+      );
+      async.flushMicrotasks();
+      expect(devices.others, isEmpty);
+      expect(sent, isEmpty);
+      devices.dispose();
+    });
+  });
+
   test('a sign-out for another device marks it, and does not touch this one',
       () {
     fakeAsync((async) {
