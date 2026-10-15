@@ -87,8 +87,12 @@ Do not re-propose these; they are in the tree.
   a video sent as a file spinning an indeterminate ring for the whole upload,
   and cut outgoing transfer-map writes to whole percent. Each send now ends
   with a `[CPU] sending "…"` line per thread — read it before the next round.
-  Still open: each relay chunk is written to every open media relay (2 in
-  that log), so the radio uploads it twice.
+  Each relay chunk used to be written to every open media relay (2 in that
+  log, 3 by default), so the radio uploaded it two or three times. Since 1151
+  the media lane writes to our own `/media` alone while it accepts, and to the
+  public two only when it refuses or goes quiet (`_lanePrimary` in
+  `websocket_relay_client.dart`). Argued from the arithmetic, **not yet
+  measured on a phone**: time a circle on mobile data against 1150.
 - Chat list rows are kept by identity while their inputs are equal (1055):
   727 widgets rebuilt for one changed row became 211
   (`test/chat_list_rebuild_budget_test.dart`)

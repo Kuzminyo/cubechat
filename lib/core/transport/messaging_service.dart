@@ -993,6 +993,10 @@ class MessagingService {
         // split, so a chunk or a beacon never lands somewhere the recipient is
         // not listening.
         mediaRelayUrls: RelaySettings.defaultMediaUrls,
+        // Ours, written to alone while it takes events; the two public media
+        // relays only when it does not. One upload of a circle instead of
+        // three — see [WebSocketNostrRelayClient._lanePrimary].
+        mediaPrimaryUrl: RelaySettings.defaultMediaUrls.first,
         locationRelayUrls: RelaySettings.defaultLocationUrls,
         subscribeToMedia: _shouldSubscribeToMedia(),
         sinceSeconds: since,

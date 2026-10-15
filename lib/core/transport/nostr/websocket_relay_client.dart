@@ -40,6 +40,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     Future<bool> Function(NostrEvent)? verifyInbound,
     List<String> conversationRelayUrls = const <String>[],
     List<String> mediaRelayUrls = const <String>[],
+    String? mediaPrimaryUrl,
     List<String> locationRelayUrls = const <String>[],
     bool subscribeToMedia = true,
     WebSocketChannel Function(Uri)? connect,
@@ -80,6 +81,10 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
             RelayLane.conversation: conversationRelayUrls.toSet(),
           RelayLane.media: mediaRelayUrls.toSet(),
           RelayLane.location: locationRelayUrls.toSet(),
+        }),
+        _lanePrimary = Map.unmodifiable(<RelayLane, String>{
+          if (mediaPrimaryUrl != null && mediaRelayUrls.contains(mediaPrimaryUrl))
+            RelayLane.media: mediaPrimaryUrl,
         }),
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
@@ -131,6 +136,25 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 
   /// Relays kept for a lane. See [RelayLane].
   final Map<RelayLane, Set<String>> _lanes;
+
+  /// The relay a lane writes to *alone* while it is taking events, before the
+  /// rest of the lane is used at all. Only the media lane has one: ours.
+  ///
+  /// The media lane wrote every chunk to all three of its relays. The publish
+  /// settles on the first `OK`, so that looked free, but the other two writes
+  /// were already in their sockets' buffers and went out anyway — on a phone
+  /// uplink the next chunk queued behind the last one's copies, and a circle
+  /// (~80 chunks of ~87 KB) was uploaded three times over: ~15 MB to deliver
+  /// 5. perf-triage carried it as an open item ("the radio uploads it twice")
+  /// since 1106. Every build since 1094 subscribes to `/media`, so one copy
+  /// there is delivery; the public two are now the fallback, not the default.
+  final Map<RelayLane, String> _lanePrimary;
+
+  /// How long the media lane leaves its own relay out after it failed to take
+  /// a chunk. A silent relay costs [defaultPublishAckTimeout] per attempt, and
+  /// paying that on every chunk of a transfer is the stall this exists to
+  /// avoid; a minute later it is tried first again.
+  static const Duration primaryMissPause = Duration(seconds: 60);
 
   /// Media-only sockets stay available for outbound uploads, but their inbox
   /// subscription can be paused on cellular data. Shared sockets are excluded
@@ -322,10 +346,39 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     // goes to all of them anyway.
     final now = DateTime.now();
     final willing = inLane.where((c) => !_isPausing(c.url, now)).toList();
-    final targets = willing.isNotEmpty ? willing : inLane;
+    var targets = willing.isNotEmpty ? willing : inLane;
     final id = event.id;
     final payload = NostrRelayProtocol.event(event);
-    var receipt = await _publishTo(targets, id, payload);
+    // Our own relay first, and alone — see [_lanePrimary]. Anything short of
+    // an acceptance (a refusal, or silence until the ack deadline) sends the
+    // same event to the rest of the lane at once and leaves ours out for
+    // [primaryMissPause], so a relay that is down costs one chunk a delay,
+    // not every chunk.
+    PublishReceipt? receipt;
+    final primaryUrl = _lanePrimary[lane];
+    if (primaryUrl != null && id != null) {
+      final primary = targets.where((c) => c.url == primaryUrl).firstOrNull;
+      final rest = targets.where((c) => c.url != primaryUrl).toList();
+      if (primary != null && rest.isNotEmpty) {
+        final first = await _publishTo([primary], id, payload);
+        if (first.accepted > 0) {
+          receipt = first;
+        } else {
+          final already = _isPausing(primaryUrl, DateTime.now());
+          _pausedUntil[primaryUrl] = DateTime.now().add(primaryMissPause);
+          if (!already) {
+            DebugLog.instance.log(
+              'NOSTR',
+              '$primaryUrl did not take ${id.substring(0, 8)} ($first) — '
+                  'the rest of the lane carries it for '
+                  '${primaryMissPause.inSeconds} s',
+            );
+          }
+          targets = rest;
+        }
+      }
+    }
+    receipt ??= await _publishTo(targets, id, payload);
 
     // Nobody answered at all: find out whether anybody is there.
     //

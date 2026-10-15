@@ -598,6 +598,95 @@ void main() {
       expect(busy.received, hasLength(2));
     });
 
+    group('the media lane writes to its own relay alone', () {
+      // A circle is ~80 chunks of ~87 KB. Written to all three media relays,
+      // the two extra copies sat in their sockets and went out anyway, so on a
+      // phone uplink every circle was uploaded three times.
+      Future<
+          ({
+            _FakeRelayServer own,
+            _FakeRelayServer other,
+            NostrTransport transport,
+          })> pool() async {
+        final own = await _FakeRelayServer.start();
+        final other = await _FakeRelayServer.start();
+        addTearDown(own.stop);
+        addTearDown(other.stop);
+        final client = WebSocketNostrRelayClient(
+          relayUrls: const [],
+          mediaRelayUrls: [own.url, other.url],
+          mediaPrimaryUrl: own.url,
+          publishAckTimeout: ackTimeout,
+        );
+        addTearDown(client.dispose);
+        client.start();
+        await allUp(client, 2);
+        return (
+          own: own,
+          other: other,
+          transport: NostrTransport(signer: signer, relay: client),
+        );
+      }
+
+      Future<PublishReceipt> chunk(NostrTransport t, String to) => t.sendFrame(
+            recipientNpubHex: to * 32,
+            frameBytes: frame,
+            lane: RelayLane.media,
+          );
+
+      test('while it takes events, nothing else is uploaded', () async {
+        final p = await pool();
+        for (final to in ['ab', 'cd', 'ef']) {
+          expect((await chunk(p.transport, to)).accepted, 1);
+        }
+        expect(p.own.received, hasLength(3));
+        expect(p.other.received, isEmpty);
+      });
+
+      test('a refusal sends the chunk on at once and skips ours for a while',
+          () async {
+        final p = await pool();
+        p.own.okAnswer = false;
+        expect((await chunk(p.transport, 'ab')).accepted, 1);
+        expect(p.other.received, hasLength(1), reason: 'the same chunk');
+        await chunk(p.transport, 'cd');
+        expect(p.own.received, hasLength(1),
+            reason: 'one refusal, then left out — not one per chunk');
+        expect(p.other.received, hasLength(2));
+      });
+
+      test('silence costs one ack deadline, not one per chunk', () async {
+        final p = await pool();
+        p.own.okAnswer = null;
+        expect((await chunk(p.transport, 'ab')).accepted, 1);
+        final watch = Stopwatch()..start();
+        expect((await chunk(p.transport, 'cd')).accepted, 1);
+        expect(watch.elapsed, lessThan(ackTimeout));
+        expect(p.own.received, hasLength(1));
+      });
+
+      test('a conversation event is not affected', () async {
+        final own = await _FakeRelayServer.start();
+        final talk = await _FakeRelayServer.start();
+        addTearDown(own.stop);
+        addTearDown(talk.stop);
+        final client = WebSocketNostrRelayClient(
+          relayUrls: [talk.url],
+          conversationRelayUrls: [talk.url],
+          mediaRelayUrls: [own.url],
+          mediaPrimaryUrl: own.url,
+          publishAckTimeout: ackTimeout,
+        );
+        addTearDown(client.dispose);
+        client.start();
+        await allUp(client, 2);
+        await NostrTransport(signer: signer, relay: client)
+            .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+        expect(talk.received, hasLength(1));
+        expect(own.received, isEmpty);
+      });
+    });
+
     test('both ways relays word it count as a rate limit', () {
       expect(
         WebSocketNostrRelayClient.isRateLimit(
