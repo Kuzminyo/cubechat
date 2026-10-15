@@ -53,8 +53,20 @@ class TransitionProbe {
   final ValueNotifier<bool> placeholderMedia = ValueNotifier<bool>(false);
 
   /// A pushed screen is not opaque, so the one under it goes on being painted
-  /// the whole time it is covered — **on by default since 1065**; the
-  /// scripted run turns it off to measure the old way against it.
+  /// the whole time it is covered. **On by default from 1065 to 1163, off
+  /// since 1164**; the scripted run flips it to measure one against the other.
+  ///
+  /// Turned off on 1163's own scripted run on the S24+ (2026-10-15, eight of
+  /// each, taking turns). The close it was kept for no longer differs, and a
+  /// scroll inside the chat paid for the list painted under it:
+  ///
+  /// ```
+  ///                        close >8.3 ms   scroll >8.3 ms   scroll raster p95
+  /// list kept painted          6.3             8.4               11.0 ms
+  /// off stage (opaque)         6.3             0.3                6.5 ms
+  /// ```
+  ///
+  /// The history that made it the default first:
   ///
   /// 1062's scripted run put every slow frame of a chat close in its first
   /// 90 ms — `+0:b10 +16:r20 +24:r14 +41:r14 … +83:r9` — with the blur on
@@ -62,7 +74,7 @@ class TransitionProbe {
   /// conversation covered it, being recorded and drawn again from nothing.
   /// 1063 kept it painted and the close went from 6.7 frames over 8.3 ms to
   /// 0.4. See `_SlideRoute.opaque`.
-  final ValueNotifier<bool> keepUnderlay = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> keepUnderlay = ValueNotifier<bool>(false);
 
   /// The transitions are being driven by a script rather than a thumb — see
   /// `TransitionBenchmark`. Filed apart, because the two are not comparable:
@@ -201,7 +213,7 @@ class TransitionProbe {
         if (scripted) 'bench',
         if (instantTransitions.value) 'instant',
         if (placeholderMedia.value) 'placeholders',
-        if (!keepUnderlay.value) 'opaque',
+        keepUnderlay.value ? 'underlay' : 'opaque',
         AppBlur.panes ? 'blur' : 'no-blur',
         if (AppBlur.panes && !AppBlur.groupedPanes) 'ungrouped',
       ].join(',');

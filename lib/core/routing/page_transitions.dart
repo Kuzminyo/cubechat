@@ -136,9 +136,12 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   @override
   bool get maintainState => true;
 
-  /// **Not opaque, so the screen underneath stays painted while this one
-  /// covers it** — since 1065. See [TransitionProbe.keepUnderlay] for the
-  /// switch that measures the old way.
+  /// **Opaque again since 1164**: once the slide has finished, the screen
+  /// underneath goes off stage. During the slide, either way, Flutter keeps it
+  /// on stage. See [TransitionProbe.keepUnderlay] for the measurement that
+  /// moved it back, and for the switch the scripted run flips.
+  ///
+  /// What follows is why it was not opaque from 1065 to 1163.
   ///
   /// An opaque route takes the screen under it off stage once it has slid in,
   /// which sounds free and was not: closing a chat then had to record and draw

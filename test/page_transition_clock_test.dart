@@ -74,22 +74,24 @@ void main() {
     await expectHeldThenSmooth(tester, route);
   });
 
-  testWidgets('the screen underneath stays painted, unless measured opaque',
+  testWidgets('the screen underneath goes off stage, unless measured painted',
       (tester) async {
-    addTearDown(() => TransitionProbe.instance.keepUnderlay.value = true);
+    addTearDown(() => TransitionProbe.instance.keepUnderlay.value = false);
     final navigator = await pumpApp(tester);
 
-    navigator.push(screenRoute<void>((_) => const Text('covering')));
-    await tester.pumpAndSettle();
-    expect(find.text('list'), findsOneWidget,
-        reason: 'kept on stage, so closing does not repaint it from nothing');
-    navigator.pop();
-    await tester.pumpAndSettle();
-
-    TransitionProbe.instance.keepUnderlay.value = false;
+    // Off stage once covered since 1164: a scroll in the chat was paying to
+    // paint the list under it. See TransitionProbe.keepUnderlay.
     navigator.push(screenRoute<void>((_) => const Text('opaque')));
     await tester.pumpAndSettle();
     expect(find.text('list'), findsNothing);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('list'), findsOneWidget);
+
+    TransitionProbe.instance.keepUnderlay.value = true;
+    navigator.push(screenRoute<void>((_) => const Text('covering')));
+    await tester.pumpAndSettle();
+    expect(find.text('list'), findsOneWidget, reason: 'the other way, kept');
     navigator.pop();
     await tester.pumpAndSettle();
   });
@@ -108,8 +110,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(tester.getTopLeft(find.text('list')), atRest);
     }
+    // Settled, the chat covers it and it is off stage — nothing to measure.
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('list')), atRest);
 
     navigator.pop();
     await tester.pump();
@@ -138,7 +140,9 @@ void main() {
     // Kept on stage for the close, it went on running its tickers under the
     // screen on top — the aurora, the dots — and the phone warmed up for it.
     final navigator = await pumpApp(tester);
-    bool ticking() => TickerMode.of(tester.element(find.text('list')));
+    bool ticking() => TickerMode.of(
+          tester.element(find.text('list', skipOffstage: false)),
+        );
     expect(ticking(), isTrue);
 
     navigator.push(screenRoute<void>((_) => const Text('chat')));
@@ -147,7 +151,8 @@ void main() {
     expect(ticking(), isTrue, reason: 'still moving, still visible');
 
     await tester.pumpAndSettle();
-    expect(find.text('list'), findsOneWidget, reason: 'painted underneath');
+    expect(find.text('list', skipOffstage: false), findsOneWidget,
+        reason: 'still mounted underneath');
     expect(ticking(), isFalse);
 
     navigator.pop();
@@ -162,7 +167,10 @@ void main() {
     await tester.pumpAndSettle();
     navigator.push(screenRoute<void>((_) => const Text('profile')));
     await tester.pumpAndSettle();
-    expect(TickerMode.of(tester.element(find.text('chat'))), isFalse);
+    expect(
+      TickerMode.of(tester.element(find.text('chat', skipOffstage: false))),
+      isFalse,
+    );
     expect(TickerMode.of(tester.element(find.text('profile'))), isTrue);
     navigator.pop();
     await tester.pumpAndSettle();
