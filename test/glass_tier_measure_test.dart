@@ -36,4 +36,39 @@ void main() {
       GlassTier.light,
     );
   });
+
+  test('a phone fine at rest but slow on every screen change loses the blur',
+      () {
+    // Still screens inside 60 Hz, slides at 20 ms on a 60 Hz panel: passed
+    // the old verdict, stuttered on every chat (2026-10-15).
+    expect(
+      GlassTierController.verdictFor(
+        p90Ms: 12,
+        worstMs: 30,
+        slideP90Ms: 22,
+        budgetMs: 1000 / 60,
+      ),
+      GlassTier.light,
+    );
+    // The S24+ on 1163: slides at ~11 ms on a 120 Hz panel. Keeps it.
+    expect(
+      GlassTierController.verdictFor(
+        p90Ms: 4.8,
+        worstMs: 36,
+        slideP90Ms: 11,
+        budgetMs: 1000 / 120,
+      ),
+      GlassTier.full,
+    );
+    // The same 11 ms on a 90 Hz panel is inside its 15.3 too.
+    expect(
+      GlassTierController.verdictFor(
+        p90Ms: 6,
+        worstMs: 30,
+        slideP90Ms: 11,
+        budgetMs: 1000 / 90,
+      ),
+      GlassTier.full,
+    );
+  });
 }

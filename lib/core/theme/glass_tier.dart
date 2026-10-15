@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show FrameTiming;
+import 'dart:ui' show FrameTiming, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -10,6 +10,7 @@ import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../util/debug_log.dart';
 import '../util/frame_stats.dart';
+import '../util/ui_activity.dart';
 import 'glass.dart';
 
 /// How much glass this phone can afford.
@@ -55,7 +56,19 @@ class GlassTierController extends Notifier<GlassTier> {
   /// The measured verdict under [GlassTier.auto], remembered so a phone is
   /// judged once rather than re-judged every launch on whatever it happened to
   /// be doing in its first seconds.
-  static const _autoVerdictKey = 'glass.tier.auto';
+  ///
+  /// `.v2` since the verdict also asks about screen changes (see
+  /// [_slideMarginMs]): a phone told "full" by the first question alone is
+  /// asked again, once. A "light" from it stands — see [_rememberedVerdict].
+  static const _autoVerdictKey = 'glass.tier.auto.v2';
+  static const _firstVerdictKey = 'glass.tier.auto';
+
+  String? _rememberedVerdict(Box<dynamic> box) {
+    final now = box.get(_autoVerdictKey) as String?;
+    if (now != null) return now;
+    final first = box.get(_firstVerdictKey) as String?;
+    return first == GlassTier.light.name ? first : null;
+  }
 
   Box<dynamic>? _box;
   Timer? _measure;
@@ -129,8 +142,9 @@ class GlassTierController extends Notifier<GlassTier> {
         orElse: () => GlassTier.auto,
       );
       if (chosen != state) state = chosen;
-      _apply(chosen, remembered: box.get(_autoVerdictKey) as String?);
-      if (chosen == GlassTier.auto && box.get(_autoVerdictKey) == null) {
+      final remembered = _rememberedVerdict(box);
+      _apply(chosen, remembered: remembered);
+      if (chosen == GlassTier.auto && remembered == null) {
         _scheduleMeasurement();
       }
     } catch (e) {
@@ -169,18 +183,46 @@ class GlassTierController extends Notifier<GlassTier> {
     _measure = Timer(_settleAfter, () {
       _measure = null;
       _window = RasterWindow();
+      _slides = RasterWindow();
       SchedulerBinding.instance.addTimingsCallback(_onTimings);
+      if (!_watchingFrames) {
+        // Persistent callbacks cannot be removed; this one is a flag check
+        // whenever nothing is being measured.
+        _watchingFrames = true;
+        SchedulerBinding.instance.addPersistentFrameCallback(_noteFrame);
+      }
       _measure = Timer(_measureAfter, _judge);
     });
   }
 
   RasterWindow? _window;
 
+  /// The same, for frames drawn while a screen was sliding in or out.
+  RasterWindow? _slides;
+
+  bool _watchingFrames = false;
+
+  /// Frames built while a screen was changing, by engine frame number.
+  ///
+  /// Timings arrive up to a second late in a release build, by which time the
+  /// slide is over, so the question "was this frame part of one" is answered
+  /// as the frame is built and looked up when its timing turns up.
+  final Set<int> _slideFrames = <int>{};
+
+  void _noteFrame(Duration _) {
+    if (_slides == null || !UiActivity.instance.isNavigating.value) return;
+    _slideFrames.add(PlatformDispatcher.instance.frameData.frameNumber);
+    if (_slideFrames.length > 2000) _slideFrames.remove(_slideFrames.first);
+  }
+
   void _onTimings(List<FrameTiming> timings) {
     final window = _window;
     if (window == null) return;
     for (final t in timings) {
       window.add(t.rasterDuration);
+      if (_slideFrames.remove(t.frameNumber)) {
+        _slides?.add(t.rasterDuration);
+      }
     }
   }
 
@@ -190,26 +232,38 @@ class GlassTierController extends Notifier<GlassTier> {
     if (_window != null) {
       SchedulerBinding.instance.removeTimingsCallback(_onTimings);
       _window = null;
+      _slides = null;
+      _slideFrames.clear();
     }
   }
 
   Future<void> _judge() async {
     _measure = null;
     final window = _window;
-    if (window == null) return;
-    if (window.count < _minFrames) {
-      // Too little happened to judge. Keep watching rather than guess.
+    final slides = _slides;
+    if (window == null || slides == null) return;
+    final budgetMs = _frameBudgetMs();
+    final verdict = verdictFor(
+      p90Ms: window.p90Ms,
+      worstMs: window.worstMs,
+      slideP90Ms: slides.count < _minSlideFrames ? null : slides.p90Ms,
+      budgetMs: budgetMs,
+    );
+    // Too little happened to judge. Keep watching rather than guess — unless
+    // what did happen already says light, which more frames cannot undo.
+    if (window.count < _minFrames ||
+        (verdict == GlassTier.full && slides.count < _minSlideFrames)) {
       _measure = Timer(_measureAfter, _judge);
       return;
     }
     _stopSampling();
-    final verdict =
-        verdictFor(p90Ms: window.p90Ms, worstMs: window.worstMs);
     DebugLog.instance.log(
       'GLASS',
       'raster p90 ${window.p90Ms.toStringAsFixed(1)} ms, worst '
           '${window.worstMs.toStringAsFixed(1)} ms over ${window.count} '
-          'frames — ${verdict.name} glass',
+          'frames; screen changes p90 ${slides.p90Ms.toStringAsFixed(1)} ms '
+          'over ${slides.count} against a '
+          '${budgetMs.toStringAsFixed(1)} ms frame — ${verdict.name} glass',
     );
     try {
       await _box?.put(_autoVerdictKey, verdict.name);
@@ -221,15 +275,45 @@ class GlassTierController extends Notifier<GlassTier> {
     }
   }
 
-  /// The verdict on one window of use. See [_rasterP90Ceiling] and
-  /// [_rasterWorstCeiling] for why it asks both.
+  /// The verdict on one window of use. See [_rasterP90Ceiling],
+  /// [_rasterWorstCeiling] and [_slideMarginMs] for why it asks all three.
   static GlassTier verdictFor({
     required double p90Ms,
     required double worstMs,
+    double? slideP90Ms,
+    double budgetMs = 1000 / 60,
   }) =>
-      p90Ms > _rasterP90Ceiling || worstMs > _rasterWorstCeiling
+      p90Ms > _rasterP90Ceiling ||
+              worstMs > _rasterWorstCeiling ||
+              (slideP90Ms != null && slideP90Ms > budgetMs + _slideMarginMs)
           ? GlassTier.light
           : GlassTier.full;
+
+  /// How far past its own refresh the slow tenth of a phone's screen-change
+  /// frames may run before the glass goes.
+  ///
+  /// The two questions above are asked of every frame, and most frames are a
+  /// screen sitting still. The glass costs most where the owner reported
+  /// phones with weak graphics lagging (2026-10-15): a chat sliding in or out,
+  /// two screens on the display and the islands re-running their gaussian over
+  /// a moving backdrop — 8.9 frames over 8.3 ms per open with it, 1.1 without
+  /// (1061's scripted run). A phone that keeps a still screen under 16.7 ms
+  /// and slides at 20 passed the old verdict and stuttered on every chat.
+  ///
+  /// Measured against the display's own frame rather than a fixed 60 Hz, and
+  /// with half a 120 Hz frame of slack: the S24+ slides at raster p95 9-11 ms
+  /// on a 120 Hz screen (1163's scripted run), under its 12.5 here, and keeps
+  /// the glass.
+  static const double _slideMarginMs = 4.2;
+
+  /// Frames from at least two screen changes before they count.
+  static const int _minSlideFrames = 60;
+
+  static double _frameBudgetMs() {
+    final displays = PlatformDispatcher.instance.displays;
+    final hz = displays.isEmpty ? 60.0 : displays.first.refreshRate;
+    return 1000 / (hz < 30 ? 60 : hz);
+  }
 
   /// Before sampling starts: the first seconds of a launch compile shaders
   /// and build every tab, and a single 100 ms frame among them would judge the
@@ -248,7 +332,8 @@ class GlassTierController extends Notifier<GlassTier> {
   /// showing the raster thread leading. Applied first, the rebuild the state
   /// change causes is already the right one.
   Future<void> set(GlassTier tier) async {
-    final remembered = _box?.get(_autoVerdictKey) as String?;
+    final box = _box;
+    final remembered = box == null ? null : _rememberedVerdict(box);
     _apply(tier, remembered: remembered);
     state = tier;
     if (tier == GlassTier.auto && remembered == null) {
