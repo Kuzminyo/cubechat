@@ -110,6 +110,59 @@ void main() {
     );
   });
 
+  testWidgets('a page that arrives half folded settles with no scroll at all',
+      (tester) async {
+    // "Залипает поиск ... сам по себе" (2026-10-15). A page can be put part
+    // way through the fold without any scroll ending — its position given
+    // back when a tab is rebuilt, a row above it appearing — and the settle
+    // only ever ran on a scroll end.
+    final controller = ScrollController(initialScrollOffset: 25);
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TabPageFrame(
+            header: const TabHeader(
+              mark: Icon(Icons.star),
+              title: 'Title',
+              subtitle: 'Sub',
+            ),
+            search: TabFrameSearch(hint: 'Search…', onTap: () {}),
+            island: const SizedBox(height: SectionSwitch.height),
+            pageKey: 0,
+            child: Builder(
+              builder: (context) => ListView(
+                controller: controller,
+                padding: EdgeInsets.only(top: IslandInset.of(context)),
+                children: [
+                  for (var i = 0; i < 60; i++)
+                    SizedBox(height: 60, child: Text('row $i')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // Only the frames the app asks for.
+    for (var i = 0; i < 60 && tester.binding.hasScheduledFrame; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      controller.offset == 0 || controller.offset == TabPageFrame.searchRoom,
+      isTrue,
+      reason: 'the page was left ${controller.offset} into the fold',
+    );
+    final width = tester.getSize(find.byKey(TabPageFrame.searchKey)).width;
+    expect(
+      width == TabPageFrame.bubble || width > 300,
+      isTrue,
+      reason: 'the search is $width wide: neither a field nor a button',
+    );
+  });
+
   testWidgets('the header surface reaches under the status bar',
       (tester) async {
     // Scrolled, the surface began below the status bar and the clock and

@@ -153,10 +153,26 @@ class _TabPageFrameState extends State<TabPageFrame> {
     return (px / _searchRoom).clamp(0.0, 1.0);
   }
 
+  /// The page changed length, which can move it with no scroll to end.
+  bool _onResize(ScrollMetricsNotification n) {
+    if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
+    // A page keeps its other half built and off stage (Contacts' calls),
+    // and an off-stage half is still laid out — so it changes length too, and
+    // its offset is not the one the header follows.
+    final stage = n.context.findAncestorWidgetOfExactType<Offstage>();
+    if (stage != null && stage.offstage) return false;
+    final px = n.metrics.pixels;
+    if (_offsets[widget.pageKey] != px) {
+      setState(() => _offsets[widget.pageKey] = px);
+    }
+    _settleSearch(n.metrics, n.context);
+    return false;
+  }
+
   bool _onScroll(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
     if (n is ScrollEndNotification) {
-      _settleSearch(n);
+      _settleSearch(n.metrics, n.context);
       return false;
     }
     if (n is! ScrollUpdateNotification) return false;
@@ -181,18 +197,26 @@ class _TabPageFrameState extends State<TabPageFrame> {
   /// scroll the whole fold — else on to the button. Left where it stopped, the
   /// search sat half field, half button ("поиск залагивает"). Chats has done
   /// the same with its own search from the start.
-  void _settleSearch(ScrollEndNotification n) {
+  ///
+  /// Asked again whenever the page changes length (see [_onResize]): a row
+  /// appearing or going, or a rebuilt tab getting its position back, moves
+  /// the page with no scroll ever ending, and the search was found stuck half
+  /// way "by itself" (2026-10-15). And with a frame asked for, so a still
+  /// screen does not leave the settle waiting for one.
+  void _settleSearch(ScrollMetrics metrics, BuildContext? context) {
     final room = _searchRoom;
-    final px = n.metrics.pixels;
-    if (room == 0 || px <= 0 || px >= room) return;
-    final target =
-        px < room / 2 || n.metrics.maxScrollExtent < room ? 0.0 : room;
-    final context = n.context;
-    if (context == null) return;
+    if (room == 0 || context == null) return;
     final position = Scrollable.maybeOf(context)?.position;
     if (position == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !position.hasPixels) return;
+      // Read now, not from the notification: by the frame after it the page
+      // may have moved again, or a finger may have taken it.
+      if (position.isScrollingNotifier.value) return;
+      final px = position.pixels;
+      if (px <= 0.5 || px >= room - 0.5) return;
+      final target =
+          px < room / 2 || position.maxScrollExtent < room ? 0.0 : room;
       unawaited(
         position.animateTo(
           target,
@@ -201,6 +225,7 @@ class _TabPageFrameState extends State<TabPageFrame> {
         ),
       );
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -248,8 +273,12 @@ class _TabPageFrameState extends State<TabPageFrame> {
                   TabHeader.height +
                   _searchRoom +
                   TabPageFrame.islandHeight,
-              child: NotificationListener<ScrollNotification>(
-                onNotification: _onScroll,
+              child: NotificationListener<Notification>(
+                onNotification: (n) => switch (n) {
+                  final ScrollNotification s => _onScroll(s),
+                  final ScrollMetricsNotification m => _onResize(m),
+                  _ => false,
+                },
                 // Ink for the pages' own buttons, the half not on show
                 // included: it stays built (offstage) to keep its scroll.
                 //

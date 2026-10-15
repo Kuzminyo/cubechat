@@ -834,22 +834,48 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
 
   bool _snapHeader(ScrollEndNotification note) {
     if (note.metrics.axis != Axis.vertical) return false;
-    if (!_scrollController.hasClients) return false;
-    final offset = _scrollController.offset;
-    const span = _ChatsHeaderDelegate.searchHeight;
-    if (offset <= 0 || offset >= span) return false;
-    final target = offset > span / 2 ? span : 0.0;
-    // After this frame: a scroll-end notification arrives mid-layout, and
-    // animating from inside it re-enters the scroll machinery.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        target,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-      );
-    });
+    _settleHeaderLater();
     return false;
+  }
+
+  /// The list changed length, which moves it without a scroll ever ending.
+  bool _snapHeaderOnResize(ScrollMetricsNotification note) {
+    if (note.metrics.axis != Axis.vertical) return false;
+    _settleHeaderLater();
+    return false;
+  }
+
+  /// After this frame — a scroll-end notification arrives mid-layout, and
+  /// animating from inside it re-enters the scroll machinery — and with a
+  /// frame asked for, so a still screen does not leave it waiting.
+  void _settleHeaderLater() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _settleHeader());
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  /// Send a search left part-way to whichever end is nearer — and reachable.
+  ///
+  /// Only ever on a scroll-end it was, and the search was still found stuck
+  /// half field, half button, both "after a short scroll" and "by itself"
+  /// (2026-10-15). Two ways there that never end a scroll: a row above the
+  /// list (the archive, the queue, requests) appearing or going, and the
+  /// position coming back from storage when the tab is rebuilt. And one that
+  /// does but could not finish: a list too short to scroll the whole fold was
+  /// sent to the far end, stopped short of it, and stayed half way.
+  void _settleHeader() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.isScrollingNotifier.value) return;
+    final offset = position.pixels;
+    const span = _ChatsHeaderDelegate.searchHeight;
+    if (offset <= 0.5 || offset >= span - 0.5) return;
+    final target =
+        offset > span / 2 && position.maxScrollExtent >= span ? span : 0.0;
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   /// The rows as last built, by chat id, with what each was built from.
@@ -1158,12 +1184,19 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
         // is meant to be the top of the screen.
         top: false,
         bottom: false,
-        child: NotificationListener<ScrollNotification>(
+        child: NotificationListener<Notification>(
           // Watched while the finger is still moving, unlike the snap below,
           // which waits for the scroll to stop: pulling the archive back is
           // something you feel happen at the top of the pull, not something
           // that lands after you let go.
-          onNotification: _revealArchiveOnPull,
+          //
+          // And the list changing length, which moves it with no scroll to
+          // end — see [_settleHeader].
+          onNotification: (note) => switch (note) {
+            final ScrollNotification n => _revealArchiveOnPull(n),
+            final ScrollMetricsNotification n => _snapHeaderOnResize(n),
+            _ => false,
+          },
           child: NotificationListener<ScrollEndNotification>(
             // The search is either a field or a button, never half of each.
             //
