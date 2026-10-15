@@ -184,6 +184,7 @@ String _originOf(StackTrace? stack) {
 }
 
 Future<void> main() async {
+  final sinceMain = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
   _logUncaughtErrors();
@@ -353,6 +354,10 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
   });
+
+  // The whole cold start, as one number — see [BuildProbe.logFirstFrame].
+  unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized
+      .then((_) => BuildProbe.logFirstFrame(sinceMain.elapsed)));
 
   // After runApp for the same reason: a question, not a step. The answer lands
   // in the log a few frames in, which is where anybody reading it is looking.

@@ -42,4 +42,25 @@ class BuildProbe {
       DebugLog.instance.log('BUILD', 'build-facts probe failed: $e');
     }
   }
+
+  /// Say how long a cold start took, once the first frame is on screen.
+  ///
+  /// [sinceMain] is Dart's own share. The process age, asked of Android,
+  /// adds what came before `main` — the system launch, the engine, loading
+  /// the snapshot — which the `[BOOT]` step lines cannot see, and which is
+  /// what "the app opens slowly" is mostly made of. Asked for on 2026-10-15
+  /// with no number to start from.
+  static Future<void> logFirstFrame(Duration sinceMain) async {
+    var line = 'first frame on screen ${sinceMain.inMilliseconds} ms '
+        'after main';
+    try {
+      final age = await _channel.invokeMethod<int>('sinceProcessStart');
+      if (age != null) line += ', $age ms after the process started';
+    } on MissingPluginException {
+      // iOS has no handler; Dart's share alone is still worth the line.
+    } catch (_) {
+      // Best-effort, as above.
+    }
+    DebugLog.instance.log('BOOT', line);
+  }
 }

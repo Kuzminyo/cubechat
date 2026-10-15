@@ -173,6 +173,13 @@ class MainActivity : FlutterActivity() {
                         "bundleId" to packageName,
                     ),
                 )
+                // How long this process has been alive, for the cold-start
+                // line in the log: Dart can time itself from `main`, but not
+                // the engine and the system launch that come before it.
+                "sinceProcessStart" -> result.success(
+                    android.os.SystemClock.uptimeMillis() -
+                        android.os.Process.getStartUptimeMillis(),
+                )
                 else -> result.notImplemented()
             }
         }
