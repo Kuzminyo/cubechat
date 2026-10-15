@@ -124,6 +124,15 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
   double _slideFrom = 1;
   bool _hasSwitchedSection = false;
 
+  /// Rows as last built, with what each was built from — see [_contactRow].
+  ///
+  /// A Galaxy S24+ log (2026-10-15) had `contactTile x72, callRow x80` in five
+  /// seconds of switching between the two halves: every rebuild of this screen
+  /// drew every row again, unchanged. Chats has kept its rows this way since
+  /// 1055 (`_rowFor` in chats_list_screen.dart).
+  final Map<String, (Object, Widget)> _contactRows = {};
+  final Map<Object, (Object, Widget)> _callRows = {};
+
   /// The half sliding out while [_slide] runs (true for calls), or null once
   /// it has gone — on stage for the slide, so the halves move as a strip.
   bool? _leaving;
@@ -195,6 +204,37 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
   Widget build(BuildContext context) =>
       buildUnlessOffstage(() => _buildTab(context));
 
+  /// One contact's row: the one built last time while nothing it shows has
+  /// changed, so the rebuild skips it. See [_contactRows].
+  ///
+  /// [entrance] is the row's place in the entrance stagger, or null for no
+  /// entrance. Its callbacks reach this screen's own context, never the
+  /// list's: a kept row outlives the list item it was first built in.
+  Widget _contactRow(Chat contact, String? tag, {int? entrance}) {
+    final inputs = (contact, tag, entrance);
+    final cached = _contactRows[contact.peerId];
+    if (cached != null && cached.$1 == inputs) return cached.$2;
+    final row = AppearAnimation(
+      enabled: entrance != null,
+      delay: AppearAnimation.stagger(entrance ?? 0),
+      child: FloatingGlass(
+        blur: false,
+        borderRadius: 18,
+        onTap: () => context.push(routeForContactProfile(contact)),
+        // Deleting somebody lived one screen in, at the bottom of their
+        // profile, behind a panel that has to be opened first — which is
+        // three steps away from the list people look at when they want
+        // somebody gone.
+        onLongPressAt: (at) => unawaited(
+          _showContactMenu(context, ref, contact, at),
+        ),
+        child: _ContactTile(contact: contact, tag: tag),
+      ),
+    );
+    _contactRows[contact.peerId] = (inputs, row);
+    return row;
+  }
+
   Widget _buildTab(BuildContext context) {
     // Counted, as Chats is: the frame meter names what rebuilt.
     FrameStats.countBuild('contacts');
@@ -254,6 +294,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
             ref: ref,
             missedOnly: _missedOnly,
             query: _query,
+            rows: _callRows,
             onMissedOnly: (value) => setState(() => _missedOnly = value),
             chip: (label, selected, onTap) => _TagChip(
               label: label,
@@ -436,29 +477,14 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   FrameStats.countBuild('contactItem');
-                  final contact = contacts[index];
-                  return AppearAnimation(
-                    enabled: animate &&
-                        !_hasSwitchedSection &&
-                        !MediaQuery.disableAnimationsOf(context),
-                    delay: AppearAnimation.stagger(index),
-                    child: FloatingGlass(
-                      blur: false,
-                      borderRadius: 18,
-                      onTap: () =>
-                          context.push(routeForContactProfile(contact)),
-                      // Deleting somebody lived one screen in, at the bottom
-                      // of their profile, behind a panel that has to be opened
-                      // first — which is three steps away from the list people
-                      // look at when they want somebody gone.
-                      onLongPressAt: (at) => unawaited(
-                        _showContactMenu(context, ref, contact, at),
-                      ),
-                      child: _ContactTile(
-                        contact: contact,
-                        tag: tags[contact.peerId],
-                      ),
-                    ),
+                  return _contactRow(
+                    contacts[index],
+                    tags[contacts[index].peerId],
+                    entrance: animate &&
+                            !_hasSwitchedSection &&
+                            !MediaQuery.disableAnimationsOf(context)
+                        ? index
+                        : null,
                   );
                 },
               ),

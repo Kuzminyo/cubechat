@@ -1,4 +1,5 @@
 import 'package:cubechat/core/routing/tab_reset.dart';
+import 'package:cubechat/core/util/ui_activity.dart';
 import 'package:cubechat/features/chat/data/chat_scroll_memory.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +11,29 @@ import 'package:flutter_test/flutter_test.dart';
 /// should not keep their state - but a chat should stay where it was scrolled
 /// to, until the app is closed" was the whole request.
 void main() {
+  // The reset asks the scheduler whether anything is animating.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('a tab left behind', () {
+    test('waits for a still screen before it is rebuilt', () {
+      // Contacts' rebuild is a 33 ms frame of its own (S24+, 2026-10-15); it
+      // landed in the middle of the next scroll.
+      fakeAsync((async) {
+        final container = ProviderContainer();
+        final tabs = container.read(tabGenerationsProvider.notifier);
+        tabs.noteCurrent(1);
+        tabs.noteCurrent(0);
+        UiActivity.instance.isScrolling.value = true;
+        async.elapse(const Duration(seconds: 2));
+        expect(container.read(tabGenerationsProvider)[1], isNull,
+            reason: 'something is moving on screen');
+        UiActivity.instance.isScrolling.value = false;
+        async.elapse(const Duration(milliseconds: 300));
+        expect(container.read(tabGenerationsProvider)[1], 1);
+        container.dispose();
+      });
+    });
+
     test('is rebuilt once it has slid out of sight, not while it slides', () {
       fakeAsync((async) {
         final container = ProviderContainer();

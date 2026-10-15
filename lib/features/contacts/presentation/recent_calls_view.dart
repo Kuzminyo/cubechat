@@ -45,6 +45,7 @@ List<Widget> recentCallSlivers({
       chip,
   required Widget Function(String title, String hint) empty,
   String query = '',
+  Map<Object, (Object, Widget)>? rows,
 }) {
   final t = AppLocalizations.of(context);
   final all = ref.watch(recentCallsProvider);
@@ -101,12 +102,29 @@ List<Widget> recentCallSlivers({
         sliver: SliverList.separated(
           itemCount: calls.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => wrap(
-            _CallRow(
-              call: calls[index],
-              name: names[calls[index].peerId] ?? calls[index].peerId,
-            ),
-          ),
+          itemBuilder: (context, index) {
+            final call = calls[index];
+            final name = names[call.peerId] ?? call.peerId;
+            // The same row as last time while nothing it shows has changed:
+            // Flutter skips a widget that is identical to the one it already
+            // has, and every rebuild of Contacts — a section switch, a letter
+            // typed, somebody coming online — used to redraw all of them.
+            // `rows` is the screen's, so it outlives this function.
+            final inputs = (
+              call.kind,
+              call.at,
+              call.count,
+              call.talkedFor,
+              name,
+              animate == null,
+            );
+            final key = (call.peerId, call.at);
+            final cached = rows?[key];
+            if (cached != null && cached.$1 == inputs) return cached.$2;
+            final row = wrap(_CallRow(call: call, name: name));
+            rows?[key] = (inputs, row);
+            return row;
+          },
         ),
       ),
   ];

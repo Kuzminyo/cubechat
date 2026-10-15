@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../util/frame_stats.dart';
+import '../util/ui_activity.dart';
 
 /// How many times each tab has been left, by router branch index.
 ///
@@ -45,12 +47,26 @@ class TabGenerations extends Notifier<Map<int, int>> {
     _pending.remove(branch)?.cancel();
     if (previous == null || previous == branch) return;
     _pending[previous]?.cancel();
-    _pending[previous] = Timer(_afterSlide, () {
-      _pending.remove(previous);
-      if (_current == previous) return;
-      state = {...state, previous: (state[previous] ?? 0) + 1};
-    });
+    _pending[previous] = Timer(_afterSlide, () => _resetWhenStill(previous));
   }
+
+  /// Rebuilding a tab is a frame of its own — 33 ms for Contacts on the S24+
+  /// (2026-10-15), every row of both halves built from nothing — and it landed
+  /// 450 ms after the tab was left, in the middle of whatever came next: a
+  /// scroll, a chat sliding in. So it waits for a screen with nothing moving
+  /// on it, where a long frame drops nothing anybody can see.
+  void _resetWhenStill(int branch) {
+    _pending.remove(branch);
+    if (_current == branch) return;
+    final scheduler = SchedulerBinding.instance;
+    if (UiActivity.instance.isMoving || scheduler.transientCallbackCount > 0) {
+      _pending[branch] = Timer(_stillCheck, () => _resetWhenStill(branch));
+      return;
+    }
+    state = {...state, branch: (state[branch] ?? 0) + 1};
+  }
+
+  static const Duration _stillCheck = Duration(milliseconds: 250);
 }
 
 final tabGenerationsProvider =
