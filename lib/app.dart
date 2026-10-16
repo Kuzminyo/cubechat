@@ -58,6 +58,7 @@ import 'features/profile/data/ui_scale_controller.dart';
 import 'features/cube_id/data/cube_id_controller.dart';
 import 'features/cube_id/domain/cubechat_link.dart';
 import 'core/util/debug_log.dart';
+import 'core/util/timed_subtree.dart';
 import 'package:app_links/app_links.dart';
 import 'l10n/app_localizations.dart';
 
@@ -931,7 +932,13 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          child ?? const SizedBox.shrink(),
+                          // Every route's layout and paint, so the frame
+                          // meter can say how much of a slow frame was
+                          // widgets and how much was measuring text.
+                          TimedSubtree(
+                            'app',
+                            child: child ?? const SizedBox.shrink(),
+                          ),
                           AirDropRequestOverlay(onOpen: _openAirDrop),
                         ],
                       ),

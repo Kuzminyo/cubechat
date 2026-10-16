@@ -13,6 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../core/transport/file_reassembly.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/frame_stats.dart';
+import '../../../core/util/timed_subtree.dart';
 import '../../../core/util/motion.dart';
 import '../../../core/util/platform_capabilities.dart';
 import '../../../core/theme/typography.dart';
@@ -2384,6 +2385,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   @override
   Widget build(BuildContext context) {
+    // Timed as well as counted (2026-10-16): this build walks the whole
+    // history — albums, the unread line, search — before a single bubble.
+    final watch = Stopwatch()..start();
+    try {
+      return _buildConversation(context);
+    } finally {
+      FrameStats.countTime('conversation.build', watch.elapsedMicroseconds);
+    }
+  }
+
+  Widget _buildConversation(BuildContext context) {
     // The conversation counts itself. Two slow frames on the Mali phone landed
     // one frame after a `[NAV] push` reading build 57.8 ms and 33.9 ms against
     // raster of 7.3 and 10.7 — Dart work, at the moment a chat opens, and the
@@ -3730,17 +3742,21 @@ class _FloatingComposerBody extends StatelessWidget {
       // the oldest clears the header by. The list's box ends at both islands;
       // its paint does not, so the chat stays visible behind them right to
       // the edges of the screen.
-      list: listBuilder(
-        const EdgeInsets.only(top: _clearance, bottom: _clearance),
+      // Timed for the frame meter — see TimedSubtree.
+      list: TimedSubtree(
+        'list',
+        child: listBuilder(
+          const EdgeInsets.only(top: _clearance, bottom: _clearance),
+        ),
       ),
-      header: header,
+      header: TimedSubtree('header', child: header),
       // Only once there is somewhere to go. The list is reversed, so being
       // at the newest message means offset ~0 — showing the button there
       // would be a control that does nothing, parked over the conversation.
       // Always in the tree so it can slide in and out; see the button.
       button: _ScrollToBottomButton(onTap: scrollToBottom),
       buttonGap: _clearance + 8,
-      composer: composer,
+      composer: TimedSubtree('composer', child: composer),
     );
   }
 }

@@ -426,9 +426,34 @@ class FrameStats {
 
   static String _format(Map<String, int> counts) {
     if (counts.isEmpty) return '';
-    final rows = counts.entries.toList()
+    // Times first, as milliseconds — see [countTime].
+    final times = counts.entries
+        .where((e) => e.key.startsWith(_timePrefix))
+        .toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    return rows.map((e) => '${e.key} x${e.value}').join(', ');
+    final rows = counts.entries
+        .where((e) => !e.key.startsWith(_timePrefix))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      for (final e in times)
+        '${e.key.substring(_timePrefix.length)} '
+            '${(e.value / 1000).toStringAsFixed(1)}ms',
+      for (final e in rows) '${e.key} x${e.value}',
+    ].join(', ');
+  }
+
+  static const String _timePrefix = 'us:';
+
+  /// Add [micros] of work to [what] for this frame.
+  ///
+  /// The counts say *who* rebuilt; a slow frame with `chat x1, composer x1`
+  /// beside a 20-35 ms build said nothing about which of them was the 20 ms.
+  /// Opening a chat is the one slow frame left on every tap (2026-10-16), so
+  /// its parts are timed and printed as `list 12.3ms` in the same line.
+  static void countTime(String what, int micros) {
+    final key = '$_timePrefix$what';
+    _buildCounts[key] = (_buildCounts[key] ?? 0) + micros;
   }
 
   /// Frames covered by the counts in the line above.

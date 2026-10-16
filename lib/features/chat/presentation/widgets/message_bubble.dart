@@ -18,6 +18,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/theme/typography.dart';
 import '../../../../core/util/debug_log.dart';
+import '../../../../core/util/frame_stats.dart';
 import '../../../../core/util/transition_probe.dart';
 import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
@@ -1681,6 +1682,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   @override
   Widget build(BuildContext context) {
+    // Counted and timed for the frame meter: opening a chat builds every
+    // visible bubble in one frame, and how much of that frame they are was the
+    // open question on 2026-10-16. This is the bubble's own build only — its
+    // text is measured later, in layout (see TimedSubtree).
+    final watch = Stopwatch()..start();
+    try {
+      return _buildBubble(context);
+    } finally {
+      FrameStats.countBuild('bubble');
+      FrameStats.countTime('bubble.build', watch.elapsedMicroseconds);
+    }
+  }
+
+  Widget _buildBubble(BuildContext context) {
     final transcript = ref.watch(
       voiceTranscriptionProvider.select((texts) => texts[widget.message.id]),
     );

@@ -44,6 +44,7 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/relays_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
+import '../util/timed_subtree.dart';
 import 'branch_container.dart';
 import 'page_transitions.dart';
 
@@ -335,12 +336,17 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           final initialMessageId = state.uri.queryParameters['message'];
           final returnToChats = state.uri.queryParameters['from'] == 'search';
           return fadeSlidePage(
-            child: AuroraBackground(
-              child: ChatScreen(
-                peerId: peerId,
-                peerLabel: peerLabel,
-                initialMessageId: initialMessageId,
-                returnToChats: returnToChats,
+            // The whole page's layout and paint, for the frame meter — the
+            // sum the parts in ChatScreen are measured against.
+            child: TimedSubtree(
+              'chat',
+              child: AuroraBackground(
+                child: ChatScreen(
+                  peerId: peerId,
+                  peerLabel: peerLabel,
+                  initialMessageId: initialMessageId,
+                  returnToChats: returnToChats,
+                ),
               ),
             ),
             state: state,
