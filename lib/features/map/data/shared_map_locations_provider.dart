@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/transport/shared_location.dart';
+import '../../../core/util/debug_log.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 
@@ -116,22 +118,44 @@ class MapPresenceStore extends Notifier<Map<String, SharedMapLocation>> {
     final now = DateTime.now();
     final at = _positionHeldAt(location, sentAt ?? now);
 
+    // Said once per beacon, because the receiving half was silent: a
+    // 2026-10-16 log had a dozen `FS (X3DH) body decrypted` lines and nothing
+    // after them, so "geo vanishes, does not always arrive" could not be put
+    // on a friend, on a moment, or on whether the pin even moved.
+    final who = chatId.length > 8 ? chatId.substring(0, 8) : chatId;
+    void say(String what) =>
+        DebugLog.instance.log('MAP', 'pin from $who: $what');
+
     if (location.retraction) {
       // A withdrawal is worth acting on only while it is fresh. Replayed out of
       // the relay's backlog it is a statement about a moment that has already
       // passed, and honouring it would take down a pin that has been standing
       // ever since.
-      if (at.isAfter(now.subtract(_retractionWindow))) forget(chatId);
+      final fresh = at.isAfter(now.subtract(_retractionWindow));
+      say(fresh ? 'withdrawn' : 'stale withdrawal ignored');
+      if (fresh) forget(chatId);
       return;
     }
-    if (at.isBefore(now.subtract(_forgetAfter))) return;
+    if (at.isBefore(now.subtract(_forgetAfter))) {
+      say('older than ${_forgetAfter.inDays} days, ignored');
+      return;
+    }
 
     // Beacons do not arrive in the order they were sent: the relay replays its
     // backlog whenever the socket comes back, so a heartbeat from an hour ago
     // can land after the one from a minute ago. The newer position wins,
     // whenever it turns up.
     final known = state[chatId];
-    if (known != null && !at.isAfter(known.sentAt)) return;
+    if (known != null && !at.isAfter(known.sentAt)) {
+      say('older than the one shown, ignored');
+      return;
+    }
+    say(
+      known == null
+          ? 'shown'
+          : 'moved ${_metresBetween(known.location, location).round()} m, '
+              '${at.difference(known.sentAt).inSeconds} s after the last',
+    );
 
     state = {
       ...state,
@@ -143,6 +167,16 @@ class MapPresenceStore extends Notifier<Map<String, SharedMapLocation>> {
       ),
     };
     unawaited(_persist());
+  }
+
+  static double _metresBetween(SharedLocation a, SharedLocation b) {
+    // Equirectangular, as in `MapPresenceController`: plenty at map scale.
+    const metresPerDegree = 111320.0;
+    final dLat = (b.latitude - a.latitude) * metresPerDegree;
+    final dLon = (b.longitude - a.longitude) *
+        metresPerDegree *
+        math.cos(a.latitude * math.pi / 180);
+    return math.sqrt(dLat * dLat + dLon * dLon);
   }
 
   /// When this position was actually true, as opposed to when it reached us.

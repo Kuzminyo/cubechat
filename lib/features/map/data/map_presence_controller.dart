@@ -473,16 +473,22 @@ class MapPresenceController extends Notifier<int> {
   static const double _samePlaceMetres = 40;
 
   bool _isNearLastSent(LocationFix fix) {
+    if (_lastSentLat == null || _lastSentLon == null) return false;
+    return _metresFromLastSent(fix) <= _samePlaceMetres;
+  }
+
+  /// Distance from the last beacon that went out; infinite when none has.
+  double _metresFromLastSent(LocationFix fix) {
     final lat = _lastSentLat;
     final lon = _lastSentLon;
-    if (lat == null || lon == null) return false;
+    if (lat == null || lon == null) return double.infinity;
     // Equirectangular approximation. Exact enough by a wide margin at forty
     // metres, and it costs two multiplications instead of a haversine.
     const metresPerDegree = 111320.0;
     final dLat = (fix.latitude - lat) * metresPerDegree;
     final dLon =
         (fix.longitude - lon) * metresPerDegree * math.cos(lat * math.pi / 180);
-    return dLat * dLat + dLon * dLon <= _samePlaceMetres * _samePlaceMetres;
+    return math.sqrt(dLat * dLat + dLon * dLon);
   }
 
   void _noteFix(LocationFix fix) =>
@@ -534,6 +540,15 @@ class MapPresenceController extends Notifier<int> {
         presence: true,
       ).encode();
 
+      // Why this round went out, worked out before the fields below move on.
+      final why = force
+          ? 'forced'
+          : _lastSentAt == null
+              ? 'first'
+              : _isNearLastSent(fix)
+                  ? 'refresh after ${now.difference(_lastSentAt!).inSeconds} s'
+                  : 'moved ${_metresFromLastSent(fix).round()} m';
+      final clock = Stopwatch()..start();
       final messaging = ref.read(messagingServiceProvider);
       var sent = 0;
       for (final peerId in peers) {
@@ -567,6 +582,17 @@ class MapPresenceController extends Notifier<int> {
           }
         }
       }
+      // One line for the round, in place of three per friend: the sender's
+      // half of "geo does not always arrive" is how many friends it reached
+      // and how long that took, and the per-friend lines filled 70% of a
+      // 75-minute log while saying only that every one of them landed.
+      // Failures are still logged per friend where they happen.
+      DebugLog.instance.log(
+        'MAP',
+        'beacon to $sent/${peers.length} friend(s) in '
+            '${clock.elapsedMilliseconds} ms ($why, '
+            '±${fix.accuracyMetres} m)',
+      );
       // Only a beacon that got out counts against the next one. Marking the
       // attempt regardless meant a failure — the transport still starting up,
       // most often — bought thirty-five seconds of deliberate silence on top

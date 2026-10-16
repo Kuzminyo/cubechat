@@ -421,7 +421,13 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       }
     }
 
-    if (id != null) {
+    // A map beacon that landed is summed up once per round by
+    // `MapPresenceController` instead. Per event it was a line per friend per
+    // round, and a 75-minute log from 2026-10-16 was 70% map beacons — 47
+    // rounds to 5 friends at 15 lines each — with not one chat message left in
+    // the window to measure the "slow to send" report by. A beacon that did not
+    // land still says so here.
+    if (id != null && !(lane == RelayLane.location && receipt.isAccepted)) {
       DebugLog.instance.log(
         'NOSTR',
         'published ${id.substring(0, 8)} — $receipt',

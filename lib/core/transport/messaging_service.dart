@@ -1280,8 +1280,12 @@ class MessagingService {
                 'unconfirmed, not refused ($receipt)');
         return outcome;
       }
-      DebugLog.instance.log('NOSTR',
-          'sent ${frameBytes.length}B to $canonicalId via relay — $receipt');
+      // Map beacons are counted once per round by `MapPresenceController` —
+      // see the matching note in `WebSocketNostrRelayClient.publish`.
+      if (lane != RelayLane.location) {
+        DebugLog.instance.log('NOSTR',
+            'sent ${frameBytes.length}B to $canonicalId via relay — $receipt');
+      }
       return outcome;
     } catch (e) {
       // Thrown before any socket took the event: no relay connected, or every
@@ -1859,10 +1863,15 @@ class MessagingService {
               messages.markForwardSecret(chatId, msg.id);
             }
           }
-          DebugLog.instance.log(
-              'CRYPTO',
-              'sendText: forward-secret (X3DH) to $canonicalId '
-                  '(${wireLen}B wire)');
+          // Not for a map beacon: `MapPresenceController` writes one line per
+          // round, and this was one per friend per round — see
+          // `WebSocketNostrRelayClient.publish`.
+          if (!transient) {
+            DebugLog.instance.log(
+                'CRYPTO',
+                'sendText: forward-secret (X3DH) to $canonicalId '
+                    '(${wireLen}B wire)');
+          }
         } catch (e) {
           DebugLog.instance.log('CRYPTO',
               'sendText: FS path failed ($e) — falling back to SealedBox');
