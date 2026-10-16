@@ -1533,21 +1533,31 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // Bounded: a long scroll back through history must not keep every bubble
     // it ever passed. What is on screen is put back on the next pass.
     if (_bubbles.length > 400) _bubbles.clear();
-    final bubble = MessageBubble(
-      // Keyed by the message, so a bubble's element follows its message rather
-      // than its slot. Without this the reversed list matched elements by
-      // position: a new message landing at the top reused the element that was
-      // there, its State was not rebuilt from scratch, and `initState` — the
-      // only place the entry animation is armed — never ran. That is the
-      // "анимация отправки работает через раз": it fired only when the
-      // framework happened to build a fresh element. Keying also stops a
-      // half-swiped bubble's offset showing up on whatever message slid into
-      // its place.
+    // Timed for the frame meter, building and laying out separately — see
+    // TimedInflate. The key is on the outermost widget, where the list
+    // matches rows, as well as on the bubble.
+    final bubble = TimedSubtree(
+      'item',
       key: ValueKey(m.id),
-      message: m,
-      chatId: widget.chatId,
-      album: album,
-      animateEntry: animate,
+      child: TimedInflate(
+        'item',
+        child: MessageBubble(
+          // Keyed by the message, so a bubble's element follows its message
+          // rather than its slot. Without this the reversed list matched
+          // elements by position: a new message landing at the top reused the
+          // element that was there, its State was not rebuilt from scratch, and
+          // `initState` — the only place the entry animation is armed — never
+          // ran. That is the "анимация отправки работает через раз": it fired
+          // only when the framework happened to build a fresh element. Keying
+          // also stops a half-swiped bubble's offset showing up on whatever
+          // message slid into its place.
+          key: ValueKey(m.id),
+          message: m,
+          chatId: widget.chatId,
+          album: album,
+          animateEntry: animate,
+        ),
+      ),
     );
     _bubbles[m.id] =
         (message: m, album: album, animate: animate, bubble: bubble);
