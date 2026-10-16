@@ -478,9 +478,26 @@ class _StillWhileCoveredState extends State<_StillWhileCovered> {
     if (covered != _covered && mounted) setState(() => _covered = covered);
   }
 
+  /// The screen's metrics as they were when this page was last uncovered.
+  ///
+  /// The keyboard rising in a chat changes the window's insets on every frame
+  /// of its slide, and every widget under here that read them — the tab bar's
+  /// padding, the headers' — was rebuilt for each one, behind a chat that
+  /// covers all of it: `shell x50, search x316` in five seconds of typing on
+  /// the S24+ (2026-10-16). Covered, this page is handed the last metrics it
+  /// was shown with, which never change, so nothing under it hears about the
+  /// keyboard; uncovered, it is handed the live ones again.
+  MediaQueryData? _frozen;
+
   @override
-  Widget build(BuildContext context) =>
-      TickerMode(enabled: !_covered, child: widget.child);
+  Widget build(BuildContext context) {
+    final live = MediaQuery.of(context);
+    if (!_covered || _frozen == null) _frozen = live;
+    return MediaQuery(
+      data: _covered ? _frozen! : live,
+      child: TickerMode(enabled: !_covered, child: widget.child),
+    );
+  }
 }
 
 /// Rounds a page's corners for exactly as long as it is moving.

@@ -49,6 +49,47 @@ void main() {
         reason: 'the page underneath was rebuilt by a slide over it');
   });
 
+  testWidgets('a covered page does not hear the keyboard on the page above',
+      (tester) async {
+    // "shell x50, search x316" in five seconds of typing in a chat on the
+    // S24+ (2026-10-16): the tabs underneath rebuilt on every frame of the
+    // keyboard's slide, read from insets they could not even be seen using.
+    final navigator = GlobalKey<NavigatorState>();
+    var builds = 0;
+    double? seenInset;
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: StillWhileCovered(
+          child: Builder(
+            builder: (context) {
+              builds++;
+              seenInset = MediaQuery.viewInsetsOf(context).bottom;
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+    navigator.currentState!.push(
+      screenRoute<void>((_) => const Scaffold(body: Text('chat'))),
+    );
+    await tester.pumpAndSettle();
+    final covered = builds;
+
+    for (var h = 50.0; h <= 300; h += 50) {
+      tester.view.viewInsets = FakeViewPadding(bottom: h * 3);
+      await tester.pump();
+    }
+    expect(builds, covered, reason: 'rebuilt behind the chat for the keyboard');
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(seenInset, 300, reason: 'uncovered, it sees the screen as it is');
+    tester.view.resetViewInsets();
+    await tester.pump();
+  });
+
   testWidgets("a covered page's tickers still stop, and start again",
       (tester) async {
     final navigator = GlobalKey<NavigatorState>();
