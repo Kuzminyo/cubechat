@@ -340,12 +340,15 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
             // sum the parts in ChatScreen are measured against.
             child: TimedSubtree(
               'chat',
-              child: AuroraBackground(
-                child: ChatScreen(
-                  peerId: peerId,
-                  peerLabel: peerLabel,
-                  initialMessageId: initialMessageId,
-                  returnToChats: returnToChats,
+              child: TimedInflate(
+                'chat',
+                child: AuroraBackground(
+                  child: ChatScreen(
+                    peerId: peerId,
+                    peerLabel: peerLabel,
+                    initialMessageId: initialMessageId,
+                    returnToChats: returnToChats,
+                  ),
                 ),
               ),
             ),

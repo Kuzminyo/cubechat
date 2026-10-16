@@ -1609,9 +1609,38 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (_builtTo == null || i > _builtTo!) _builtTo = i;
   }
 
+  /// Whether the list may build rows beyond the screen, as it normally does
+  /// so a scroll finds them ready.
+  ///
+  /// Not until the chat has finished arriving. The first frame of an open is
+  /// the slow one, and 1173 on the S24+ (2026-10-16) put 10-15 ms of its 18-24
+  /// in the list: about 0.4 ms to build each bubble and 0.6 ms to lay out its
+  /// text, for 12 bubbles where the screen shows 8 or 9. The rest are the
+  /// list's cache, which nothing can see during the slide; they are built
+  /// once the route has arrived, where a frame has room for them.
+  bool _buildBeyondScreen = false;
+
+  void _buildBeyondScreenOnArrival() {
+    if (!mounted) return;
+    final arriving = ModalRoute.of(context)?.animation;
+    if (arriving == null || arriving.isCompleted) {
+      setState(() => _buildBeyondScreen = true);
+      return;
+    }
+    void onStatus(AnimationStatus status) {
+      if (status != AnimationStatus.completed) return;
+      arriving.removeStatusListener(onStatus);
+      if (mounted) setState(() => _buildBeyondScreen = true);
+    }
+
+    arriving.addStatusListener(onStatus);
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _buildBeyondScreenOnArrival());
     // Before the chat screen's first frame marks this conversation read.
     _readAtOpen = ref.read(readMarkersControllerProvider)[widget.chatId];
     _decideUnread();
@@ -2555,6 +2584,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     reverse: true,
                     controller: _scroll,
                     clipBehavior: Clip.none,
+                    // Only what is on screen until the chat has arrived — see
+                    // [_buildBeyondScreen].
+                    cacheExtent: _buildBeyondScreen ? null : 0,
                     padding: padding,
                     itemCount: messages.length,
                     itemBuilder: (_, i) {
@@ -3759,14 +3791,20 @@ class _FloatingComposerBody extends StatelessWidget {
           const EdgeInsets.only(top: _clearance, bottom: _clearance),
         ),
       ),
-      header: TimedSubtree('header', child: header),
+      header: TimedSubtree(
+        'header',
+        child: TimedInflate('header', child: header),
+      ),
       // Only once there is somewhere to go. The list is reversed, so being
       // at the newest message means offset ~0 — showing the button there
       // would be a control that does nothing, parked over the conversation.
       // Always in the tree so it can slide in and out; see the button.
       button: _ScrollToBottomButton(onTap: scrollToBottom),
       buttonGap: _clearance + 8,
-      composer: TimedSubtree('composer', child: composer),
+      composer: TimedSubtree(
+        'composer',
+        child: TimedInflate('composer', child: composer),
+      ),
     );
   }
 }
